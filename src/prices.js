@@ -1,0 +1,83 @@
+import { normalize } from './core.js';
+
+// Trade chat → price log. Only lines that clearly name an item and a price are kept; everything is
+// stored in this browser. Prices are what players *asked or offered*, not completed sales.
+
+export function parsePrice(text) {
+  const m = String(text).match(/(\d+(?:[.,]\d+)?)\s*(b|bil|m|mil|k)\b/i) ?? String(text).match(/\b(\d{1,3}(?:,\d{3})+|\d{4,})\b/);
+  if (!m) return null;
+  const value = Number(m[1].replace(/,(?=\d{3}\b)/g, '').replace(',', '.'));
+  const unit = (m[2] ?? '').toLowerCase();
+  const price = Math.round(value * (unit.startsWith('b') ? 1e9 : unit.startsWith('m') ? 1e6 : unit === 'k' ? 1e3 : 1));
+  return Number.isFinite(price) && price >= 100 && price <= 1e11 ? price : null;
+}
+
+// "S>" / "B>" (OCR may read S as 5 and > as »), or WTS/WTB/selling/buying.
+const SIDE = /(?:^|[\s:;)\]])(?:([SB5])\s*[>»›]|(WTS|WTB|selling|buying)\b)/i;
+
+// One chat line: "Name [channel badge] : [Yellow Square] S> STR11 Earring 3.5 M". OCR often drops the
+// colon, so the seller is simply the first word and the side marker is searched anywhere.
+export function parseTradeLine(line) {
+  const text = String(line).trim().replace(/^[^\p{L}\p{N}]+/u, ''); // OCR leaves specks before the name
+  const seller = text.match(/^[\p{L}\p{N}_]{2,16}/u)?.[0];
+  const side = text.match(SIDE);
+  if (!seller || !side) return null;
+  const marker = (side[1] ?? side[2]).toUpperCase();
+  const kind = marker === 'B' || marker === 'WTB' || marker === 'BUYING' ? 'buy' : 'sell';
+  const brackets = [...text.matchAll(/[[|]([^\][|]{2,48})[\])]/g)].map(m => m[1].trim()).filter(t => !/square|channel|^fm$|free market|pmo|ch\s*\d/i.test(t));
+  const after = text.slice(side.index + side[0].length);
+  const priceText = after.match(/(\d+(?:[.,]\d+)?\s*(?:b|bil|m|mil|k)\b|\b\d{1,3}(?:,\d{3})+\b|\b\d{4,}\b)/i)?.[0];
+  const price = priceText ? parsePrice(priceText) : null;
+  let item = brackets[0];
+  if (!item && priceText) item = after.slice(0, after.indexOf(priceText)).replace(/[[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!item || item.length < 3 || !/[A-Za-z]{3}/.test(item) || !price) return null;
+  return { seller, kind, item: item.replace(/\s+/g, ' '), price };
+}
+
+export function parseTradeChat(text) {
+  return String(text).split('\n').map(parseTradeLine).filter(Boolean);
+}
+
+// A short tag per player name; kept for logs saved while names were not stored.
+export function sellerTag(name) {
+  let h = 0x811c9dc5;
+  for (const ch of String(name ?? '').toLowerCase()) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return (h % 4096).toString(36);
+}
+
+// Same seller, item and price within 15 minutes is one advert repeated, not a new data point. The
+// seller's name is kept so you can contact them later.
+export function addTrades(log, trades, now = Date.now(), cap = 2000) {
+  const list = Array.isArray(log) ? [...log] : [];
+  for (const trade of trades) {
+    const key = normalize(trade.item), by = sellerTag(trade.seller);
+    if (list.some(row => row.key === key && (row.seller ? row.seller === trade.seller : row.by === by) && row.price === trade.price && now - row.at < 15 * 60_000)) continue;
+    list.unshift({ ...trade, by, key, at: now });
+  }
+  return list.slice(0, cap);
+}
+
+export function summarizePrices(log, query = '') {
+  const wanted = normalize(query), groups = new Map();
+  for (const row of log ?? []) {
+    if (wanted && !row.key.includes(wanted)) continue;
+    const group = groups.get(row.key) ?? groups.set(row.key, { item: row.item, sells: [], buys: [], lastSeen: 0 }).get(row.key);
+    (row.kind === 'buy' ? group.buys : group.sells).push(row.price);
+    group.lastSeen = Math.max(group.lastSeen, row.at);
+  }
+  const stats = values => {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    return { count: values.length, low: sorted[0], median: sorted[Math.floor(sorted.length / 2)], high: sorted[sorted.length - 1] };
+  };
+  return [...groups.values()].map(group => ({ item: group.item, sell: stats(group.sells), buy: stats(group.buys), lastSeen: group.lastSeen }))
+    .sort((a, b) => b.lastSeen - a.lastSeen);
+}
+
+export function formatMesos(value) {
+  if (!Number.isFinite(value)) return '—';
+  if (value >= 1e9) return `${+(value / 1e9).toFixed(2)}b`;
+  if (value >= 1e6) return `${+(value / 1e6).toFixed(2)}m`;
+  if (value >= 1e3) return `${+(value / 1e3).toFixed(1)}k`;
+  return String(value);
+}

@@ -1,0 +1,22 @@
+{
+  "name": "maple-route-companion",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "node scripts/copy-ocr.mjs && vite build",
+    "test": "node --check src/app.js && node --test",
+    "scan:titles": "node scripts/scan-titles.mjs",
+    "audit:handins": "node scripts/audit-handins.mjs"
+  },
+  "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "tesseract.js": "7.0.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  },
+  "license": "MIT",
+  "description": "Free second-screen GPS companion for MapleStory Classic World (unofficial; reads only the shared window)."
+}
