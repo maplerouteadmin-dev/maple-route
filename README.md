@@ -15,8 +15,9 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 > are allowed is decided by Nexon's Terms of Service, which can change. Read them yourself and decide for
 > your own account. The authors accept no responsibility for any action taken on your account.
 >
-> **Built with AI.** This project was "vibe coded": written almost entirely by AI coding assistants,
-> directed and play-tested by a player. See [How this was made](#how-this-was-made).
+> **Built with AI.** Maple Route was created by **maplerouteadmin-dev** and "vibe coded": the idea,
+> design and testing are theirs, and the code was written by AI coding assistants. See
+> [How this was made](#how-this-was-made).
 
 ## Contents
 
@@ -151,16 +152,18 @@ Open http://127.0.0.1:5174 in Chrome or Edge. Your own copy also keeps downloade
 
 ## How this was made
 
-Maple Route is **vibe coded**. The code was written almost entirely by AI coding assistants (OpenAI Codex,
-then Anthropic's Claude Code) from a player's descriptions of what they wanted. The player tested it in
-live play, reported what went wrong, and decided what to build and what it must never do.
+Maple Route was created by **maplerouteadmin-dev**, a Classic World player who wanted a GPS for the game.
+It is **vibe coded**: they came up with the idea, designed every feature, set the safety rules, played
+with it in live game sessions, tracked down what went wrong and decided how it should work. The code
+itself was written by AI coding assistants (OpenAI Codex, then Anthropic's Claude Code) from their
+direction.
 
 What that means for you:
 
 - The code has **not** been reviewed line by line by an experienced developer. Expect bugs and rough edges.
 - It is checked by an automated test suite (run on every update) and by real play on Classic World, on only a
   couple of screen sizes so far. Other resolutions and maps may be read less reliably.
-- The safety rules above (screen picture only: no memory, no network, no inputs) were set by the player
+- The safety rules above (screen picture only: no memory, no network, no inputs) were set by the creator
   and are kept deliberately. The code is open, so anyone can check them.
 
 ## Data and credits
