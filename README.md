@@ -14,6 +14,9 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 > share (like OBS or Discord screen sharing) and never touches the game itself. Whether third-party tools
 > are allowed is decided by Nexon's Terms of Service, which can change. Read them yourself and decide for
 > your own account. The authors accept no responsibility for any action taken on your account.
+>
+> **Built with AI.** This project was "vibe coded": written almost entirely by AI coding assistants,
+> directed and play-tested by a player. See [How this was made](#how-this-was-made).
 
 ## Contents
 
@@ -25,6 +28,7 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - [Troubleshooting](#troubleshooting)
 - [Privacy](#privacy)
 - [Run it on your own PC (optional)](#run-it-on-your-own-pc-optional)
+- [How this was made](#how-this-was-made)
 - [Data and credits](#data-and-credits)
 - [Feedback](#feedback)
 
@@ -144,6 +148,20 @@ node scripts/serve.mjs 5174
 
 Open http://127.0.0.1:5174 in Chrome or Edge. Your own copy also keeps downloaded map pictures in
 `%LOCALAPPDATA%\MapleRoute\cache`. Developer notes are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## How this was made
+
+Maple Route is **vibe coded**. The code was written almost entirely by AI coding assistants (OpenAI Codex,
+then Anthropic's Claude Code) from a player's descriptions of what they wanted. The player tested it in
+live play, reported what went wrong, and decided what to build and what it must never do.
+
+What that means for you:
+
+- The code has **not** been reviewed line by line by an experienced developer. Expect bugs and rough edges.
+- It is checked by an automated test suite (run on every update) and by real play on Classic World, mostly
+  couple of screen sizes so far. Other resolutions and maps may be read less reliably.
+- The safety rules above (screen picture only: no memory, no network, no inputs) were set by the player
+  and are kept deliberately. The code is open, so anyone can check them.
 
 ## Data and credits
 
