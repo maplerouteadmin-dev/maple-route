@@ -158,7 +158,7 @@ live play, reported what went wrong, and decided what to build and what it must 
 What that means for you:
 
 - The code has **not** been reviewed line by line by an experienced developer. Expect bugs and rough edges.
-- It is checked by an automated test suite (run on every update) and by real play on Classic World, mostly
+- It is checked by an automated test suite (run on every update) and by real play on Classic World, on only a
   couple of screen sizes so far. Other resolutions and maps may be read less reliably.
 - The safety rules above (screen picture only: no memory, no network, no inputs) were set by the player
   and are kept deliberately. The code is open, so anyone can check them.
