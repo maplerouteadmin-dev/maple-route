@@ -37,7 +37,7 @@ export const helperComplete = (quest, expectedNeeds = null) => Boolean(quest?.pr
 
 // When the wiki has no drop record for an item, the quest's own text often names the monsters
 // ("I can get them by defeating Stump, Orange Mushroom, and Octopus"); those become `guess` goals.
-export function huntGoals(data, progress, itemSources = {}, questText = '') {
+export function huntGoals(data, progress, itemSources = {}, questText = '', allNeeds = []) {
   const goals = progress.filter(p => !p.done).map(p => {
     const mob = mobByName(data, p.name);
     if (mob) return { ...p, kind: 'kill', monsters: [mob.name], pending: false };
@@ -55,12 +55,13 @@ export function huntGoals(data, progress, itemSources = {}, questText = '') {
   const named = textMonsters(data, questText);
   // Which named monster drops which item: a shared word ("Omok Piece: Mushroom" → Orange Mushroom),
   // otherwise the named monsters no other need accounts for (Omok Table → Stump).
-  const words = name => normalize(name).split(' ').filter(word => word.length >= 4);
+  const words = name => normalize(name).split(' ').filter(word => word.length >= 3);
   const byWord = item => named.filter(mob => words(mob).some(word => words(item).includes(word.replace(/s$/, '')) || words(item).includes(word)));
   // Monsters already accounted for by any need, finished ones included (the Octopus of a finished
   // "Omok Piece: Octopus" does not drop the table).
   const claimed = new Set(goals.flatMap(g => g.monsters));
-  for (const p of progress) { for (const mob of byWord(p.name)) claimed.add(mob); for (const mob of itemSources[p.name] ?? []) claimed.add(mob); if (mobByName(data, p.name)) claimed.add(mobByName(data, p.name).name); }
+  // Every need of the quest counts here, also ones already ticked off (and not in `progress`).
+  for (const p of [...progress, ...allNeeds.map(name => ({ name }))]) { for (const mob of byWord(p.name)) claimed.add(mob); for (const mob of itemSources[p.name] ?? []) claimed.add(mob); if (mobByName(data, p.name)) claimed.add(mobByName(data, p.name).name); }
   for (const g of missing) {
     const matched = byWord(g.name);
     const left = named.filter(mob => !claimed.has(mob));
@@ -172,7 +173,7 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
       const mapId = turnInNpc ? npcMap(data, turnInNpc) : null;
       return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId };
     }
-    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text);
+    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name));
     const maps = rankObjectiveMaps(data, goals, currentMapId);
     const trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: refineStops(data, goals) });
     const best = trip?.stops[0] ?? maps[0] ?? null;
@@ -189,7 +190,7 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
   const needs = catalogQuest?.needs ?? null;
   if (Array.isArray(needs)) {
     if (!needs.length) return turnIn();
-    const goals = huntGoals(data, needs.map(n => ({ name: n.name, have: 0, need: n.count, done: false })), itemSources, catalogQuest?.text);
+    const goals = huntGoals(data, needs.map(n => ({ name: n.name, have: 0, need: n.count, done: false })), itemSources, catalogQuest?.text, needs.map(n => n.name));
     const maps = rankObjectiveMaps(data, goals, currentMapId), trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: refineStops(data, goals) });
     const hereEntry = maps.find(m => m.mapId === currentMapId) ?? null, target = hereEntry ?? trip?.stops[0] ?? maps[0] ?? null;
     return { quest, stage: 'hunt', goals, maps: maps.slice(0, 4), trip, mapId: target?.mapId ?? null, here: Boolean(hereEntry), done: [], pending: goals.some(g => g.pending), countsUnknown: true };

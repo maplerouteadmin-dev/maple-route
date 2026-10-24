@@ -95,3 +95,12 @@ test('Quest Helper counts match the whole item name, and a hidden line keeps a q
   assert.equal(helperComplete(wrapped, 3), false);
   assert.equal(helperComplete(wrapped), true);
 });
+
+test('short monster names count, and finished needs still claim their monster', () => {
+  const world = validateDataset({ schemaVersion: 1, maps: [{ id: 'a', name: 'A' }], portals: [], targets: ['Pig', 'Stump', 'Octopus', 'Ribbon Pig'].map((name, i) => ({ id: `m${i}`, name, kind: 'mob', locations: [{ mapId: 'a', count: 5 }] })) });
+  const text = 'He said I can easily get them by defeating Stump, Pig, and Octopus, found around Henesys and Kerning City.';
+  // The Octopus piece is ticked off, so only the table and the Pig piece are still listed.
+  const progress = [{ name: 'Omok Table', have: 0, need: 1 }, { name: 'Omok Piece: Pig', have: 0, need: 1 }];
+  const goals = huntGoals(world, progress, { 'Omok Table': [], 'Omok Piece: Pig': [] }, text, ['Omok Table', 'Omok Piece: Pig', 'Omok Piece: Octopus']);
+  assert.deepEqual(goals.map(g => [g.name, g.monsters]), [['Omok Table', ['Stump']], ['Omok Piece: Pig', ['Pig']]]);
+});

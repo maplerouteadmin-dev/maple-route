@@ -2556,7 +2556,7 @@ function huntOptions(g) {
     progress.push({ name: need.name, have: seen?.have ?? 0, need: seen?.need ?? need.count, done: false });
   }
   if (!progress.length) return null;
-  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text);
+  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text, (g.quest?.needs ?? []).map(need => need.name));
   loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.lookup ?? goal.name));
   // The trip ends where the quest is handed in, so stops on the way there are preferred.
   const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(endNpc))?.locations[0]?.mapId ?? null : null;
