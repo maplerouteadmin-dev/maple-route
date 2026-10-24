@@ -51,6 +51,8 @@ function sharedStore(url, key, fetchImpl) {
       if (itemId) params.set('item_id', `eq.${itemId}`);
       return call(`listings?${params}`);
     },
+    // Your own listings, expired ones too (the database lets an owner see theirs), to relist or remove.
+    async mine() { const me = (await session()).user; return call(`listings?${new URLSearchParams({ select: '*', owner: `eq.${me}`, order: 'created_at.desc', limit: '100' })}`); },
     async add(listing) { const [row] = await call('listings', { method: 'POST', body: listing, prefer: 'return=representation' }); return row; },
     remove(id) { return call(`listings?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
   };
@@ -62,6 +64,7 @@ function practiceStore() {
     shared: false,
     async me() { return 'practice'; },
     async list({ itemId = null } = {}) { const now = Date.now(); return all().filter(l => Date.parse(l.expires_at) > now && (!itemId || l.item_id === itemId)).sort((a, b) => b.created_at.localeCompare(a.created_at)); },
+    async mine() { return all().sort((a, b) => b.created_at.localeCompare(a.created_at)); },
     async add(listing) { const row = { ...listing, id: `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, owner: 'practice', created_at: new Date().toISOString() }; storage.set(PRACTICE_KEY, [row, ...all()].slice(0, 200)); return row; },
     async remove(id) { storage.set(PRACTICE_KEY, all().filter(l => l.id !== id)); return null; }
   };

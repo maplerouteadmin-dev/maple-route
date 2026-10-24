@@ -1,7 +1,8 @@
 -- Maple Route marketplace: run once in the Supabase project's SQL editor.
 -- Also in the dashboard: Authentication → Sign In / Providers → turn on "Allow anonymous sign-ins".
 -- Anyone can read live listings; a listing belongs to the (anonymous) user who posted it, and only
--- they can remove it. Listings expire after 7 days; at most 20 live listings per user.
+-- they can see and remove it, expired or not. Listings expire after 7 days (the owner can relist:
+-- post again); at most 20 live listings per user.
 
 create table if not exists public.listings (
   id          uuid primary key default gen_random_uuid(),
@@ -41,7 +42,7 @@ create trigger listings_guard before insert on public.listings for each row exec
 alter table public.listings enable row level security;
 
 drop policy if exists "read live listings" on public.listings;
-create policy "read live listings" on public.listings for select using (expires_at > now());
+create policy "read live listings" on public.listings for select using (expires_at > now() or owner = auth.uid());
 
 drop policy if exists "post own listings" on public.listings;
 create policy "post own listings" on public.listings for insert to authenticated with check (owner = auth.uid());
@@ -53,4 +54,4 @@ create policy "remove own listings" on public.listings for delete to authenticat
 revoke update on public.listings from anon, authenticated;
 
 -- Optional housekeeping (Database → Cron, or run by hand): delete listings expired over a week ago.
--- delete from public.listings where expires_at < now() - interval '7 days';
+-- delete from public.listings where expires_at < now() - interval '30 days';

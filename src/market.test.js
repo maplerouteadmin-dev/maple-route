@@ -19,7 +19,7 @@ test('a listing is checked: mesos only, a real character name, sane stats and sl
   const now = Date.parse('2026-10-24T00:00:00Z');
   const { listing } = checkListing({ side: 'sell', price: '1.5m', ign: 'Mapler01', stats: { incPDD: 6, incDEX: 3 }, slotsLeft: 2, scrolled: 3, channel: '5', note: 'gloves for dex' }, gloves, now);
   assert.deepEqual([listing.price, listing.stats, listing.slots_left, listing.scrolled, listing.channel], [1500000, { incPDD: 6, incDEX: 3 }, 2, 3, 5]);
-  assert.equal(listing.expires_at, '2026-10-31T00:00:00.000Z');
+  assert.equal(listing.expires_at, '2026-10-31T00:00:00.000Z'); // 7 days
   assert.equal(checkListing({ side: 'sell', price: '2m', ign: 'Mapler01' }, shell, now).listing.price, 2000000);
   const bad = checkListing({ side: 'sell', price: '0', ign: 'x', note: 'or $20 paypal', slotsLeft: 9 }, gloves, now).errors;
   assert.equal(bad.length, 4); // price, name, real money, slots
@@ -65,3 +65,13 @@ test('a custom item (not in the game files) can be listed, with optional stats a
   assert.ok(checkListing({ side: 'sell', price: '1', ign: 'Mapler01', slotsLeft: 30 }, item).errors);
 });
 
+
+test('listings run 7 days; an expired one can be relisted for a fresh 7', async () => {
+  const { daysLeft, isExpired, relistCopy } = await import('./market.js');
+  const now = Date.parse('2026-10-24T00:00:00Z');
+  const live = { id: 'a', owner: 'u', created_at: '2026-10-21T00:00:00Z', expires_at: '2026-10-31T00:00:00Z', item_name: 'Work Gloves', price: 5 };
+  assert.deepEqual([daysLeft(live, now), isExpired(live, now)], [7, false]);
+  const old = { ...live, expires_at: '2026-10-20T00:00:00Z' };
+  assert.deepEqual([daysLeft(old, now), isExpired(old, now)], [0, true]);
+  assert.deepEqual(relistCopy(old, now), { item_name: 'Work Gloves', price: 5, expires_at: '2026-10-31T00:00:00.000Z' });
+});

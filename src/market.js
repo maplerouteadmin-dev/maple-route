@@ -106,6 +106,16 @@ export function equipSummary(listing, item) {
   return [changed.length ? changed.join(' ') : item.custom ? '' : 'clean (base stats)', slots, listing.scrolled ? `${listing.scrolled} scroll${listing.scrolled === 1 ? '' : 's'} passed` : ''].filter(Boolean).join(' · ');
 }
 
+// Days left before a listing expires (0 once it has), for "expires in 3 days".
+export const daysLeft = (listing, now = Date.now()) => Math.max(0, Math.ceil((Date.parse(listing?.expires_at) - now) / 86_400_000));
+export const isExpired = (listing, now = Date.now()) => Boolean(listing?.expires_at) && Date.parse(listing.expires_at) <= now;
+
+// The fields to post again when the owner relists an expired listing (a fresh 7 days from now).
+export function relistCopy(listing, now = Date.now()) {
+  const { id, owner, created_at: created, expires_at: expires, ...fields } = listing ?? {};
+  return { ...fields, expires_at: new Date(now + LISTING_DAYS * 86_400_000).toISOString() };
+}
+
 // Search and filters: words in the item name, side, minimum stat totals, slots left, price cap.
 export function filterListings(listings, { query = '', side = 'all', minStats = {}, minSlots = null, maxPrice = null, now = Date.now() } = {}) {
   const words = normalize(query).split(' ').filter(Boolean);

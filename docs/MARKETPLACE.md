@@ -12,7 +12,8 @@ connected. To make listings shared between all players:
    `listings` table and its rules:
    - anyone can read live listings; only the poster can remove theirs; nobody can edit (remove and post
      again);
-   - listings expire after 7 days; at most 20 live listings per player;
+   - listings expire after 7 days (hidden from everyone but the poster, who can relist or remove
+     them); at most 20 live listings per player;
    - character names must look like game names; notes cannot contain links or real-money payment words.
 4. Put the URL and key in `src/marketstore.js` (`MARKET_URL`, `MARKET_KEY`). The anon key is meant to be
    public; the table rules above are what protect the data.

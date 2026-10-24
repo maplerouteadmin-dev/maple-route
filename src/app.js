@@ -17,7 +17,7 @@ import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
-import { OSMS_ITEMS as MARKET_ITEMS, STATS, fromOsmsItems, customItem, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
+import { OSMS_ITEMS as MARKET_ITEMS, STATS, fromOsmsItems, customItem, daysLeft, isExpired, relistCopy, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -110,7 +110,7 @@ $('#app').innerHTML = `
         <label class="field">Slots left at least<input id="market-slots" type="number" min="0" max="20" placeholder="any"></label>
         <label class="field">Max price<input id="market-max" type="text" inputmode="numeric" placeholder="e.g. 2m"></label></div>
       <div id="market-book" aria-live="polite"></div><div id="market-list" aria-live="polite"></div>
-      <p class="fine">Listings last 7 days. Anything wrong with a listing (a scam, real-money offer or fake item)? Use its Report link.</p></section>
+      <p class="fine">Listings last 7 days, then the poster can relist them. Anything wrong with a listing (a scam, real-money offer or fake item)? Use its Report link.</p></section>
     <section class="card" aria-labelledby="market-post-title"><h2 id="market-post-title">List an item</h2>
       <div class="market-side-pick" role="radiogroup"><label class="toggle"><input type="radio" name="market-post-side" value="sell" checked> I'm selling</label><label class="toggle"><input type="radio" name="market-post-side" value="buy"> I'm buying</label></div>
       <div class="market-combo"><label class="field">Item<input id="market-item" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="market-item-suggest" placeholder="Type to search all items, or a custom name"></label><ul id="market-item-suggest" class="market-suggest" role="listbox" hidden></ul></div>
@@ -2316,7 +2316,7 @@ $('#report-copy').addEventListener('click', async () => {
 });
 
 // ---------- Market (player listings: src/market.js, src/marketstore.js) ----------
-const market = { store: createMarketStore(), catalog: null, byId: new Map(), listings: [], me: null, item: null, loading: false, error: '', loadedAt: 0, active: 0 };
+const market = { store: createMarketStore(), catalog: null, byId: new Map(), listings: [], mine: [], me: null, item: null, loading: false, error: '', loadedAt: 0, active: 0 };
 // The item a listing is for: from the game files, or rebuilt from the name for a custom item.
 const marketItem = listing => listing.item_id === 'custom' ? customItem(listing.item_name) : market.byId.get(listing.item_id);
 const IGN_KEY = 'maple-route-market-ign';
@@ -2332,7 +2332,7 @@ async function loadMarket(force = false) {
       market.catalog = fromOsmsItems(await response.json()); market.byId = new Map(market.catalog.map(item => [item.id, item]));
     }
     market.me = await market.store.me();
-    market.listings = await market.store.list();
+    [market.listings, market.mine] = await Promise.all([market.store.list(), market.store.mine()]);
     market.error = ''; market.loadedAt = Date.now();
   } catch (error) { market.error = error?.message || 'The marketplace is unavailable right now.'; }
   finally { market.loading = false; renderMarket(); }
@@ -2345,8 +2345,8 @@ function listingHtml(listing) {
   const report = issueUrl({ title: `Listing report: ${listing.item_name} by ${listing.ign}`, body: `Listing ${listing.id}: ${listing.side} ${listing.item_name} for ${listing.price} mesos by ${listing.ign}.\n\nWhat is wrong with it?\n`, labels: ['listing'] });
   return `<li class="market-row"><div class="market-main"><span class="pill ${listing.side === 'sell' ? 'sell' : 'buy'}">${listing.side === 'sell' ? 'Selling' : 'Buying'}</span> <strong>${esc(listing.item_name)}</strong>${listing.item_id === 'custom' ? ' <small class="pill">custom</small>' : ''}${listing.quantity > 1 ? ` ×${listing.quantity}` : ''} <span class="market-price">${formatMesos(listing.price)}${listing.quantity > 1 ? ' each' : ''}</span>
     ${item?.equip && listing.side === 'sell' && equipSummary(listing, item) ? `<div class="fine">${esc(equipSummary(listing, item))}</div>` : ''}${detail}
-    <div class="fine">${esc(listing.ign)}${listing.channel ? ` · ch ${listing.channel}` : ''} · ${ago(listing.created_at)}${listing.note ? ` · “${esc(listing.note)}”` : ''}</div></div>
-    <div class="market-actions"><button type="button" class="button light" data-market-find="${esc(listing.ign)}">Copy /find</button>${mine ? `<button type="button" class="button light" data-market-remove="${esc(listing.id)}">Remove</button>` : `<a class="link-button subtle" href="${esc(report)}" target="_blank" rel="noopener">Report</a>`}</div></li>`;
+    <div class="fine">${esc(listing.ign)}${listing.channel ? ` · ch ${listing.channel}` : ''} · ${ago(listing.created_at)}${listing.note ? ` · “${esc(listing.note)}”` : ''}${mine ? (isExpired(listing) ? ' · <strong class="market-expired">expired: hidden from others</strong>' : ` · expires in ${daysLeft(listing)} day${daysLeft(listing) === 1 ? '' : 's'}`) : ''}</div></div>
+    <div class="market-actions"><button type="button" class="button light" data-market-find="${esc(listing.ign)}">Copy /find</button>${mine ? `${isExpired(listing) ? `<button type="button" class="button secondary" data-market-relist="${esc(listing.id)}">Relist for 7 days</button>` : ''}<button type="button" class="button light" data-market-remove="${esc(listing.id)}">Remove</button>` : `<a class="link-button subtle" href="${esc(report)}" target="_blank" rel="noopener">Report</a>`}</div></li>`;
 }
 function renderMarket() {
   if (!$('#market-list')) return;
@@ -2361,8 +2361,9 @@ function renderMarket() {
   $('#market-book').innerHTML = book ? `<p class="fine"><strong>${esc(shown[0].item_name)}:</strong> lowest asking ${book.lowestAsk ? formatMesos(book.lowestAsk) : '—'} (${book.sells} selling) · highest offer ${book.highestBid ? formatMesos(book.highestBid) : '—'} (${book.buys} buying)</p>` : '';
   $('#market-list').innerHTML = shown.length ? `<ul class="market-rows">${shown.slice(0, 100).map(listingHtml).join('')}</ul>${shown.length > 100 ? `<p class="fine">${shown.length - 100} more: narrow the search.</p>` : ''}`
     : `<p class="fine">${market.listings.length ? 'No listings match.' : 'No listings yet. Be the first: list an item below.'} <button type="button" class="link-button" data-market-refresh>Refresh</button></p>`;
-  const mine = market.listings.filter(l => l.owner === market.me);
-  $('#market-mine').innerHTML = mine.length ? `<ul class="market-rows">${mine.map(listingHtml).join('')}</ul>` : '<p class="fine">Nothing listed. Listings stay up for 7 days; remove one when the item is gone.</p>';
+  // Your listings: live ones with the days left, expired ones (hidden from everyone else) to relist or remove.
+  const mine = market.mine ?? [];
+  $('#market-mine').innerHTML = mine.length ? `<ul class="market-rows">${mine.map(listingHtml).join('')}</ul>` : '<p class="fine">Nothing listed. Listings stay up for 7 days; remove one when the item is gone, or relist it when it expires.</p>';
 }
 // The item picked for a new listing: its clean stats, and for selling equipment, fields for the real ones.
 function renderMarketItem() {
@@ -2422,6 +2423,14 @@ document.addEventListener('click', async event => {
   if (find) { const text = findCommand(find.dataset.marketFind); try { await navigator.clipboard.writeText(text); find.textContent = 'Copied'; setTimeout(() => { find.textContent = 'Copy /find'; }, 1500); } catch { find.textContent = text; } return; }
   const remove = event.target.closest('[data-market-remove]');
   if (remove) { remove.disabled = true; try { await market.store.remove(remove.dataset.marketRemove); } catch { /* shown on refresh */ } await loadMarket(true); return; }
+  // Relist: post it again for a fresh 7 days (the old copy is removed). Only ever done by the owner pressing it.
+  const relist = event.target.closest('[data-market-relist]');
+  if (relist) {
+    const old = market.mine.find(l => String(l.id) === relist.dataset.marketRelist); if (!old) return;
+    relist.disabled = true; relist.textContent = 'Relisting…';
+    try { await market.store.add(relistCopy(old)); await market.store.remove(old.id); } catch (error) { $('#market-post-note').textContent = error?.message || 'Could not relist that right now.'; }
+    await loadMarket(true); return;
+  }
   if (event.target.closest('[data-market-refresh]')) loadMarket(true);
 });
 
