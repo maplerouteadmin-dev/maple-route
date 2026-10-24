@@ -81,10 +81,11 @@ $('#app').innerHTML = `
       <p class="live-note hidden" id="live-note" role="status"></p>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
-    <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div>
-      <p class="fine">${UNTESTED} For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
+    <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div><p class="fine">To show only quests the game is offering you, read your in-game Available tab on the <b>Quests</b> page.</p></section>
+    <section class="card" aria-labelledby="questlog-title"><h2 id="questlog-title">Read your in-game quest list ${UNTESTED}</h2><p class="muted">While Live GPS runs, an open quest window (<b>Q</b>) is read by itself. These buttons read it on demand.</p>
+      <p class="fine">For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-available" data-read-quests="available">Read my Available tab</button></div><div id="available-read" aria-live="polite"></div>
-      <div class="divider"></div><h3 class="sub-title">What have I finished? ${UNTESTED}</h3><p class="fine">Quests are marked finished automatically when Live GPS sees one leave the Quest Helper after it was ready to hand in. To catch up on older ones: in game press <b>Q</b>, open the <b>Completed</b> tab, then press the button below (once per page of the list). Only your shared screen is read.</p>
+      <div class="divider"></div><h3 class="sub-title">What have I finished?</h3><p class="fine">Quests are marked finished automatically when Live GPS sees one leave the Quest Helper after it was ready to hand in. To catch up on older ones: in game press <b>Q</b>, open the <b>Completed</b> tab, then press the button below (once per page of the list). Only your shared screen is read.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-completed" data-read-quests="completed">Read my Completed tab</button></div><div id="completed-read" aria-live="polite"></div><div id="finished-list"></div></section>
     <section class="card" aria-labelledby="quest-helper-title"><h2 id="quest-helper-title">Quest Helper sync</h2><p class="muted">While Live GPS runs, the app reads the in-game Quest Helper, ticks finished counts and tells you when a quest is ready to hand in.</p><div id="quest-helper" aria-live="polite"></div></section>
     <section class="card" aria-labelledby="live-exp-title"><h2 id="live-exp-title">Live EXP tracker</h2><p class="muted">Reads EXP from the status bar while Live GPS runs and checks it against the bar's fill, so misreads are ignored.</p><div id="live-exp" aria-live="polite"></div></section>
@@ -155,7 +156,7 @@ const VIEWS = {
   navigate: ['live-title', 'mapview-title'],
   goto: ['plan-title', 'recs-title', 'targets-title', 'quest-title', 'item-title', 'guide-title', 'journey-title', 'route-title'],
   world: ['world-title', 'atlas-title'],
-  quests: ['quest-helper-title', 'next-title', 'trip-title', 'goals-title', 'party-title'],
+  quests: ['quest-helper-title', 'questlog-title', 'next-title', 'trip-title', 'goals-title', 'party-title'],
   hunt: ['live-exp-title', 'session-title', 'sell-title', 'prices-title', 'gear-title'],
   settings: ['voice-title', 'autostart-title', 'characters-title', 'settings-title', 'feedback-title', 'data-title', 'privacy-title']
 };
