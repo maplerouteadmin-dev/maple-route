@@ -81,7 +81,7 @@ $('#app').innerHTML = `
       <p class="live-note hidden" id="live-note" role="status"></p>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
-    <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div><p class="fine">To show only quests the game is offering you, read your in-game Available tab on the <b>Quests</b> page.</p></section>
+    <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div><p class="fine">To show only quests the game is offering you, read your in-game Available tab (below, or on the <b>Quests</b> page).</p></section>
     <section class="card" aria-labelledby="questlog-title"><h2 id="questlog-title">Read your in-game quest list ${UNTESTED}</h2><p class="muted">While Live GPS runs, an open quest window (<b>Q</b>) is read by itself. These buttons read it on demand.</p>
       <p class="fine">For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-available" data-read-quests="available">Read my Available tab</button></div><div id="available-read" aria-live="polite"></div>
@@ -213,8 +213,23 @@ function fitLivePage() {
 }
 window.addEventListener('resize', fitLivePage);
 
+// The "Read your in-game quest list" card lives on the Quests page and also under the quest
+// suggestions in Go to → Quests: it moves to whichever of the two is opened.
+function placeQuestLog(view) {
+  const card = $('#questlog-title')?.closest('section'); if (!card) return;
+  if (view === 'goto') {
+    const recs = $('#recs-title')?.closest('section');
+    if (recs && card.previousElementSibling !== recs) recs.after(card);
+    card.dataset.picker = 'recs-title'; card.classList.toggle('picker-off', state.picker !== 'recs-title');
+  } else if (view === 'quests') {
+    const helper = $('#quest-helper-title')?.closest('section');
+    if (helper && card.previousElementSibling !== helper) helper.after(card);
+    delete card.dataset.picker; card.classList.remove('picker-off');
+  }
+}
 function showView(view) {
   if (!VIEWS[view]) view = 'navigate';
+  placeQuestLog(view);
   document.body.classList.toggle('gps-page', view === 'navigate'); document.body.classList.toggle('goto-page', view === 'goto'); setTimeout(fitLivePage, 0);
   if (view === 'goto') { state.pickerOpen = false; renderGotoChosen(); }
   document.querySelectorAll('.view').forEach(panel => panel.classList.toggle('hidden', panel.dataset.view !== view));
