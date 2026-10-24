@@ -731,8 +731,16 @@ function applyQuestWindow(tab, text, { auto = false } = {}) {
     const added = offered.filter(name => !state.questsAvailable.includes(name));
     state.questsAvailable = [...new Set([...state.questsAvailable, ...offered])]; persist(); renderQuestRecs();
     if (auto && !added.length) return seen.length;
-    out.innerHTML = !offered.length ? '<p class="fine">No quest names found. Open the quest window (Q) on the <b>Available</b> tab with a town expanded, then try again.</p>'
-      : `<p class="fine">${auto ? 'Read from your quest window' : 'Read'}: ${offered.map(esc).join(', ')}. Expand another town or scroll to add more.</p>`;
+    // One row per name read off the window (a quest line title like "Winston's Fossil Dig-up", or a
+    // single quest), its next quest, and Start: guide there and through it with Live GPS.
+    const rows = seen.map(title => ({ title, name: questsForGameNames(state.quests, [title], { tab, finished: state.questsFinished })[0] })).filter(row => row.name && offered.includes(row.name));
+    const startRow = ({ title, name }) => {
+      const quest = state.quests.find(q => q.name === name), mapId = quest?.giver ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(quest.giver))?.locations[0]?.mapId : null;
+      return `<li><span><strong>${esc(title)}</strong>${normalize(title) !== normalize(name) ? ` <small>first quest: ${esc(name)}</small>` : ''}<small>${quest?.giver ? `from ${esc(quest.giver)}` : ''}${mapId ? ` · ${esc(mapById(mapId)?.name ?? '')}` : ''}${quest?.level ? ` · Lv ${quest.level}` : ''}</small></span>
+        <span class="wm-actions"><button type="button" class="button secondary wm-go" data-qr-go="${esc(mapId ?? '')}" data-qr-npc="${esc(quest?.giver ?? '')}" data-qr-quest="${esc(name)}">Start</button></span></li>`;
+    };
+    out.innerHTML = !rows.length ? '<p class="fine">No quest names found. Open the quest window (Q) on the <b>Available</b> tab with a town expanded, then try again.</p>'
+      : `<p class="fine">${auto ? 'Read from your quest window' : 'Read from your Available tab'}. Press <b>Start</b> and Live GPS takes you to the quest giver, then through the quest.</p><ul class="qr-list">${rows.map(startRow).join('')}</ul><p class="fine">Expand another town or scroll the list and read again to add more.</p>`;
     return seen.length;
   }
   if (auto) {
@@ -2782,7 +2790,9 @@ function objectiveHtml() {
     const offer = (state.hud.quests ?? []).filter(q => q.name).slice(0, 3);
     return offer.length ? `<div class="objective offer">Guide a quest: ${offer.map(q => `<button type="button" class="link-button" data-guide="${esc(q.name)}">${esc(q.name)}</button>`).join(' · ')}</div>` : '';
   }
-  const head = `<div class="objective-head"><span class="objective-tag">Quest</span> ${esc(objective.quest)} <button type="button" class="link-button" data-guide="">stop guiding</button></div>`;
+  // A quest in a line shows as the game names it: "Winston's Fossil Dig-up · Searching for Fossils".
+  const arc = state.quests.find(q => q.name === objective.quest)?.arc, title = arc && normalize(arc) !== normalize(objective.quest) ? `${esc(arc)} <small>· ${esc(objective.quest)}</small>` : esc(objective.quest);
+  const head = `<div class="objective-head"><span class="objective-tag">Quest</span> ${title} <button type="button" class="link-button" data-guide="">stop guiding</button></div>`;
   const g = guideSteps();
   if (g?.steps.length) {
     const counts = objective.stage === 'hunt' && !objective.countsUnknown && (g.step?.monster || g.step?.item) ? `<ul class="objective-goals">${[...objective.done, ...objective.goals].map(goal => `<li class="${goal.done ? 'done' : ''}"><span>${esc(goal.name)}</span><span class="objective-count">${goal.have} / ${goal.need}</span><span class="objective-bar"><span style="width:${Math.min(100, Math.round(goal.have / goal.need * 100))}%"></span></span></li>`).join('')}</ul>` : '';
