@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMesos, fromOsmsItems, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, validName } from './market.js';
+import { customItem, parseMesos, fromOsmsItems, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, validName } from './market.js';
 
 const catalog = fromOsmsItems({ items: [
   { id: 1082000, name: 'Work Gloves', category: 'Equipment', sub_category: 'Glove', stats: { reqLevel: 10, incPDD: 6, tuc: 5 }, req_job_label: 'All', price: 1200 },
@@ -52,3 +52,16 @@ test('search, filters and the price book', () => {
 test('prices accept the usual shorthand', () => {
   assert.deepEqual(['1.5m', '250k', '2b', '1,200,000', '900 mesos', 'abc'].map(parseMesos), [1500000, 250000, 2000000000, 1200000, 900, NaN]);
 });
+
+test('a custom item (not in the game files) can be listed, with optional stats and slots', () => {
+  const item = customItem('  Red   Bandana of Speed ');
+  assert.deepEqual([item.id, item.name, item.custom], ['custom', 'Red Bandana of Speed', true]);
+  assert.equal(customItem('x'), null); assert.equal(customItem('buy for $5 paypal'), null);
+  const plain = checkListing({ side: 'sell', price: '300k', ign: 'Mapler01', stats: {}, slotsLeft: '', scrolled: '' }, item).listing;
+  assert.deepEqual([plain.item_id, plain.item_name, plain.stats, plain.slots_left, plain.scrolled], ['custom', 'Red Bandana of Speed', null, null, null]);
+  assert.equal(equipSummary(plain, item), '');
+  const statted = checkListing({ side: 'sell', price: '300k', ign: 'Mapler01', stats: { incSpeed: 8 }, slotsLeft: 3 }, item).listing;
+  assert.equal(equipSummary(statted, item), '+8 Speed · 3 slots left');
+  assert.ok(checkListing({ side: 'sell', price: '1', ign: 'Mapler01', slotsLeft: 30 }, item).errors);
+});
+

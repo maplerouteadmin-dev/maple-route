@@ -96,8 +96,8 @@ quick.
     suggestions match what the game offers you.
 - **All quests at once:** tick **Plan all my quests together** under "Where to hunt" for one trip that
   covers every quest you're doing, then each hand-in, nearest first.
-- **Market:** list items you're selling or looking for (equipment shows its real stats and upgrade slots
-  left), browse other players' listings, and **Copy /find** to reach the seller in game. Maple Route is only
+- **Market:** list items you're selling or looking for: pick from every item in the game (equipment starts
+  at its clean stats for you to edit, plus upgrade slots left) or type a custom item, browse other players' listings, and **Copy /find** to reach the seller in game. Maple Route is only
   a noticeboard: we never take, hold or ask for your mesos or items. Every trade is settled **in game, in
   mesos**, between the two players. Never pay outside the game (real-money trading is against the game's
   rules), and check the item in the trade window before accepting.

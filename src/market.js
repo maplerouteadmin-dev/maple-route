@@ -42,6 +42,14 @@ export function parseMesos(text) {
 // Classic character names: 4–12 letters or digits.
 export const validName = name => /^[A-Za-z0-9]{4,12}$/.test(String(name ?? '').trim());
 
+// An item that is not in the game files' list (a new item, an event item, a nickname): typed by the
+// seller, with optional stats and slots. Same checks as notes: no links or real-money words.
+export function customItem(name) {
+  const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (clean.length < 2 || BLOCKED.test(clean)) return null;
+  return { id: 'custom', name: clean, category: 'Custom', type: 'Custom item', equip: true, custom: true, reqLevel: null, job: null, slots: null, base: {} };
+}
+
 // Checks a new listing against the catalog item. Returns { listing } or { errors: [...] }.
 export function checkListing(input, item, now = Date.now()) {
   const errors = [];
@@ -67,10 +75,14 @@ export function checkListing(input, item, now = Date.now()) {
       if (!Number.isFinite(n) || n < -99 || n > 999) { errors.push(`${STATS.find(([k]) => k === key)[1]} looks wrong.`); continue; }
       if (n) stats[key] = n;
     }
-    slotsLeft = Math.round(Number(input?.slotsLeft ?? item.slots));
-    if (!Number.isFinite(slotsLeft) || slotsLeft < 0 || slotsLeft > Math.max(item.slots ?? 0, 0) + 2) errors.push(`Slots left must be 0–${item.slots ?? 0}.`);
-    scrolled = Math.round(Number(input?.scrolled ?? 0));
-    if (!Number.isFinite(scrolled) || scrolled < 0 || scrolled > Math.max(item.slots ?? 0, 0) + 2) errors.push('Successful scrolls looks wrong.');
+    // A custom item has no known slot count: slots and scrolls are optional, up to 20.
+    const maxSlots = item.custom ? 20 : Math.max(item.slots ?? 0, 0) + 2;
+    const optional = value => item.custom && (value === '' || value == null);
+    slotsLeft = optional(input?.slotsLeft) ? null : Math.round(Number(input?.slotsLeft ?? item.slots));
+    if (slotsLeft !== null && (!Number.isFinite(slotsLeft) || slotsLeft < 0 || slotsLeft > maxSlots)) errors.push(`Slots left must be 0–${item.custom ? 20 : item.slots ?? 0}.`);
+    scrolled = optional(input?.scrolled) ? null : Math.round(Number(input?.scrolled ?? 0));
+    if (scrolled !== null && (!Number.isFinite(scrolled) || scrolled < 0 || scrolled > maxSlots)) errors.push('Successful scrolls looks wrong.');
+    if (item.custom && !Object.keys(stats).length) stats = null;
   }
   if (errors.length) return { errors };
   return { listing: { side, item_id: item.id, item_name: item.name, price, quantity, stats, slots_left: slotsLeft, scrolled, ign, channel, note, expires_at: new Date(now + LISTING_DAYS * 86_400_000).toISOString() } };
@@ -90,8 +102,8 @@ export function statLines(listing, item) {
 export function equipSummary(listing, item) {
   if (!item?.equip || listing?.side !== 'sell') return '';
   const changed = statLines(listing, item).filter(line => line.delta).map(line => `${line.delta > 0 ? '+' : ''}${line.delta} ${line.label}`);
-  const slots = listing.slots_left != null ? `${listing.slots_left} of ${item.slots} slot${item.slots === 1 ? '' : 's'} left` : '';
-  return [changed.length ? changed.join(' ') : 'clean (base stats)', slots, listing.scrolled ? `${listing.scrolled} scroll${listing.scrolled === 1 ? '' : 's'} passed` : ''].filter(Boolean).join(' · ');
+  const slots = listing.slots_left == null ? '' : item.custom ? `${listing.slots_left} slot${listing.slots_left === 1 ? '' : 's'} left` : `${listing.slots_left} of ${item.slots} slot${item.slots === 1 ? '' : 's'} left`;
+  return [changed.length ? changed.join(' ') : item.custom ? '' : 'clean (base stats)', slots, listing.scrolled ? `${listing.scrolled} scroll${listing.scrolled === 1 ? '' : 's'} passed` : ''].filter(Boolean).join(' · ');
 }
 
 // Search and filters: words in the item name, side, minimum stat totals, slots left, price cap.

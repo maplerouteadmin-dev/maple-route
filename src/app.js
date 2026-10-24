@@ -17,7 +17,7 @@ import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
-import { OSMS_ITEMS as MARKET_ITEMS, STATS, fromOsmsItems, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
+import { OSMS_ITEMS as MARKET_ITEMS, STATS, fromOsmsItems, customItem, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -113,7 +113,7 @@ $('#app').innerHTML = `
       <p class="fine">Listings last 7 days. Anything wrong with a listing (a scam, real-money offer or fake item)? Use its Report link.</p></section>
     <section class="card" aria-labelledby="market-post-title"><h2 id="market-post-title">List an item</h2>
       <div class="market-side-pick" role="radiogroup"><label class="toggle"><input type="radio" name="market-post-side" value="sell" checked> I'm selling</label><label class="toggle"><input type="radio" name="market-post-side" value="buy"> I'm buying</label></div>
-      <label class="field">Item<input id="market-item" type="search" autocomplete="off" placeholder="Type an item name"></label><div id="market-item-suggest" class="start-results"></div>
+      <div class="market-combo"><label class="field">Item<input id="market-item" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="market-item-suggest" placeholder="Type to search all items, or a custom name"></label><ul id="market-item-suggest" class="market-suggest" role="listbox" hidden></ul></div>
       <div id="market-item-card"></div>
       <div class="sell-fields"><label class="field">Price each (mesos)<input id="market-price" inputmode="numeric" placeholder="e.g. 1.5m or 250k"></label><label class="field">How many<input id="market-qty" type="number" min="1" max="9999" value="1"></label></div>
       <div class="sell-fields"><label class="field">Your character name<input id="market-ign" maxlength="12" placeholder="as in game"></label><label class="field">Channel (optional)<input id="market-channel" type="number" min="1" max="40"></label></div>
@@ -251,7 +251,8 @@ function placeQuestLog(view) {
 function showView(view) {
   if (!VIEWS[view]) view = 'navigate';
   placeQuestLog(view);
-  if (view === 'market') loadMarket();
+  // After start-up finishes: opening the site straight on #market runs this before the market code exists.
+  if (view === 'market') setTimeout(() => loadMarket(), 0);
   document.body.classList.toggle('gps-page', view === 'navigate'); document.body.classList.toggle('goto-page', view === 'goto'); setTimeout(fitLivePage, 0);
   if (view === 'goto') { state.pickerOpen = false; renderGotoChosen(); }
   document.querySelectorAll('.view').forEach(panel => panel.classList.toggle('hidden', panel.dataset.view !== view));
@@ -2315,7 +2316,9 @@ $('#report-copy').addEventListener('click', async () => {
 });
 
 // ---------- Market (player listings: src/market.js, src/marketstore.js) ----------
-const market = { store: createMarketStore(), catalog: null, byId: new Map(), listings: [], me: null, item: null, loading: false, error: '', loadedAt: 0 };
+const market = { store: createMarketStore(), catalog: null, byId: new Map(), listings: [], me: null, item: null, loading: false, error: '', loadedAt: 0, active: 0 };
+// The item a listing is for: from the game files, or rebuilt from the name for a custom item.
+const marketItem = listing => listing.item_id === 'custom' ? customItem(listing.item_name) : market.byId.get(listing.item_id);
 const IGN_KEY = 'maple-route-market-ign';
 try { $('#market-ign').value = localStorage.getItem(IGN_KEY) ?? ''; } catch { /* storage blocked */ }
 for (const [key, label] of STATS) $('#market-stat').insertAdjacentHTML('beforeend', `<option value="${key}">${label}</option>`);
@@ -2336,12 +2339,12 @@ async function loadMarket(force = false) {
 }
 const ago = iso => { const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return minutes < 60 ? `${minutes} min ago` : minutes < 1440 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} d ago`; };
 function listingHtml(listing) {
-  const item = market.byId.get(listing.item_id), mine = listing.owner === market.me;
+  const item = marketItem(listing), mine = listing.owner === market.me;
   const lines = item?.equip && listing.side === 'sell' ? statLines(listing, item) : [];
-  const detail = lines.length ? `<details class="market-stats"><summary>Stats</summary><ul>${lines.map(line => `<li>${esc(line.label)} <b>${line.value}</b>${line.delta ? ` <span class="${line.delta > 0 ? 'up' : 'down'}">(${line.delta > 0 ? '+' : ''}${line.delta})</span>` : ''}</li>`).join('')}</ul>${item.reqLevel ? `<small>Level ${item.reqLevel}${item.job && item.job !== 'All' ? ` · ${esc(item.job)}` : ''} · ${item.slots} upgrade slot${item.slots === 1 ? '' : 's'} when clean</small>` : ''}</details>` : '';
+  const detail = lines.length ? `<details class="market-stats"><summary>Stats</summary><ul>${lines.map(line => `<li>${esc(line.label)} <b>${line.value}</b>${line.delta ? ` <span class="${line.delta > 0 ? 'up' : 'down'}">(${line.delta > 0 ? '+' : ''}${line.delta})</span>` : ''}</li>`).join('')}</ul>${item.reqLevel && !item.custom ? `<small>Level ${item.reqLevel}${item.job && item.job !== 'All' ? ` · ${esc(item.job)}` : ''} · ${item.slots} upgrade slot${item.slots === 1 ? '' : 's'} when clean</small>` : ''}</details>` : '';
   const report = issueUrl({ title: `Listing report: ${listing.item_name} by ${listing.ign}`, body: `Listing ${listing.id}: ${listing.side} ${listing.item_name} for ${listing.price} mesos by ${listing.ign}.\n\nWhat is wrong with it?\n`, labels: ['listing'] });
-  return `<li class="market-row"><div class="market-main"><span class="pill ${listing.side === 'sell' ? 'sell' : 'buy'}">${listing.side === 'sell' ? 'Selling' : 'Buying'}</span> <strong>${esc(listing.item_name)}</strong>${listing.quantity > 1 ? ` ×${listing.quantity}` : ''} <span class="market-price">${formatMesos(listing.price)}${listing.quantity > 1 ? ' each' : ''}</span>
-    ${item?.equip && listing.side === 'sell' ? `<div class="fine">${esc(equipSummary(listing, item))}</div>` : ''}${detail}
+  return `<li class="market-row"><div class="market-main"><span class="pill ${listing.side === 'sell' ? 'sell' : 'buy'}">${listing.side === 'sell' ? 'Selling' : 'Buying'}</span> <strong>${esc(listing.item_name)}</strong>${listing.item_id === 'custom' ? ' <small class="pill">custom</small>' : ''}${listing.quantity > 1 ? ` ×${listing.quantity}` : ''} <span class="market-price">${formatMesos(listing.price)}${listing.quantity > 1 ? ' each' : ''}</span>
+    ${item?.equip && listing.side === 'sell' && equipSummary(listing, item) ? `<div class="fine">${esc(equipSummary(listing, item))}</div>` : ''}${detail}
     <div class="fine">${esc(listing.ign)}${listing.channel ? ` · ch ${listing.channel}` : ''} · ${ago(listing.created_at)}${listing.note ? ` · “${esc(listing.note)}”` : ''}</div></div>
     <div class="market-actions"><button type="button" class="button light" data-market-find="${esc(listing.ign)}">Copy /find</button>${mine ? `<button type="button" class="button light" data-market-remove="${esc(listing.id)}">Remove</button>` : `<a class="link-button subtle" href="${esc(report)}" target="_blank" rel="noopener">Report</a>`}</div></li>`;
 }
@@ -2365,16 +2368,40 @@ function renderMarket() {
 function renderMarketItem() {
   const item = market.item, box = $('#market-item-card'), side = document.querySelector('input[name="market-post-side"]:checked')?.value;
   if (!item) { box.innerHTML = ''; return; }
-  const base = item.equip ? `<p class="fine">${esc(item.type || item.category)}${item.reqLevel ? ` · Level ${item.reqLevel}` : ''}${item.job && item.job !== 'All' ? ` · ${esc(item.job)}` : ''} · ${item.slots} upgrade slot${item.slots === 1 ? '' : 's'} clean${Object.keys(item.base).length ? ` · clean stats: ${STATS.filter(([k]) => item.base[k]).map(([k, label]) => `${label} ${item.base[k]}`).join(', ')}` : ''}</p>` : `<p class="fine">${esc(item.category)}</p>`;
-  const fields = item.equip && side === 'sell' ? `<p class="fine">Enter the item's stats as they are now (they start at the clean values):</p><div class="market-stat-grid">${STATS.map(([key, label]) => `<label class="field">${label}<input type="number" data-market-stat="${key}" value="${item.base[key] ?? ''}" placeholder="0"></label>`).join('')}</div>
-    <div class="sell-fields"><label class="field">Upgrade slots left<input id="market-slots-left" type="number" min="0" max="${item.slots + 2}" value="${item.slots}"></label><label class="field">Scrolls passed<input id="market-scrolled" type="number" min="0" max="${item.slots + 2}" value="0"></label></div>` : '';
+  const base = item.custom ? '<p class="fine">Custom item: not in the game\'s item list. If it is equipment, add its stats and slots (all optional).</p>' : item.equip ? `<p class="fine">${esc(item.type || item.category)}${item.reqLevel ? ` · Level ${item.reqLevel}` : ''}${item.job && item.job !== 'All' ? ` · ${esc(item.job)}` : ''} · ${item.slots} upgrade slot${item.slots === 1 ? '' : 's'} clean${Object.keys(item.base).length ? ` · clean stats: ${STATS.filter(([k]) => item.base[k]).map(([k, label]) => `${label} ${item.base[k]}`).join(', ')}` : ''}</p>` : `<p class="fine">${esc(item.category)}</p>`;
+  const fields = item.equip && side === 'sell' ? `<p class="fine">${item.custom ? 'Its stats, if any:' : 'Enter the item\'s stats as they are now (they start at the clean values):'}</p><div class="market-stat-grid">${STATS.map(([key, label]) => `<label class="field">${label}<input type="number" data-market-stat="${key}" value="${item.base[key] ?? ''}" placeholder="0"></label>`).join('')}</div>
+    <div class="sell-fields"><label class="field">Upgrade slots left<input id="market-slots-left" type="number" min="0" max="${item.custom ? 20 : item.slots + 2}" value="${item.custom ? '' : item.slots}" placeholder="${item.custom ? 'optional' : ''}"></label><label class="field">Scrolls passed<input id="market-scrolled" type="number" min="0" max="${item.custom ? 20 : item.slots + 2}" value="${item.custom ? '' : 0}" placeholder="${item.custom ? 'optional' : ''}"></label></div>` : '';
   box.innerHTML = `<div class="market-item"><strong>${esc(item.name)}</strong>${base}${fields}</div>`;
 }
-$('#market-item').addEventListener('input', () => {
-  const found = market.catalog ? searchItems(market.catalog, $('#market-item').value, 10) : [];
-  $('#market-item-suggest').innerHTML = found.map(item => `<button type="button" class="start-result" data-market-pick="${esc(item.id)}">${esc(item.name)} <small>${esc(item.equip ? item.type || 'Equip' : item.category)}</small></button>`).join('');
-  if (!market.catalog) loadMarket();
+// Item box: a dropdown of matching game items (arrow keys + Enter), and always a custom item option.
+function renderItemSuggest() {
+  const list = $('#market-item-suggest'), text = $('#market-item').value.trim();
+  const found = market.catalog ? searchItems(market.catalog, text, 30) : [];
+  const custom = customItem(text);
+  const options = [...found.map(item => ({ id: item.id, html: `${esc(item.name)} <small>${esc(item.equip ? `${item.type || 'Equip'}${item.reqLevel ? ` · Lv ${item.reqLevel}` : ''}` : item.category)}</small>` })),
+    ...(custom && !found.some(item => item.name.toLowerCase() === text.toLowerCase()) ? [{ id: 'custom', html: `<span class="market-custom">Custom item:</span> “${esc(custom.name)}” <small>not in the item list</small>` }] : [])];
+  market.active = Math.min(market.active, Math.max(0, options.length - 1));
+  list.innerHTML = !market.catalog && text ? '<li class="market-suggest-note">Loading the item list…</li>'
+    : options.map((option, i) => `<li role="option" id="market-opt-${i}" class="${i === market.active ? 'active' : ''}" aria-selected="${i === market.active}" data-market-pick="${esc(option.id)}">${option.html}</li>`).join('');
+  list.hidden = !text || !list.innerHTML; $('#market-item').setAttribute('aria-expanded', String(!list.hidden));
+  if (!list.hidden) list.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
+}
+function pickMarketItem(id) {
+  market.item = id === 'custom' ? customItem($('#market-item').value) : market.byId.get(id) ?? null;
+  if (market.item) $('#market-item').value = market.item.name;
+  $('#market-item-suggest').hidden = true; $('#market-item').setAttribute('aria-expanded', 'false');
+  renderMarketItem();
+}
+$('#market-item').addEventListener('input', () => { market.active = 0; market.item = null; renderMarketItem(); if (!market.catalog) loadMarket().then(renderItemSuggest); renderItemSuggest(); });
+$('#market-item').addEventListener('focus', () => { if ($('#market-item').value.trim() && !market.item) renderItemSuggest(); });
+$('#market-item').addEventListener('keydown', event => {
+  const options = [...document.querySelectorAll('#market-item-suggest [data-market-pick]')];
+  if (!options.length || $('#market-item-suggest').hidden) return;
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); market.active = (market.active + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length; renderItemSuggest(); }
+  else if (event.key === 'Enter') { event.preventDefault(); pickMarketItem(options[market.active]?.dataset.marketPick); }
+  else if (event.key === 'Escape') { $('#market-item-suggest').hidden = true; }
 });
+document.addEventListener('pointerdown', event => { if (!event.target.closest('.market-combo')) $('#market-item-suggest').hidden = true; });
 for (const id of ['#market-query', '#market-side', '#market-stat', '#market-stat-min', '#market-slots', '#market-max']) $(id).addEventListener('input', renderMarket);
 document.querySelectorAll('input[name="market-post-side"]').forEach(radio => radio.addEventListener('change', renderMarketItem));
 $('#market-post').addEventListener('click', async () => {
@@ -2390,7 +2417,7 @@ $('#market-post').addEventListener('click', async () => {
 });
 document.addEventListener('click', async event => {
   const pick = event.target.closest('[data-market-pick]');
-  if (pick) { market.item = market.byId.get(pick.dataset.marketPick) ?? null; $('#market-item').value = market.item?.name ?? ''; $('#market-item-suggest').innerHTML = ''; renderMarketItem(); return; }
+  if (pick) { pickMarketItem(pick.dataset.marketPick); return; }
   const find = event.target.closest('[data-market-find]');
   if (find) { const text = findCommand(find.dataset.marketFind); try { await navigator.clipboard.writeText(text); find.textContent = 'Copied'; setTimeout(() => { find.textContent = 'Copy /find'; }, 1500); } catch { find.textContent = text; } return; }
   const remove = event.target.closest('[data-market-remove]');
