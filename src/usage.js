@@ -4,7 +4,7 @@
 // quests or player information. Off on the player's own PC (localhost) and when they opt out.
 //
 // To turn it on: create a GoatCounter site and put its code here (https://<code>.goatcounter.com).
-export const GOATCOUNTER_CODE = '';
+export const GOATCOUNTER_CODE = 'mapleroute';
 
 const OPT_OUT_KEY = 'maple-route-no-count';
 export const countingOptedOut = () => { try { return localStorage.getItem(OPT_OUT_KEY) === '1'; } catch { return false; } };
