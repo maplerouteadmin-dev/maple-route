@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateDataset } from './core.js';
-import { huntGoals, rankObjectiveMaps, questObjective } from './objective.js';
+import { huntGoals, rankObjectiveMaps, questObjective, planHuntTrip, textMonsters } from './objective.js';
 
 const data = validateDataset({ schemaVersion: 1, maps: [
   { id: 'el', name: 'Ellinia' }, { id: 'df', name: 'Deep Forest' }, { id: 'hg', name: 'Hunting Ground in the Deep Forest I' }, { id: 'sw', name: 'Swampy Land' }
@@ -49,4 +49,33 @@ test('without the Quest Helper, the game data says what to hunt, and talk quests
   const talk = questObjective(data, { quest: 'Q', catalogQuest: { giver: 'Shane', needs: [] } });
   assert.equal(talk.stage, 'turn-in'); assert.equal(talk.mapId, 'e');
   assert.equal(questObjective(data, { quest: 'Q', catalogQuest: { giver: 'Shane', needs: [{ type: 'mob', name: 'Green Mushroom', count: 30 }] }, handIn: true }).stage, 'turn-in');
+});
+
+test('items the wiki has no drops for are matched to monsters named in the quest text', () => {
+  const omok = validateDataset({ schemaVersion: 1, maps: [{ id: 'a', name: 'A' }], portals: [], targets: [
+    { id: 'o', name: 'Orange Mushroom', kind: 'mob', locations: [{ mapId: 'a', count: 5 }] },
+    { id: 's', name: 'Stump', kind: 'mob', locations: [{ mapId: 'a', count: 5 }] },
+    { id: 'p', name: 'Octopus', kind: 'mob', locations: [{ mapId: 'a', count: 5 }] }
+  ] });
+  const text = 'He said I can get them by defeating Stump, Orange Mushroom, and Octopus, found around Henesys.';
+  assert.deepEqual(textMonsters(omok, text).sort(), ['Octopus', 'Orange Mushroom', 'Stump']);
+  const progress = [{ name: 'Omok Table', have: 0, need: 1 }, { name: 'Omok Piece: Octopus', have: 1, need: 1, done: true }, { name: 'Omok Piece: Mushroom', have: 0, need: 1 }];
+  const goals = huntGoals(omok, progress, { 'Omok Table': [], 'Omok Piece: Mushroom': [], 'Omok Piece: Octopus': ['Octopus'] }, text);
+  assert.deepEqual(goals.map(g => [g.name, g.monsters, g.guess]), [['Omok Table', ['Stump'], true], ['Omok Piece: Mushroom', ['Orange Mushroom'], true]]);
+  assert.equal(huntGoals(omok, progress, { 'Omok Table': [] }, '')[0].monsters.length, 0); // no text: no guess
+});
+
+test('the hunting trip can split needs over two maps and counts the walk to the hand-in', () => {
+  // home(NPC) - hill(Stumps 16) - garden(Mushrooms 15); far map has a few of both.
+  const world = validateDataset({ schemaVersion: 1, maps: ['home', 'hill', 'garden', 'far', 'start'].map(id => ({ id, name: id })), portals: [
+    ['start', 'home'], ['home', 'hill'], ['hill', 'garden'], ['start', 'far'], ['far', 'home']
+  ].flatMap(([a, b], i) => [{ from: a, to: b, name: `p${i}` }, { from: b, to: a, name: `q${i}` }]), targets: [
+    { id: 's', name: 'Stump', kind: 'mob', locations: [{ mapId: 'hill', count: 16 }, { mapId: 'far', count: 3 }] },
+    { id: 'o', name: 'Orange Mushroom', kind: 'mob', locations: [{ mapId: 'garden', count: 15 }, { mapId: 'far', count: 2 }] }
+  ] });
+  const goals = [{ name: 'Table', kind: 'collect', monsters: ['Stump'] }, { name: 'Piece', kind: 'collect', monsters: ['Orange Mushroom'] }];
+  const trip = planHuntTrip(world, goals, 'start', 'home');
+  assert.deepEqual(trip.stops.map(s => s.mapId), ['hill', 'garden']);
+  assert.equal(trip.hops, 5); // start→home→hill→garden, then back through hill to home
+  assert.equal(trip.endMapId, 'home');
 });

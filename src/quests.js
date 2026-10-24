@@ -41,6 +41,7 @@ export function fromOsmsQuests(payload, wikiRows = []) {
       arc: q.parent || null, arcOrder: chain?.index ?? 0, prerequisites: [...prerequisites],
       type: q.region === 'Event' ? 'Event' : q.region === 'Citizenship' ? 'Citizenship' : q.region === 'Crafting' ? 'Crafting' : 'Normal',
       repeatable: Boolean(q.is_repeatable || q.is_daily || q.is_weekly), needs: (q.requirements_list ?? []).filter(r => r.type === 'mob' || r.type === 'item').map(r => ({ type: r.type, name: r.name, count: r.count })),
+      text: String(q.description ?? '').slice(0, 1200),
       doneText: String(q.description ?? '').split('\n').map(line => line.trim()).filter(Boolean).pop() ?? '',
       rewards: { exp: q.rewards_exp ?? null, mesos: q.rewards_money ?? null, items: q.rewards_items ?? '' }
     };

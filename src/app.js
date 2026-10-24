@@ -12,7 +12,7 @@ import { locateMinimap, readTitle, titleSignature, signatureChanged, locatePlaye
 import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { arrivalDetails } from './arrival.js';
-import { questObjective, huntGoals, rankObjectiveMaps } from './objective.js';
+import { questObjective, huntGoals, planHuntTrip, rankObjectiveMaps, refineStops } from './objective.js';
 import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOUNTER_CODE } from './usage.js';
@@ -65,26 +65,28 @@ Object.assign(state, { mapStyle: 'art', guide: { quest: null, stage: null, spoke
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { if (saved.mapStyle === 'render') state.mapStyle = 'render'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useNearestScroll = saved.useNearestScroll === true; state.useTownScrolls = saved.useTownScrolls === true; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
 const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ useNearestScroll: Boolean(state.useNearestScroll), useTownScrolls: Boolean(state.useTownScrolls), voiceParts: state.voiceParts ?? null, voiceName: state.voiceName ?? null, voiceRate: state.voiceRate ?? 1, goalNpc: state.goalNpc ?? null, startingQuest: state.startingQuest ?? null, mapStyle: state.mapStyle, guideQuest: state.guide.quest, voice: state.voice, useTaxis: state.useTaxis, tools: state.tools, minimapScales: state.minimapScales, pictureScales: state.pictureScales })); } catch { /* optional */ } };
 
+// Parts not yet checked in real play carry this label, so players know to double-check them.
+const UNTESTED = '<span class="untested" title="Not checked in real play yet: it may misread or miss things. Please report what you see.">Untested</span>';
 $('#app').innerHTML = `
   <header class="top"><div class="top-inner"><div class="brand"><span class="brand-mark">✦</span> Maple Route</div><nav class="top-nav" aria-label="Sections" role="tablist"><a class="top-link" role="tab" href="#navigate">Live GPS</a><a class="top-link" role="tab" href="#goto">Go to</a><a class="top-link" role="tab" href="#world">World map</a><a class="top-link" role="tab" href="#quests">Quests</a><a class="top-link" role="tab" href="#hunt">Hunt &amp; trade</a><a class="top-link" role="tab" href="#settings">Settings</a></nav></div></header>
   <main class="shell">
     <section class="hero"><div><div class="eyebrow">Classic World companion</div><h1>Your next map, clearly.</h1><p>Turn-by-turn portal directions. Share your game window once and Live GPS follows you from map to map.</p></div><span class="safety">Never touches the game</span></section>
     <section class="card live-card" aria-labelledby="live-title"><div class="live-head"><div><div class="eyebrow">Live GPS</div><h2 id="live-title">Next move</h2></div><span class="pill" id="live-state">Off</span></div>
       <div id="live-step" class="live-step" aria-live="polite"></div>
-      <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest town scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><button type="button" class="link-button choose-dest" id="choose-destination">Choose destination</button></div>
+      <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window ${UNTESTED}</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest town scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><button type="button" class="link-button choose-dest" id="choose-destination">Choose destination</button></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
     <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div>
-      <p class="fine">For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
+      <p class="fine">${UNTESTED} For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-available" data-read-quests="available">Read my Available tab</button></div><div id="available-read" aria-live="polite"></div>
-      <div class="divider"></div><h3 class="sub-title">What have I finished?</h3><p class="fine">Quests are marked finished automatically when Live GPS sees one leave the Quest Helper after it was ready to hand in. To catch up on older ones: in game press <b>Q</b>, open the <b>Completed</b> tab, then press the button below (once per page of the list). Only your shared screen is read.</p>
+      <div class="divider"></div><h3 class="sub-title">What have I finished? ${UNTESTED}</h3><p class="fine">Quests are marked finished automatically when Live GPS sees one leave the Quest Helper after it was ready to hand in. To catch up on older ones: in game press <b>Q</b>, open the <b>Completed</b> tab, then press the button below (once per page of the list). Only your shared screen is read.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-completed" data-read-quests="completed">Read my Completed tab</button></div><div id="completed-read" aria-live="polite"></div><div id="finished-list"></div></section>
     <section class="card" aria-labelledby="quest-helper-title"><h2 id="quest-helper-title">Quest Helper sync</h2><p class="muted">While Live GPS runs, the app reads the in-game Quest Helper, ticks finished counts and tells you when a quest is ready to hand in.</p><div id="quest-helper" aria-live="polite"></div></section>
     <section class="card" aria-labelledby="live-exp-title"><h2 id="live-exp-title">Live EXP tracker</h2><p class="muted">Reads EXP from the status bar while Live GPS runs and checks it against the bar's fill, so misreads are ignored.</p><div id="live-exp" aria-live="polite"></div></section>
-    <section class="card" aria-labelledby="prices-title"><div class="data-row"><div><h2 id="prices-title">Market prices</h2><p class="muted">Asking and buying prices collected from trade chat (S&gt; / B&gt; adverts) while Live GPS runs. These are adverts, not completed sales.</p></div><span class="pill" id="price-count">0 adverts logged</span></div>
+    <section class="card" aria-labelledby="prices-title"><div class="data-row"><div><h2 id="prices-title">Market prices ${UNTESTED}</h2><p class="muted">Asking and buying prices collected from trade chat (S&gt; / B&gt; adverts) while Live GPS runs. These are adverts, not completed sales.</p></div><span class="pill" id="price-count">0 adverts logged</span></div>
       <div class="price-tools"><label class="field">Search items<input id="price-query" type="search" autocomplete="off" placeholder="e.g. earring, scroll"></label><button type="button" class="button light" id="price-clear">Clear log</button></div><div id="price-table"></div></section>
-    <section class="card" aria-labelledby="sell-title"><h2 id="sell-title">Shop or players?</h2><p class="muted">Compare what an NPC shop pays for an item with what players are asking, before you sell.</p>
+    <section class="card" aria-labelledby="sell-title"><h2 id="sell-title">Shop or players? ${UNTESTED}</h2><p class="muted">Compare what an NPC shop pays for an item with what players are asking, before you sell.</p>
       <label class="field">Item<input id="sell-query" type="search" autocomplete="off" placeholder="Type an item name"></label><div id="sell-suggest" class="start-results"></div>
       <div class="sell-fields"><label class="field">How many<input id="sell-qty" type="number" min="1" max="99999" value="1"></label><label class="field">Player price each (mesos)<input id="sell-market" type="text" inputmode="numeric" placeholder="From your log, or type one"></label></div>
       <div id="sell-result" aria-live="polite"></div><div id="sell-opportunities"></div></section>
@@ -97,7 +99,7 @@ $('#app').innerHTML = `
 <section class="card" aria-labelledby="settings-title"><h2 id="settings-title">Live tools</h2><p class="muted">What Live GPS reads besides the mini map.</p><div class="tool-grid">
         <label class="toggle"><input type="checkbox" id="tool-exp"> EXP tracker</label>
         <label class="toggle"><input type="checkbox" id="tool-quest"> Quest Helper sync</label>
-        <label class="toggle"><input type="checkbox" id="tool-prices"> Trade chat prices</label>
+        <label class="toggle"><input type="checkbox" id="tool-prices"> Trade chat prices ${UNTESTED}</label>
         <label class="toggle"><input type="checkbox" id="tool-mobcount"> Monster spawn counts in pop-out</label>
         <button type="button" class="button light" id="download-test-log">Download test log</button>
       </div><p class="fine">These read the status bar, the Quest Helper and the last chat lines from the same shared window. Nothing is pressed for you.</p></section>
@@ -384,7 +386,7 @@ async function loadQuestCatalog() {
   if (state.questCatalogStatus !== 'idle') return;
   state.questCatalogStatus = 'loading'; renderQuestResults();
   try {
-    const QUESTS_KEY = 'maple-route-quests-v1';
+    const QUESTS_KEY = 'maple-route-quests-v2'; // v2: quest text kept (names the monsters when the wiki has no drops)
     let cached = null; try { cached = JSON.parse(localStorage.getItem(QUESTS_KEY) || 'null'); } catch { cached = null; }
     const fresh = cached?.quests?.length && Date.now() - cached.savedAt < 24 * 60 * 60 * 1000;
     try {
@@ -2480,7 +2482,7 @@ function currentObjective() {
   const helperQuest = (state.hud.quests ?? []).find(q => q.name === quest) ?? null;
   const catalogQuest = state.quests.find(q => q.name === quest) ?? null;
   const objective = questObjective(travel(), { quest, helperQuest, catalogQuest, itemSources: state.itemSources, currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
-  if (objective.stage === 'hunt') loadItemSources(objective.goals.filter(g => g.pending).map(g => g.name));
+  if (objective.stage === 'hunt') loadItemSources(objective.goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
   return objective;
 }
 
@@ -2505,7 +2507,11 @@ function stepTarget(step, guide) {
   if (step.npc && npcMapId(step.npc)) return { mapId: npcMapId(step.npc), npc: step.npc };
   if (state.guide.huntMap && mapById(state.guide.huntMap) && !step.npc) return { mapId: state.guide.huntMap, npc: null };
   const options = huntOptions(guide);
-  if (options?.maps.length) { const here = options.maps.find(m => m.mapId === state.current); return { mapId: (here ?? options.maps[0]).mapId, npc: null }; }
+  if (options?.maps.length) {
+    // On a map of the trip (or any useful map): hunt here. Otherwise the trip's first stop.
+    const here = options.trip?.stops.find(s => s.mapId === state.current) ?? options.maps.find(m => m.mapId === state.current);
+    return { mapId: (here ?? options.trip?.stops[0] ?? options.maps[0]).mapId, npc: null };
+  }
   const maps = questStepMaps(travel(), step, state.current);
   const here = maps.find(m => m.map.id === state.current);
   if (here || maps[0]) return { mapId: (here ?? maps[0]).map.id, npc: null };
@@ -2532,14 +2538,20 @@ function huntOptions(g) {
     progress.push({ name: need.name, have: seen?.have ?? 0, need: seen?.need ?? need.count, done: false });
   }
   if (!progress.length) return null;
-  const goals = huntGoals(state.data, progress, state.itemSources);
-  loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.name));
-  return { goals, maps: rankObjectiveMaps(travel(), goals, state.current).slice(0, 4) };
+  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text);
+  loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.lookup ?? goal.name));
+  // The trip ends where the quest is handed in, so stops on the way there are preferred.
+  const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(endNpc))?.locations[0]?.mapId ?? null : null;
+  const key = JSON.stringify([goals.map(goal => [goal.name, goal.monsters]), state.current, endMapId, state.useTaxis, state.useNearestScroll, state.useTownScrolls]);
+  if (state.tripCache?.key !== key) state.tripCache = { key, trip: planHuntTrip(travel(), goals, state.current, endMapId, { via: refineStops(state.data, goals) }), endNpc };
+  return { goals, maps: rankObjectiveMaps(travel(), goals, state.current).slice(0, 4), trip: state.tripCache.trip, endNpc };
 }
 function huntOptionsHtml(options) {
   if (!options) return '';
   if (!options.maps.length) return `<p class="fine">${options.goals.some(goal => goal.pending) ? 'Looking up which monsters drop what you need…' : 'No mapped hunting spot for these yet.'}</p>`;
-  return `<div class="hunt-options"><div class="fine"><strong>Where to hunt:</strong> ${options.goals.map(goal => `${esc(goal.name)}${goal.kind === 'collect' && goal.monsters.length ? ` <small>(from ${esc(goal.monsters.slice(0, 2).join(', '))})</small>` : ''}`).join(' · ')}</div>
+  const trip = options.trip?.stops.length > 1 || (options.trip && options.goals.some(goal => goal.refine)) || (options.trip && options.trip.stops[0]?.mapId !== options.maps[0]?.mapId) ? options.trip : null;
+  const tripHtml = trip ? `<div class="fine hunt-trip"><strong>Best trip:</strong> ${trip.stops.map(stop => `${esc(mapById(stop.mapId)?.name ?? '?')} <small>(${esc(stop.monsters.join(', '))})</small>`).join(' → ')}${[...new Set(options.goals.filter(goal => goal.refine).map(goal => goal.refine.npc))].map(npc => ` → ${esc(npc)} <small>(refine)</small>`).join('')}${options.endNpc ? ` → ${esc(options.endNpc)}` : ''} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${trip.stops[0].mapId !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(trip.stops[0].mapId)}">Go</button>` : ''}</div>` : '';
+  return `<div class="hunt-options">${tripHtml}<div class="fine"><strong>Where to hunt:</strong> ${options.goals.map(goal => `${esc(goal.name)}${goal.refine ? ` <small>(${goal.ores} × ${esc(goal.refine.ore)}, refined by ${esc(goal.refine.npc)} in ${esc(goal.refine.town)})</small>` : ''}${goal.kind === 'collect' && goal.monsters.length ? ` <small>(from ${esc(goal.monsters.slice(0, 2).join(', '))}${goal.guess ? ', best guess from the quest text' : ''})</small>` : ''}`).join(' · ')}</div>
     <ul>${options.maps.map(m => { const map = mapById(m.mapId), chosen = m.mapId === state.destination;
       return `<li class="${chosen ? 'chosen' : ''}"><span><strong>${esc(map?.name ?? '?')}</strong><small>${esc(m.goals.join(', '))} · ${m.spawns} spawns · ${m.hops === 0 ? 'you are here' : `${m.hops} map${m.hops === 1 ? '' : 's'} away`}</small></span>${chosen ? '<span class="pill">heading here</span>' : `<button type="button" class="button secondary wm-go" data-hunt-map="${esc(m.mapId)}">Go</button>`}</li>`; }).join('')}</ul></div>`;
 }
@@ -2590,7 +2602,9 @@ function applyObjective() {
       state.destination = target.mapId; state.targetId = null; state.goalNpc = target.npc; destinationSelect.value = target.mapId; saveLive(); persist(); renderRoute(); renderTargets();
     }
     const key = `${g.name}|${g.step.number}`;
-    if (state.voice && state.guide.spoken !== key) { state.guide.spoken = key; { const best = huntOptions(g)?.maps?.[0], where = best ? ` Nearest spot: ${mapById(best.mapId)?.name}${best.hops ? `, ${best.hops} map${best.hops === 1 ? '' : 's'} away` : ', right here'}.` : ''; sayPart('quests', `${g.step.title}.${where}`); } }
+    if (state.voice && state.guide.spoken !== key) { state.guide.spoken = key; { const options = huntOptions(g), stops = options?.trip?.stops ?? [], best = options?.maps?.[0];
+      const where = stops.length > 1 ? ` Best trip: ${stops.map(stop => `${mapById(stop.mapId)?.name} for ${stop.monsters.join(' and ')}`).join(', then ')}.` : stops[0] ? ` Best spot: ${stops[0].mapId === state.current ? 'right here' : mapById(stops[0].mapId)?.name}.` : best ? ` Nearest spot: ${mapById(best.mapId)?.name}${best.hops ? `, ${best.hops} map${best.hops === 1 ? '' : 's'} away` : ', right here'}.` : '';
+      sayPart('quests', `${g.step.title}.${where}`); } }
     return;
   }
   const objective = currentObjective();

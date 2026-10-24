@@ -103,6 +103,8 @@ body.goto-page .shell{padding-bottom:6px}body.goto-page .footer{margin-top:6px}
 body.goto-page .view-goto{height:calc(100vh - 82px - 44px)}
 body.gps-page .footer,body.gps-page .live-card>p.fine,body.gps-page .live-card>.muted{display:none}
 body.gps-page{overflow:hidden}body.gps-page .shell{padding-bottom:0}
-body.gps-page #mapview-note{line-height:1.3;max-height:3.2em;overflow:hidden}
+body.gps-page #mapview-note{line-height:1.3}
 .mv-busy{color:#9a5a2c;font-weight:700}
 .price-who{font-size:.8rem;line-height:1.3}
+.untested{display:inline-block;vertical-align:middle;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fff1d6;color:#8a5a00;border:1px solid #f0c674;font-size:.68rem;font-weight:700;letter-spacing:.02em;text-transform:uppercase;cursor:help}
+.button .untested{margin-left:4px}

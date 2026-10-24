@@ -48,6 +48,10 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - **More**: world map, leveling guide, EXP-per-hour tracker, a "sell to shop or players?" check, and
   separate progress per character.
 
+Parts marked **Untested** in the app (trade-chat prices, the shop-or-players check, reading the in-game
+quest window, the pop-out window) have not been checked in real play yet. Double-check what they tell you,
+and please report anything wrong.
+
 ## What it never does
 
 - It **never** reads or changes game memory or game files.
@@ -82,7 +86,10 @@ quick.
 - **Go somewhere:** open **Go to**, pick a map, an NPC, a monster or an item, and press **Go**. Live GPS
   then tells you which portal to take on every map. **Cancel** on the Live GPS card clears it.
 - **Quests:** in **Go to** or **Quests**, press **Go** on a suggested quest (or **Guide me**). The app walks
-  you through it: the NPC to talk to, the best map to hunt or collect on, then the hand-in.
+  you through it: the NPC to talk to, the best maps to hunt or collect on (planned as one trip that ends at
+  the hand-in), then the hand-in. Jewels and ingots are planned as ore hunts plus a stop at the refiner
+  (Chrishrama in Sleepywood, Silas Irons in Perion). Droppers taken from the quest text are marked
+  "best guess".
   - In game, press **Q** and open the **Available** or **Completed** tab: the app reads them so its
     suggestions match what the game offers you.
 - **Travel options:** the **Taxis** switch on the Live GPS card, plus **Nearest town scroll** and **Town
