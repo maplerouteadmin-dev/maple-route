@@ -2,7 +2,8 @@
 
 A free, second-screen **GPS for MapleStory Classic World**. Share your game window once and Maple Route
 follows you from map to map: which portal to take next, where you are on the map, where monsters
-spawn, and what to do next for your quests, with optional voice directions.
+spawn, and what to do next for your quests, with optional voice directions. It also has a **player
+market**: list items with their real stats, find what you need, and make offers, then trade in game.
 
 ### ▶ Open the app: **https://maplerouteadmin-dev.github.io/maple-route/**
 
@@ -43,10 +44,13 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
   the game.
 - **Quests**: suggestions for your level, step-by-step guiding (talk to the NPC, the best maps to hunt or
   collect, hand-in), Quest Helper counts ticked off automatically, your in-game Available and Completed
-  tabs read.
+  tabs read. **Plan all my quests together** makes one hunting trip for every quest you're doing.
+- **Market**: buy and sell listings for any tradeable item, with real stats, slots left, filters, offers,
+  a 🔔 for anything that needs you, and trade-chat prices. Trades happen in game, in mesos.
+- **Report a problem or a drop**: opens a pre-filled GitHub issue you check and submit yourself.
 - **Voice**: optional spoken directions, monsters at your destination, quest steps. You pick what it says.
-- **More**: world map, leveling guide, EXP-per-hour tracker, a "sell to shop or players?" check, and
-  separate progress per character.
+- **More**: world map, leveling guide, EXP-per-hour tracker, crafting recipes and where to craft, a
+  "sell to shop or players?" check, and separate progress per character.
 
 Parts marked **Untested** in the app (the shop-or-players check, reading an item from the game screen)
 have not been checked in real play yet. Double-check what they tell you,
