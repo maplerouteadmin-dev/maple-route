@@ -6,6 +6,13 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $url = "http://localhost:$Port/#navigate"
 
+# "Open with MapleStory" is installed but its watcher is not running (it only starts at sign-in, and
+# can stop): start it again, so the next game launch opens Maple Route.
+$autostart = Join-Path ([Environment]::GetFolderPath('Startup')) 'Maple Route (with MapleStory).lnk'
+if ((Test-Path $autostart) -and -not (Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match 'watch-maple\.ps1' })) {
+  Start-Process explorer.exe -ArgumentList "`"$autostart`""
+}
+
 function Test-Up { try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:$Port/").StatusCode -eq 200 } catch { $false } }
 
 # Our own server still running an older build (code changed since): stop it so it is rebuilt below.
