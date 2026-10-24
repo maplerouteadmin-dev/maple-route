@@ -49,7 +49,7 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
   separate progress per character.
 
 Parts marked **Untested** in the app (trade-chat prices, the shop-or-players check, reading the in-game
-quest window, the pop-out window) have not been checked in real play yet. Double-check what they tell you,
+quest window) have not been checked in real play yet. Double-check what they tell you,
 and please report anything wrong.
 
 ## What it never does

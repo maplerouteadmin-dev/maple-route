@@ -54,7 +54,7 @@ export function mapViewSvg(model, esc) {
   if (model.empty) return `<p class="muted">No coordinates are listed for ${esc(model.map.name)}.</p>`;
   const parts = [`<svg class="mapview" viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="Schematic of ${esc(model.map.name)}">`];
   parts.push(`<rect class="mv-bg" x="0" y="0" width="${model.width}" height="${model.height}" rx="14"/>`);
-  if (model.player && model.target) parts.push(`<line class="mv-path" x1="${model.player.sx}" y1="${model.player.sy}" x2="${model.target.sx}" y2="${model.target.sy}"/>`);
+  if (model.player && model.target) parts.push(pathLine(model.player.sx, model.player.sy, model.target.sx, model.target.sy, 10));
   for (const npc of model.npcs) parts.push(`<circle class="mv-npc" cx="${npc.sx}" cy="${npc.sy}" r="4"><title>${esc(npc.name)}</title></circle>`);
   for (const marker of model.markers) {
     const label = marker.kind === 'taxi' ? `${marker.npc} (${marker.targets.length})` : marker.targets.map(t => t.name).join(' / ');
@@ -104,6 +104,16 @@ export function calibratePicture(alpha, width, height, points, scale = PICTURE_S
   return { ox: best.ox, oy: best.oy, score: best.score, scale, confidence: best.score / (pts.length * 3) };
 }
 
+// The way to go: a bright dashed line with a dark casing and an arrowhead, readable over any map art.
+function pathLine(x1, y1, x2, y2, unit) {
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, a = unit * .9;
+  const tip = { x: x2 - ux * unit * .7, y: y2 - uy * unit * .7 }, base = { x: tip.x - ux * a, y: tip.y - uy * a };
+  const head = `${tip.x},${tip.y} ${base.x - uy * a * .6},${base.y + ux * a * .6} ${base.x + uy * a * .6},${base.y - ux * a * .6}`;
+  return `<g class="mv-route"><line class="mv-path-casing" x1="${x1}" y1="${y1}" x2="${base.x}" y2="${base.y}" style="stroke-width:${unit * .62}"/>`
+    + `<line class="mv-path" x1="${x1}" y1="${y1}" x2="${base.x}" y2="${base.y}" style="stroke-width:${unit * .32};stroke-dasharray:${unit * .9} ${unit * .55}"/>`
+    + `<polygon class="mv-path-head" points="${head}" style="stroke-width:${unit * .15}"/></g>`;
+}
+
 export function pictureOverlaySvg(model, picture, esc) {
   const { width: W, height: H, src, calibration: cal } = picture;
   const at = p => ({ x: p.x * cal.scale + cal.ox, y: p.y * cal.scale + cal.oy });
@@ -113,7 +123,7 @@ export function pictureOverlaySvg(model, picture, esc) {
   const parts = [`<svg class="mv-overlay" viewBox="0 0 ${W} ${H}" style="width:${Math.round(W * 2.4)}px;height:${Math.round(H * 2.4)}px" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mini map of ${esc(model.map.name)} with exits">`,
     `<image href="${esc(src)}" x="0" y="0" width="${W}" height="${H}" style="image-rendering:pixelated"/>`];
   const target = model.target ? at(model.target) : null, player = model.position ? at(model.position) : null;
-  if (player && target) parts.push(`<line class="mv-path" x1="${player.x}" y1="${player.y}" x2="${target.x}" y2="${target.y}" style="stroke-width:${unit * .25};stroke-dasharray:${unit * .6} ${unit * .5}"/>`);
+  if (player && target) parts.push(pathLine(player.x, player.y, target.x, target.y, unit));
   if (model.mobSpots?.length) parts.push(spawnDots(model.mobSpots, at, r * .32, esc));
   for (const npc of model.npcs) { const p = at(npc); parts.push(`<circle class="mv-npc" cx="${p.x}" cy="${p.y}" r="${r * .45}"><title>${esc(npc.name)}</title></circle>`); }
   const shortOf = marker => { const label = marker.kind === 'taxi' ? `${marker.npc}` : marker.targets.map(t => t.name).join(' / '); return label.length > 24 ? `${label.slice(0, 23)}…` : label; };
@@ -147,7 +157,7 @@ export function renderOverlaySvg(model, render, esc) {
   const parts = [`<svg class="mv-overlay" viewBox="0 0 ${W} ${H}" style="width:${Math.round(W / 16 * 2.4)}px;height:${Math.round(H / 16 * 2.4)}px" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Map of ${esc(model.map.name)} with exits">`,
     `<image href="${esc(src)}" x="0" y="0" width="${W}" height="${H}"/>`];
   const player = model.position, target = model.target;
-  if (player && target) parts.push(`<line class="mv-path" x1="${player.x}" y1="${player.y}" x2="${target.x}" y2="${target.y}" style="stroke-width:${unit * .25};stroke-dasharray:${unit * .6} ${unit * .5}"/>`);
+  if (player && target) parts.push(pathLine(player.x, player.y, target.x, target.y, unit));
   if (model.mobSpots?.length) parts.push(spawnDots(model.mobSpots, p => p, r * .32, esc));
   for (const npc of model.npcs) parts.push(`<circle class="mv-npc" cx="${npc.x}" cy="${npc.y}" r="${r * .45}"><title>${esc(npc.name)}</title></circle>`);
   const shortOf = marker => { const text = marker.kind === 'taxi' ? marker.npc : marker.targets.map(t => t.name).join(' / '); return text.length > 24 ? `${text.slice(0, 23)}…` : text; };
