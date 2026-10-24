@@ -48,7 +48,7 @@ export function huntGoals(data, progress, itemSources = {}, questText = '', allN
       const recipe = itemSources[name]?.length || depth > 2 ? null : craftRecipe(crafting, name);
       if (!recipe) return null;
       const plan = craftNeeds(recipe, count);
-      const craft = { item: name, discipline: recipe.discipline, npc: recipe.npcs.find(npc => npcMap(data, npc)) ?? recipe.npc, npcs: recipe.npcs, town: recipe.town, meso: plan.meso, makes: count };
+      const craft = { item: name, discipline: recipe.discipline, npc: recipe.npcs.find(npc => npcMap(data, npc)) ?? recipe.npc, npcs: recipe.npcs, town: recipe.town, meso: plan.meso, makes: count, level: recipe.level, master: recipe.master };
       return plan.ingredients.flatMap(i => {
         const mob = mobByName(data, i.name), droppers = itemSources[i.name];
         if (mob) return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'kill', monsters: [mob.name], pending: false, craft }];
@@ -193,6 +193,44 @@ export function rankObjectiveMaps(data, goals, currentMapId = null) {
     const hops = currentMapId === entry.mapId ? 0 : route?.length ?? null;
     return { ...entry, goals: [...entry.goals], monsters: [...entry.monsters], hops, score: entry.goals.size * 100 + Math.min(entry.spawns, 60) - (hops ?? 20) * 3 };
   }).filter(entry => entry.hops !== null || entry.mapId === currentMapId).sort((a, b) => b.score - a.score);
+}
+
+// One trip for several quests at once ("Plan all my quests together"): goals carry `quests` (which
+// quests need them). Greedy: from where you are, the next stop is the map that covers the most of
+// what is still needed for the least walking; then crafters (`via`), then every hand-in NPC, nearest
+// first. Returns { stops: [{ mapId, goals, monsters, quests, spawns }], ends: [mapId], hops }.
+export function planMultiTrip(data, goals, currentMapId = null, endMapIds = [], { via = [] } = {}) {
+  const active = goals.filter(g => g.monsters?.length);
+  if (!active.length) return null;
+  const cap = goal => Math.min(20, 8 + Math.ceil(Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)) / 5));
+  const spawnsOn = (goal, mapId) => goal.monsters.reduce((sum, name) => sum + (mobByName(data, name)?.locations.find(l => l.mapId === mapId)?.count ?? 0), 0);
+  // Candidate maps: the 25 that cover the most (by capped spawns over all goals).
+  const value = new Map();
+  for (const goal of active) for (const name of goal.monsters) for (const l of mobByName(data, name)?.locations ?? []) value.set(l.mapId, (value.get(l.mapId) ?? 0) + Math.min(l.count ?? 1, cap(goal)));
+  const candidates = [...value].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([mapId]) => mapId);
+  if (currentMapId && value.has(currentMapId) && !candidates.includes(currentMapId)) candidates.push(currentMapId);
+  const stops = [], left = new Set(active);
+  let at = currentMapId, total = 0;
+  while (left.size) {
+    let best = null;
+    for (const mapId of candidates) {
+      const covered = [...left].filter(goal => spawnsOn(goal, mapId) > 0);
+      if (!covered.length) continue;
+      const h = at ? hops(data, at, mapId) : 0;
+      if (h === null) continue;
+      const score = covered.reduce((sum, goal) => sum + Math.min(spawnsOn(goal, mapId), cap(goal)), 0) * 3 - h * 4;
+      if (!best || score > best.score) best = { mapId, covered, h, score };
+    }
+    if (!best) break;
+    for (const goal of best.covered) left.delete(goal);
+    stops.push({ mapId: best.mapId, goals: best.covered.map(g => g.name), monsters: [...new Set(best.covered.flatMap(g => g.monsters.filter(name => spawnsOn({ monsters: [name] }, best.mapId))))],
+      quests: [...new Set(best.covered.flatMap(g => g.quests ?? []))], spawns: best.covered.reduce((sum, g) => sum + spawnsOn(g, best.mapId), 0) });
+    total += best.h; at = best.mapId;
+  }
+  // Then the crafters, then the hand-ins: always the nearest one next.
+  const visit = list => { const todo = [...new Set(list.filter(Boolean))], order = []; while (todo.length) { todo.sort((a, b) => (hops(data, at, a) ?? 99) - (hops(data, at, b) ?? 99)); const next = todo.shift(); total += at ? hops(data, at, next) ?? 0 : 0; at = next; order.push(next); } return order; };
+  const crafters = visit(via), ends = visit(endMapIds);
+  return { stops, via: crafters, ends, hops: total, missing: [...left].map(g => g.name) };
 }
 
 export function questObjective(data, { quest, helperQuest = null, catalogQuest = null, itemSources = {}, currentMapId = null, handIn = false, crafting = null }) {

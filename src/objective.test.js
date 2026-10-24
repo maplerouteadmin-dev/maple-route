@@ -104,3 +104,26 @@ test('short monster names count, and finished needs still claim their monster', 
   const goals = huntGoals(world, progress, { 'Omok Table': [], 'Omok Piece: Pig': [] }, text, ['Omok Table', 'Omok Piece: Pig', 'Omok Piece: Octopus']);
   assert.deepEqual(goals.map(g => [g.name, g.monsters]), [['Omok Table', ['Stump']], ['Omok Piece: Pig', ['Pig']]]);
 });
+
+test('one trip for several quests: shared maps first, then every hand-in, nearest first', async () => {
+  const { planMultiTrip } = await import('./objective.js');
+  // start - henesys(Casey) - hill(Stump, Pig) ; start - kerning(Luke) - swamp(Jr. Necki, Stirge)
+  const world = validateDataset({ schemaVersion: 1, maps: ['start', 'henesys', 'hill', 'kerning', 'swamp'].map(id => ({ id, name: id })), portals: [
+    ['start', 'henesys'], ['henesys', 'hill'], ['start', 'kerning'], ['kerning', 'swamp']
+  ].flatMap(([a, b], i) => [{ from: a, to: b, name: `p${i}` }, { from: b, to: a, name: `q${i}` }]), targets: [
+    { id: 's', name: 'Stump', kind: 'mob', locations: [{ mapId: 'hill', count: 16 }] },
+    { id: 'p', name: 'Pig', kind: 'mob', locations: [{ mapId: 'hill', count: 16 }] },
+    { id: 'n', name: 'Jr. Necki', kind: 'mob', locations: [{ mapId: 'swamp', count: 10 }] },
+    { id: 't', name: 'Stirge', kind: 'mob', locations: [{ mapId: 'swamp', count: 10 }] }
+  ] });
+  const goals = [
+    { name: 'Omok Table', need: 1, monsters: ['Stump'], quests: ['Omok'] }, { name: 'Omok Piece: Pig', need: 1, monsters: ['Pig'], quests: ['Omok'] },
+    { name: 'Jr. Necki', need: 20, monsters: ['Jr. Necki'], quests: ['Luke'] }, { name: 'Stirge Wing', need: 10, monsters: ['Stirge'], quests: ['Luke'] }
+  ];
+  const trip = planMultiTrip(world, goals, 'start', ['henesys', 'kerning']);
+  assert.deepEqual(trip.stops.map(s => [s.mapId, s.quests]).sort(), [['hill', ['Omok']], ['swamp', ['Luke']]]);
+  // The hand-in nearest the last hunting map comes first (Casey after the hill, Luke after the swamp).
+  assert.deepEqual(trip.ends, trip.stops.at(-1).mapId === 'hill' ? ['henesys', 'kerning'] : ['kerning', 'henesys']);
+  assert.equal(trip.hops, 2 + 4 + 1 + 2); // to the first map, across to the other, its hand-in, the other hand-in
+  assert.deepEqual(trip.missing, []);
+});

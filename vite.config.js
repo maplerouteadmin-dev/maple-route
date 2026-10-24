@@ -3,6 +3,9 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { handleAutostart } from './scripts/autostart.mjs';
 import { handleRelay } from './scripts/osmscache.mjs';
+import { readFileSync } from 'node:fs';
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 // OSMS pictures are requested through same-origin paths so the browser may read their pixels:
 // mini map pictures (/osms-img → data/current) and full map renders + manifest (/osms-data → data).
@@ -33,5 +36,6 @@ function liveLog() {
 
 export default defineConfig({
   base: './',
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [liveLog()]
 });

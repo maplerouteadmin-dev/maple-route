@@ -94,6 +94,8 @@ quick.
   site has official ones).
   - In game, press **Q** and open the **Available** or **Completed** tab: the app reads them so its
     suggestions match what the game offers you.
+- **All quests at once:** tick **Plan all my quests together** under "Where to hunt" for one trip that
+  covers every quest you're doing, then each hand-in, nearest first.
 - **Travel options:** the **Taxis** switch on the Live GPS card, plus **Nearest town scroll** and **Town
   scrolls**, change how routes and hop counts are worked out.
 - **Voice:** **Settings → Voice** picks the voice, the speed, and what is said out loud (directions,
@@ -189,8 +191,12 @@ MapleStory is a trademark of NEXON. This project is not affiliated with NEXON.
 ## Feedback
 
 Bugs and ideas are welcome in [Issues](https://github.com/maplerouteadmin-dev/maple-route/issues) and
-[Discussions](https://github.com/maplerouteadmin-dev/maple-route/discussions). For a misread map, a
-screenshot of the top-left mini map helps the most (crop out any player names).
+[Discussions](https://github.com/maplerouteadmin-dev/maple-route/discussions). The easiest way is
+**Settings → Report a problem or a drop** (or **Report** on the Live GPS card): it opens an issue already
+filled in with what the app saw (map names, its last mini map reads, your screen size; never chat or
+player names), and **Copy mini map picture** puts the mini map on your clipboard to paste in. Nothing is
+sent until you press Submit on GitHub. **Saw a drop?** Report it there too: drop tables aren't in the
+game files, so player reports are how the drop data improves.
 
 ## License
 

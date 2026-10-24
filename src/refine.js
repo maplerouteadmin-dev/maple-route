@@ -4,14 +4,15 @@
 // MapleClassic Wiki NPC roles (Arcforger Chrishrama in Sleepywood, Blacksmith Silas Irons in Perion…).
 export const OSMS_CRAFTING = 'https://osmsdataexplorer.com/data/current/crafting.json';
 
-// Who to see (first one found on the map data wins), by discipline.
+// Who to see (first one found on the map data wins) and the profession master, by discipline
+// (MapleClassic Wiki professions table and NPC roles).
 export const CRAFTERS = {
-  Arcforge: { npcs: ['Chrishrama', 'Arcane Station'], town: 'Sleepywood' },
-  Smithing: { npcs: ['Silas Irons', 'Anvil'], town: 'Perion' },
-  Weaponcrafting: { npcs: ['Mr. Thunder', 'Weaponcrafting Station'], town: 'Perion' },
-  Tailoring: { npcs: ['Francois', 'Sewing Machine'], town: 'Ellinia' },
-  Woodcrafting: { npcs: ['Woodcrafting Station'], town: 'Henesys Market' },
-  Leatherworking: { npcs: ['JM From tha Streetz', 'Leatherworking Station'], town: 'Kerning City' }
+  Arcforge: { npcs: ['Chrishrama', 'Arcane Station'], town: 'Sleepywood', master: 'Chrishrama' },
+  Smithing: { npcs: ['Silas Irons', 'Anvil'], town: 'Perion', master: 'Silas Irons' },
+  Weaponcrafting: { npcs: ['Mr. Thunder', 'Weaponcrafting Station'], town: 'Perion', master: 'Mr. Thunder' },
+  Tailoring: { npcs: ['Francois', 'Sewing Machine'], town: 'Ellinia', master: 'Francois' },
+  Woodcrafting: { npcs: ['Vicious', 'Woodcrafting Station'], town: 'Henesys', master: 'Vicious' },
+  Leatherworking: { npcs: ['JM From tha Streetz', 'Leatherworking Station'], town: 'Kerning City', master: 'JM From tha Streetz' }
 };
 
 const key = name => String(name ?? '').trim().toLowerCase();
@@ -34,8 +35,8 @@ export function craftRecipe(crafting, itemName) {
   const options = crafting?.[key(itemName)];
   if (!options?.length) return null;
   const best = [...options].sort((a, b) => a.ingredients.length - b.ingredients.length || a.level - b.level || a.meso - b.meso)[0];
-  const where = CRAFTERS[best.discipline] ?? { npcs: [], town: '' };
-  return { item: String(itemName).trim(), ...best, npcs: where.npcs, npc: where.npcs[0] ?? null, town: where.town };
+  const where = CRAFTERS[best.discipline] ?? { npcs: [], town: '', master: null };
+  return { item: String(itemName).trim(), ...best, npcs: where.npcs, npc: where.npcs[0] ?? null, town: where.town, master: where.master };
 }
 
 // What making `need` of an item takes: each ingredient's total, and the mesos.

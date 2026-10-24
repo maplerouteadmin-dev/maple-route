@@ -1,4 +1,4 @@
-import { validateDataset } from './core.js';
+import { normalize, validateDataset } from './core.js';
 import { transportEdges } from './transport.js';
 
 export const OSMS_MAPS = 'https://osmsdataexplorer.com/data/current/maps.json';
@@ -11,7 +11,7 @@ const id9 = value => String(value).padStart(9, '0');
 export const portalKind = type => ({ 1: 'hidden', 2: 'visible', 3: 'walk' })[Number(type)] ?? 'special';
 export const KIND_COST = { visible: 1, walk: 1, hidden: 6, special: 10, taxi: 3 };
 
-export function fromOsms(mapPayload, portalPayload, monsterPayload = null) {
+export function fromOsms(mapPayload, portalPayload, monsterPayload = null, wikiPortals = []) {
   const monsterNames = new Map((monsterPayload?.monsters ?? []).map(m => [String(m.id), String(m.name)]));
   if (!Array.isArray(mapPayload?.regions) || !portalPayload || typeof portalPayload !== 'object') throw new Error('The public map feed changed format.');
   const boundsById = new Map();
@@ -65,6 +65,7 @@ export function fromOsms(mapPayload, portalPayload, monsterPayload = null) {
     return null;
   };
   portals.push(...transportEdges(maps, npcAt));
+  portals.push(...wikiPortalEdges(maps, portals, wikiPortals));
   // Named portal spots per map, so a step can say which side of the next map you arrive on.
   for (const [source, exits] of Object.entries(portalPayload)) {
     const map = mapsById.get(id9(source));
@@ -99,9 +100,44 @@ export function fromOsms(mapPayload, portalPayload, monsterPayload = null) {
   return validateDataset({ schemaVersion: 1, label: 'OSMS Data Explorer live map graph', source: 'https://osmsdataexplorer.com/', updated: new Date().toISOString(), maps, portals, targets: [...targetMap.values()] });
 }
 
+// Portals the MapleClassic Wiki lists that the game-file feed lacks (Ellinia → Ellinia Station,
+// Kerning City → Subway Ticketing Booth, Henesys Market → Free Market Entrance…). Added only when
+// both map names match exactly one map and the link is not known yet; boats/taxis come elsewhere.
+// Rows: { page, to, name, type, requiresItem, requiresQuest, requiresLevel }.
+const WIKI_KIND = { walking: 'walk', hidden: 'hidden', door: 'walk' };
+export function wikiPortalEdges(maps, existing, rows) {
+  const decode = text => String(text ?? '').replace(/&#0?39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+  const byName = new Map();
+  for (const map of maps) { const key = normalize(map.name); byName.set(key, [...(byName.get(key) ?? []), map.id]); }
+  const idOf = name => { const ids = byName.get(normalize(decode(name))); return ids?.length === 1 ? ids[0] : null; };
+  const have = new Set(existing.map(portal => `${portal.from}>${portal.to}`)), added = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const kind = WIKI_KIND[String(row?.type ?? '').toLowerCase()], from = idOf(row?.page), to = idOf(row?.to);
+    if (!kind || !from || !to || from === to || have.has(`${from}>${to}`)) continue;
+    have.add(`${from}>${to}`);
+    const needs = [row.requiresLevel && `level ${row.requiresLevel}`, row.requiresItem && decode(row.requiresItem), row.requiresQuest && `the quest ${decode(row.requiresQuest)}`].filter(Boolean);
+    added.push({ from, to, name: decode(row.name) || `${kind} portal`, kind, cost: KIND_COST[kind] + (needs.length ? 4 : 0), note: `From the MapleClassic Wiki (not in the game-file feed).${needs.length ? ` Needs ${needs.join(', ')}.` : ''}` });
+  }
+  return added;
+}
+
+// Every portal row on the wiki (a few hundred), for wikiPortalEdges. Empty when the wiki is down.
+export async function fetchWikiPortals() {
+  const rows = [];
+  for (let offset = 0; offset < 3000; offset += 500) {
+    const params = new URLSearchParams({ action: 'cargoquery', tables: 'portals', fields: '_pageName=page,to_map,portal_name,portal_type,requires_item,requires_quest,requires_level', limit: '500', offset: String(offset), format: 'json', origin: '*' });
+    const response = await fetch(`https://mapleclassic.wiki/api.php?${params}`, { cache: 'no-store' });
+    if (!response.ok) break;
+    const page = ((await response.json())?.cargoquery ?? []).map(r => r.title ?? {});
+    rows.push(...page.map(r => ({ page: r.page, to: r['to map'], name: r['portal name'], type: r['portal type'], requiresItem: r['requires item'], requiresQuest: r['requires quest'], requiresLevel: r['requires level'] })));
+    if (page.length < 500) break;
+  }
+  return rows;
+}
+
 export async function fetchOsms() {
   const options = { cache: 'no-store' };
-  const [mapsResponse, portalsResponse, monstersResponse] = await Promise.all([fetch(OSMS_MAPS, options), fetch(OSMS_PORTALS, options), fetch(OSMS_MONSTERS, options).catch(() => null)]);
+  const [mapsResponse, portalsResponse, monstersResponse, wikiPortals] = await Promise.all([fetch(OSMS_MAPS, options), fetch(OSMS_PORTALS, options), fetch(OSMS_MONSTERS, options).catch(() => null), fetchWikiPortals().catch(() => [])]);
   if (!mapsResponse.ok || !portalsResponse.ok) throw new Error('The map feed is unavailable right now.');
-  return fromOsms(await mapsResponse.json(), await portalsResponse.json(), monstersResponse?.ok ? await monstersResponse.json() : null);
+  return fromOsms(await mapsResponse.json(), await portalsResponse.json(), monstersResponse?.ok ? await monstersResponse.json() : null, wikiPortals);
 }

@@ -12,10 +12,13 @@ import { locateMinimap, readTitle, titleSignature, signatureChanged, locatePlaye
 import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { arrivalDetails } from './arrival.js';
-import { questObjective, huntGoals, planHuntTrip, rankObjectiveMaps, craftStops, matchCount, believableDone, helperComplete } from './objective.js';
+import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMaps, craftStops, matchCount, believableDone, helperComplete } from './objective.js';
 import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
+import { issueUrl, problemReport, dropReport } from './report.js';
+/* global __APP_VERSION__ */
+const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
 import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOUNTER_CODE } from './usage.js';
 
 // As a public website, keep OSMS pictures in the player's browser (public/sw.js). On this PC the local
@@ -63,8 +66,8 @@ function snapshotCorner(source, width, height, why, wholeFrame = false) {
 let logSeq = 0;
 const logTest = (kind, details) => { testLog.push({ seq: ++logSeq, t: new Date().toISOString().slice(11, 23), kind, ...details }); if (testLog.length > 400) testLog.splice(0, testLog.length - 400); };
 Object.assign(state, { mapStyle: 'art', guide: { quest: null, stage: null, spoken: null }, itemSources: {}, pictureScales: [], positionPic: null, tools: { exp: true, quest: true, prices: false, mobCount: true }, mapViewMode: 'schematic', live: null, position: null, positionNote: null, voice: true, pipDoc: null, minimapScales: [], useTaxis: true });
-try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { if (saved.mapStyle === 'render') state.mapStyle = 'render'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useNearestScroll = saved.useNearestScroll === true; state.useTownScrolls = saved.useTownScrolls === true; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
-const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ useNearestScroll: Boolean(state.useNearestScroll), useTownScrolls: Boolean(state.useTownScrolls), voiceParts: state.voiceParts ?? null, voiceName: state.voiceName ?? null, voiceRate: state.voiceRate ?? 1, goalNpc: state.goalNpc ?? null, startingQuest: state.startingQuest ?? null, mapStyle: state.mapStyle, guideQuest: state.guide.quest, voice: state.voice, useTaxis: state.useTaxis, tools: state.tools, minimapScales: state.minimapScales, pictureScales: state.pictureScales })); } catch { /* optional */ } };
+try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { if (saved.mapStyle === 'render') state.mapStyle = 'render'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useNearestScroll = saved.useNearestScroll === true; state.useTownScrolls = saved.useTownScrolls === true; state.tripAll = saved.tripAll === true; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
+const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ useNearestScroll: Boolean(state.useNearestScroll), useTownScrolls: Boolean(state.useTownScrolls), tripAll: Boolean(state.tripAll), voiceParts: state.voiceParts ?? null, voiceName: state.voiceName ?? null, voiceRate: state.voiceRate ?? 1, goalNpc: state.goalNpc ?? null, startingQuest: state.startingQuest ?? null, mapStyle: state.mapStyle, guideQuest: state.guide.quest, voice: state.voice, useTaxis: state.useTaxis, tools: state.tools, minimapScales: state.minimapScales, pictureScales: state.pictureScales })); } catch { /* optional */ } };
 
 // Parts not yet checked in real play carry this label, so players know to double-check them.
 const UNTESTED = '<span class="untested" title="Not checked in real play yet: it may misread or miss things. Please report what you see.">Untested</span>';
@@ -74,7 +77,7 @@ $('#app').innerHTML = `
     <section class="hero"><div><div class="eyebrow">Classic World companion</div><h1>Your next map, clearly.</h1><p>Turn-by-turn portal directions. Share your game window once and Live GPS follows you from map to map.</p></div><span class="safety">Never touches the game</span></section>
     <section class="card live-card" aria-labelledby="live-title"><div class="live-head"><div><div class="eyebrow">Live GPS</div><h2 id="live-title">Next move</h2></div><span class="pill" id="live-state">Off</span></div>
       <div id="live-step" class="live-step" aria-live="polite"></div>
-      <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window ${UNTESTED}</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest town scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><button type="button" class="link-button choose-dest" id="choose-destination">Choose destination</button></div>
+      <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-report" title="Something wrong? Opens a pre-filled GitHub issue">Report</button><button class="button light" id="live-pip">Pop-out window ${UNTESTED}</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest town scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><button type="button" class="link-button choose-dest" id="choose-destination">Choose destination</button></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
@@ -96,6 +99,12 @@ $('#app').innerHTML = `
       <label class="field">Voice<select id="voice-name"></select></label><label class="field">Speed<select id="voice-rate"><option value="0.85">Slower</option><option value="1">Normal</option><option value="1.15">Faster</option></select></label>
       <fieldset class="voice-parts"><legend>Say out loud</legend><div id="voice-parts"></div></fieldset>
       <div class="action-row"><button type="button" class="button secondary" id="voice-test">Test voice</button></div></section>
+<section class="card" aria-labelledby="feedback-title"><h2 id="feedback-title">Report a problem or a drop</h2><p class="muted">Opens a GitHub issue already filled in with what Maple Route saw (map names, the last mini map reads, your screen size). You read it and press Submit yourself; nothing is sent before that. Chat, character names and other players are never included.</p>
+      <label class="field">What went wrong (optional)<input id="report-what" maxlength="300" placeholder="e.g. it thought I was on Henesys Hunting Ground II"></label>
+      <div class="action-row"><button type="button" class="button secondary" id="report-problem">Report a problem</button><button type="button" class="button light" id="report-copy">Copy mini map picture</button></div><p class="fine" id="report-note" role="status"></p>
+      <div class="divider"></div><h3 class="sub-title">Saw a drop?</h3><p class="fine">Drop tables are not in the game files, so player reports are how the drop data gets better.</p>
+      <div class="sell-fields"><label class="field">Item<input id="drop-item" maxlength="80" placeholder="e.g. Diamond Ore"></label><label class="field">Monster<input id="drop-monster" maxlength="80" placeholder="e.g. Stone Golem"></label></div>
+      <div class="action-row"><button type="button" class="button secondary" id="report-drop">Report this drop</button></div></section>
 <section class="card" aria-labelledby="characters-title"><h2 id="characters-title">Characters</h2><p class="muted">Each character keeps its own level, quests and progress.</p><div id="characters"></div></section>
 <section class="card" aria-labelledby="settings-title"><h2 id="settings-title">Live tools</h2><p class="muted">What Live GPS reads besides the mini map.</p><div class="tool-grid">
         <label class="toggle"><input type="checkbox" id="tool-exp"> EXP tracker</label>
@@ -148,7 +157,7 @@ const VIEWS = {
   world: ['world-title', 'atlas-title'],
   quests: ['quest-helper-title', 'next-title', 'trip-title', 'goals-title', 'party-title'],
   hunt: ['live-exp-title', 'session-title', 'sell-title', 'prices-title', 'gear-title'],
-  settings: ['voice-title', 'autostart-title', 'characters-title', 'settings-title', 'data-title', 'privacy-title']
+  settings: ['voice-title', 'autostart-title', 'characters-title', 'settings-title', 'feedback-title', 'data-title', 'privacy-title']
 };
 {
   const container = document.createElement('div'); container.className = 'views';
@@ -2229,6 +2238,36 @@ async function openPip() {
   } catch (error) { note(`The browser blocked the pop-out window${error?.message ? ` (${error.message})` : ''}.`); }
 }
 
+// ---------- Feedback (pre-filled GitHub issues) ----------
+function reportContext() {
+  const g = state.guide.quest ? guideSteps() : null;
+  return { version: APP_VERSION, browser: (navigator.userAgentData?.brands ?? []).filter(b => !/not/i.test(b.brand)).map(b => `${b.brand} ${b.version}`).join(', ') || navigator.userAgent.slice(0, 80),
+    frame: state.live?.frameW ? `${state.live.frameW} px wide` : '', live: Boolean(state.live), current: mapById(state.current)?.name ?? '', destination: mapById(state.destination)?.name ?? '',
+    quest: state.guide.quest ?? '', step: g?.step?.title ?? '', log: testLog };
+}
+function openIssue(report) { window.open(issueUrl(report), '_blank', 'noopener'); }
+$('#report-problem').addEventListener('click', () => openIssue(problemReport({ ...reportContext(), what: $('#report-what').value.trim() })));
+$('#live-report').addEventListener('click', () => { showView('settings'); $('#feedback-title').scrollIntoView({ block: 'start' }); $('#report-what').focus(); });
+$('#report-drop').addEventListener('click', () => {
+  const item = $('#drop-item').value.trim(), monster = $('#drop-monster').value.trim();
+  if (!item || !monster) { $('#report-note').textContent = 'Type the item and the monster first.'; return; }
+  openIssue(dropReport({ item, monster, map: mapById(state.current)?.name ?? '', version: APP_VERSION }));
+});
+// Only the mini map itself (title strip to bottom edge): no chat, no names over characters.
+$('#report-copy').addEventListener('click', async () => {
+  const note = text => { $('#report-note').textContent = text; };
+  const live = state.live, found = live?.lastFound, box = live?.minimapBox;
+  if (!live?.capture || !found?.band || !box) { note('Start Live GPS first, with the mini map open.'); return; }
+  try {
+    const frame = await live.capture.grab(), x = (found.offsetX ?? 0) + found.band.x, y = found.band.y;
+    const canvas = document.createElement('canvas'); canvas.width = box.w; canvas.height = box.h;
+    canvas.getContext('2d').drawImage(frame.source, x, y, box.w, box.h, 0, 0, box.w, box.h);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    note('Mini map picture copied. Paste it into the issue (Ctrl+V).');
+  } catch { note('Could not copy the picture here; a screenshot of the mini map works too.'); }
+});
+
 $('#live-start').addEventListener('click', startLive);
 function renderCharacters() {
   const panel = $('#characters'); if (!panel) return;
@@ -2547,6 +2586,11 @@ function stepTarget(step, guide) {
   if (step.npc && npcMapId(step.npc)) return { mapId: npcMapId(step.npc), npc: step.npc };
   if (state.guide.huntMap && mapById(state.guide.huntMap) && !step.npc) return { mapId: state.guide.huntMap, npc: null };
   const options = huntOptions(guide);
+  const all = state.tripAll ? allQuestsTrip() : null;
+  if (all?.trip?.stops.length) {
+    const here = all.trip.stops.find(s => s.mapId === state.current);
+    return { mapId: (here ?? all.trip.stops[0]).mapId, npc: null };
+  }
   if (options?.maps.length) {
     // On a map of the trip (or any useful map): hunt here. Otherwise the trip's first stop.
     const here = options.trip?.stops.find(s => s.mapId === state.current) ?? options.maps.find(m => m.mapId === state.current);
@@ -2586,12 +2630,63 @@ function huntOptions(g) {
   if (state.tripCache?.key !== key) state.tripCache = { key, trip: planHuntTrip(travel(), goals, state.current, endMapId, { via: craftStops(state.data, goals) }), endNpc };
   return { goals, maps: rankObjectiveMaps(travel(), goals, state.current).slice(0, 4), trip: state.tripCache.trip, endNpc };
 }
+// "Plan all my quests together": every quest you are doing (guided, in the Quest Helper, or on your
+// list) in one hunting trip, then each hand-in. The guided quest respects its ticked steps; others
+// use the Quest Helper counts when on screen, else what the game data says they need.
+function allQuestsTrip() {
+  const names = [...new Set([state.guide.quest, ...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests].filter(Boolean))].slice(0, 8);
+  const byName = new Map(), ends = new Map();
+  for (const name of names) {
+    const quest = state.quests.find(q => q.name === name);
+    if (!quest || state.questsFinished?.includes?.(name)) continue;
+    const helper = (state.hud.quests ?? []).find(q => q.name === name);
+    let goals;
+    if (name === state.guide.quest) goals = huntOptions(guideSteps())?.goals ?? [];
+    else {
+      if (!quest.needs?.length) continue;
+      const progress = quest.needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: seen?.have ?? 0, need: seen?.need ?? n.count, done: Boolean(seen && believableDone(seen)) }; });
+      goals = huntGoals(state.data, progress, state.itemSources, quest.text, quest.needs.map(n => n.name), state.crafting);
+      loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
+    }
+    for (const goal of goals) {
+      const key = normalize(goal.name), seen = byName.get(key);
+      if (seen) { seen.need += Math.max(0, (goal.need ?? 0) - (goal.have ?? 0)); seen.quests.push(name); }
+      else byName.set(key, { ...goal, quests: [name] });
+    }
+    const npc = quest.turnIn || quest.giver, mapId = npc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(npc))?.locations[0]?.mapId : null;
+    if (mapId && (goals.length || helper?.complete)) ends.set(mapId, [...(ends.get(mapId) ?? []), npc]);
+  }
+  const goals = [...byName.values()];
+  const key = JSON.stringify([goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], state.current, state.useTaxis, state.useNearestScroll, state.useTownScrolls]);
+  if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()], { via: craftStops(state.data, goals) }) };
+  return { goals, ends, quests: names, trip: state.allTripCache.trip };
+}
+function allTripHtml(all) {
+  const trip = all?.trip;
+  if (!trip) return `<p class="fine">${all?.goals.some(g => g.pending) ? 'Looking up which monsters drop what you need…' : 'Nothing to hunt for your other quests right now.'}</p>`;
+  const npcsAt = mapId => [...new Set(all.ends.get(mapId) ?? [])].join(', ');
+  const parts = [
+    ...trip.stops.map(stop => `${esc(mapById(stop.mapId)?.name ?? '?')} <small>(${esc(stop.monsters.join(', '))} · ${esc(stop.quests.join(', '))})</small>`),
+    ...trip.via.map(mapId => `${esc(mapById(mapId)?.name ?? '?')} <small>(craft)</small>`),
+    ...trip.ends.map(mapId => `${esc(npcsAt(mapId) || mapById(mapId)?.name || '?')} <small>(hand in)</small>`)
+  ];
+  const first = trip.stops[0]?.mapId;
+  return `<div class="fine hunt-trip"><strong>All quests trip:</strong> ${parts.join(' → ')} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${first && first !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(first)}">Go</button>` : ''}${trip.missing.length ? `<br><small>No known spot for: ${esc(trip.missing.join(', '))}</small>` : ''}</div>`;
+}
+// What players were asking for an item in your trade-chat log (Untested feature), to compare with hunting it.
+function marketNote(itemName) {
+  if (!state.prices?.length) return '';
+  const row = summarizePrices(state.prices, itemName).find(r => normalize(r.item) === normalize(itemName));
+  return row?.sell ? `; market: about ${formatMesos(row.sell.median)} each (${row.sell.count} ad${row.sell.count === 1 ? '' : 's'} in your trade-chat log)` : '';
+}
 function huntOptionsHtml(options) {
   if (!options) return '';
   if (!options.maps.length) return `<p class="fine">${options.goals.some(goal => goal.pending) ? 'Looking up which monsters drop what you need…' : 'No mapped hunting spot for these yet.'}</p>`;
   const trip = options.trip?.stops.length > 1 || (options.trip && options.goals.some(goal => goal.craft)) || (options.trip && options.trip.stops[0]?.mapId !== options.maps[0]?.mapId) ? options.trip : null;
   const tripHtml = trip ? `<div class="fine hunt-trip"><strong>Best trip:</strong> ${trip.stops.map(stop => `${esc(mapById(stop.mapId)?.name ?? '?')} <small>(${esc(stop.monsters.join(', '))})</small>`).join(' → ')}${[...new Set(options.goals.filter(goal => goal.craft?.npc).map(goal => goal.craft.npc))].map(npc => ` → ${esc(npc)} <small>(make ${esc([...new Set(options.goals.filter(goal => goal.craft?.npc === npc).map(goal => goal.craft.item))].join(', '))})</small>`).join('')}${options.endNpc ? ` → ${esc(options.endNpc)}` : ''} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${trip.stops[0].mapId !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(trip.stops[0].mapId)}">Go</button>` : ''}</div>` : '';
-  return `<div class="hunt-options">${tripHtml}<div class="fine"><strong>Where to hunt:</strong> ${options.goals.map(goal => `${esc(goal.name)}${goal.craft ? ` <small>(${goal.need} for ${goal.craft.makes} ${esc(goal.craft.item)}: ${esc(goal.craft.discipline)} at ${esc(goal.craft.npc ?? goal.craft.town)}${goal.craft.town ? `, ${esc(goal.craft.town)}` : ''}${goal.craft.meso ? `, ${goal.craft.meso.toLocaleString()} mesos` : ''})</small>` : ''}${goal.given ? ' <small>(no monster is known to drop it: probably handed to you during the quest)</small>' : ''}${goal.craft && goal.kind === 'collect' && !goal.pending && !goal.monsters.length ? ' <small>(no monster is known to drop it: try the shops or the market)</small>' : ''}${goal.kind === 'collect' && goal.monsters.length ? ` <small>(from ${esc(goal.monsters.slice(0, 2).join(', '))}${goal.guess ? ', best guess from the quest text' : ''})</small>` : ''}`).join(' · ')}</div>
+  const toggle = `<label class="toggle trip-all"><input type="checkbox" data-trip-all${state.tripAll ? ' checked' : ''}> Plan all my quests together</label>`;
+  if (state.tripAll) return `<div class="hunt-options">${toggle}${allTripHtml(allQuestsTrip())}</div>`;
+  return `<div class="hunt-options">${toggle}${tripHtml}<div class="fine"><strong>Where to hunt:</strong> ${options.goals.map(goal => `${esc(goal.name)}${goal.craft ? ` <small>(${goal.need} for ${goal.craft.makes} ${esc(goal.craft.item)}: ${esc(goal.craft.discipline)} at ${esc(goal.craft.npc ?? goal.craft.town)}${goal.craft.town ? `, ${esc(goal.craft.town)}` : ''}${goal.craft.meso ? `, ${goal.craft.meso.toLocaleString()} mesos` : ''}; needs ${esc(goal.craft.discipline)} Lv ${goal.craft.level ?? 1}${goal.craft.master ? ` (profession master: ${esc(goal.craft.master)})` : ''}${marketNote(goal.name)})</small>` : ''}${goal.given ? ' <small>(no monster is known to drop it: probably handed to you during the quest)</small>' : ''}${goal.craft && goal.kind === 'collect' && !goal.pending && !goal.monsters.length ? ' <small>(no monster is known to drop it: try the shops or the market)</small>' : ''}${goal.kind === 'collect' && goal.monsters.length ? ` <small>(from ${esc(goal.monsters.slice(0, 2).join(', '))}${goal.guess ? ', best guess from the quest text' : ''})</small>` : ''}`).join(' · ')}</div>
     <ul>${options.maps.map(m => { const map = mapById(m.mapId), chosen = m.mapId === state.destination;
       return `<li class="${chosen ? 'chosen' : ''}"><span><strong>${esc(map?.name ?? '?')}</strong><small>${esc(m.goals.join(', '))} · ${m.spawns} spawns · ${m.hops === 0 ? 'you are here' : `${m.hops} map${m.hops === 1 ? '' : 's'} away`}</small></span>${chosen ? '<span class="pill">heading here</span>' : `<button type="button" class="button secondary wm-go" data-hunt-map="${esc(m.mapId)}">Go</button>`}</li>`; }).join('')}</ul></div>`;
 }
@@ -2895,6 +2990,7 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
     switchCharacter(name); return;
   }
   const dismiss = event.target.closest('[data-character-dismiss]'); if (dismiss) { state.characterDismissed = dismiss.dataset.characterDismiss; renderLive(); return; }
+  const tripAll = event.target.closest('[data-trip-all]'); if (tripAll) { state.tripAll = tripAll.checked; state.allTripCache = null; saveLive(); applyObjective(); renderLive(); return; }
   const stepBox = event.target.closest('[data-step]'); if (stepBox) { toggleStep(Number(stepBox.dataset.step)); return; }
   const huntMap = event.target.closest('[data-hunt-map]'); if (huntMap) { state.guide.huntMap = huntMap.dataset.huntMap; applyObjective(); renderLive(); return; }
   if (event.target.closest('[data-hand-in]') && state.guide.quest) { state.guide.handIn = state.guide.quest; saveLive(); applyObjective(); renderLive(); return; }
