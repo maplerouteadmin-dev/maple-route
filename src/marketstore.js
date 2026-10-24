@@ -3,8 +3,8 @@
 // read live listings and only the browser that posted a listing change or remove it. Practice: this
 // browser only (localStorage), used until the project is set up, or for trying it out.
 // Set MARKET_URL / MARKET_KEY (the project's URL and public "anon" key) to switch to shared.
-export const MARKET_URL = '';
-export const MARKET_KEY = '';
+export const MARKET_URL = 'https://kvcineivyzrvbgkmacmu.supabase.co';
+export const MARKET_KEY = 'sb_publishable_NbHieog1F-0uR_1I-Do77g_BWU-TQP_';
 const SESSION_KEY = 'maple-route-market-session';
 const PRACTICE_KEY = 'maple-route-market-practice';
 
