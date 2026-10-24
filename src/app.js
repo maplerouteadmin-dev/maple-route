@@ -1572,7 +1572,7 @@ function renderLive() {
     if (next) next.innerHTML = destLine + (model.arrived ? `<b>${model.npcHere ? esc(nearText('npc', model.npcHere)) : 'You are here.'}</b>` : `${model.hint ? `<b>${esc(model.hint.near ? nearText(model.kind, model.npc) : model.hint.text)}</b> · ` : ''}${esc(model.title ?? '')}${model.note ? `<br><small class="mv-lost">${esc(model.note)}</small>` : ''}${wholeScreen && !livePosition() ? '<br><small class="mv-lost">Whole screen shared: over the mini map this window blocks the reader. Share the MapleStory window instead.</small>' : ''}`);
   }
   renderMapView();
-  if (state.pipWin && state.current && state.pipFitFor !== state.current) fitPip();
+  if (state.pipWin && state.current && state.pipFitFor !== pipFitKey()) fitPip();
   if (state.world) renderWorldMap();
 }
 
@@ -1854,6 +1854,8 @@ function updatePosition(found, mapId) {
   const live = state.live, lay = located.layout, trusted = live?.trustedLayout;
   const resized = lay && trusted && (Math.abs(lay.w - trusted.w) / trusted.w > .05 || Math.abs(lay.h - trusted.h) / trusted.h > .05);
   if (resized) live.resizedSince ??= Date.now(); else if (live) live.resizedSince = null;
+  // The in-game mini map's size on screen (title strip to bottom edge), for sizing the pop-out over it.
+  if (live && !resized && located.markers?.body && found.band) { const b = located.markers.body, band = found.band; live.minimapBox = { w: Math.max(band.w, b.x + b.w - band.x), h: b.y + b.h - band.y }; }
   // Covered for real when a flat window panel sits where the mini map was: then it stays suspect for
   // as long as the panel is there; a true resize (no panel) is accepted after 4 s.
   let panel = 0;
@@ -2139,19 +2141,32 @@ function wireWorldMap(root) {
 }
 wireWorldMap($('#world-map'));
 
-// Sizes the pop-out to the map on screen: the whole width of narrow maps, a sensible slice of long
-// ones (the view follows you), within 340–760 x 260–640. Browsers only allow this right after a
-// click, so on a map change it is tried and, if refused, the Fit button lights up instead.
-function fitPip(fromClick = false) {
-  const win = state.pipWin, doc = state.pipDoc, svg = doc?.querySelector('#pip-map svg');
-  if (!win || !svg || doc.getElementById('pip-mini')?.classList.contains('hidden')) return;
+// Sizes the pop-out to cover the in-game mini map, about 10% larger, so it can sit right over it.
+// The shared window is captured in device pixels: divided by the screen scale for window sizes.
+// Without Live GPS it falls back to the map drawn in the pop-out. Browsers only allow resizing right
+// after a click, so on a map change it is tried and, if refused, the Fit button lights up instead.
+const pipFitKey = () => { const box = state.live?.minimapBox; return `${state.current}|${box ? `${Math.round(box.w / 8)}x${Math.round(box.h / 8)}` : '-'}`; };
+function pipTargetSize(doc, win) {
+  const chrome = ['.pipmm-head', '#pip-next', '#pip-status'].reduce((sum, sel) => sum + (doc.querySelector(`#pip-mini ${sel}`)?.offsetHeight ?? 0), 0) + 4;
+  const box = state.live?.minimapBox, scale = window.devicePixelRatio || 1;
+  const maxW = Math.round((win.screen?.availWidth || 1600) * .8), maxH = Math.round((win.screen?.availHeight || 900) * .8);
+  if (box) {
+    const w = box.w / scale, h = box.h / scale;
+    // At least the mini map's size with the map area itself about as tall as the in-game one.
+    return { width: Math.round(Math.min(maxW, Math.max(240, w * 1.1))), height: Math.round(Math.min(maxH, Math.max(180, h * 1.1, h + chrome))) };
+  }
+  const svg = doc.querySelector('#pip-map svg'); if (!svg) return null;
   const mapW = parseFloat(svg.style.width) || svg.getBoundingClientRect().width, mapH = parseFloat(svg.style.height) || svg.getBoundingClientRect().height;
-  const chrome = ['.pipmm-head', '#pip-next', '#pip-status'].reduce((sum, sel) => sum + (doc.querySelector(`#pip-mini ${sel}`)?.offsetHeight ?? 0), 0) + 12;
-  const width = Math.round(Math.min(760, Math.max(340, mapW + 8))), height = Math.round(Math.min(640, Math.max(260, Math.min(mapH, 460) + chrome)));
+  return { width: Math.round(Math.min(760, Math.max(340, mapW + 8))), height: Math.round(Math.min(640, Math.max(260, Math.min(mapH, 460) + chrome))) };
+}
+function fitPip(fromClick = false) {
+  const win = state.pipWin, doc = state.pipDoc;
+  if (!win || !doc || doc.getElementById('pip-mini')?.classList.contains('hidden')) return;
+  const size = pipTargetSize(doc, win); if (!size) return;
   const extraW = Math.max(0, win.outerWidth - win.innerWidth), extraH = Math.max(0, win.outerHeight - win.innerHeight);
   const button = doc.querySelector('[data-pip="fit"]');
-  if (Math.abs(win.innerWidth - width) < 12 && Math.abs(win.innerHeight - height) < 12) { state.pipFitFor = state.current; button?.classList.remove('nudge'); return; }
-  try { win.resizeTo(width + extraW, height + extraH); state.pipFitFor = state.current; button?.classList.remove('nudge'); }
+  if (Math.abs(win.innerWidth - size.width) < 8 && Math.abs(win.innerHeight - size.height) < 8) { state.pipFitFor = pipFitKey(); button?.classList.remove('nudge'); return; }
+  try { win.resizeTo(size.width + extraW, size.height + extraH); state.pipFitFor = pipFitKey(); button?.classList.remove('nudge'); }
   catch { if (!fromClick) button?.classList.add('nudge'); }
 }
 
@@ -2162,13 +2177,14 @@ async function openPip() {
   if (!('documentPictureInPicture' in window)) { note('The pop-out window needs Chrome or Edge 116 or newer.'); return; }
   try {
     // Sized like the in-game mini map so it can sit over it (drag it there once; Edge remembers).
-    const pip = await documentPictureInPicture.requestWindow({ width: 420, height: 380 });
+    const box = state.live?.minimapBox, scale = window.devicePixelRatio || 1;
+    const pip = await documentPictureInPicture.requestWindow(box ? { width: Math.round(Math.max(240, box.w / scale * 1.1)), height: Math.round(Math.max(180, box.h / scale * 1.1 + 60)) } : { width: 420, height: 380 });
     for (const sheet of document.styleSheets) {
       try { const style = pip.document.createElement('style'); style.textContent = [...sheet.cssRules].map(rule => rule.cssText).join('\n'); pip.document.head.append(style); } catch { /* cross-origin sheet */ }
     }
     pip.document.title = 'Maple Route';
     pip.document.body.className = 'pip-body';
-    pip.document.body.innerHTML = `<div id="pip-mini"><div class="pipmm-head"><div class="pipmm-title" id="pip-title"></div><span class="pipmm-btns"><button type="button" class="pipmm-btn fit" data-pip="fit" title="Size this window to the map">Fit</button><button type="button" class="pipmm-btn" data-pip="world">World map</button></span></div>
+    pip.document.body.innerHTML = `<div id="pip-mini"><div class="pipmm-head"><div class="pipmm-title" id="pip-title"></div><span class="pipmm-btns"><button type="button" class="pipmm-btn fit" data-pip="fit" title="Size this window to cover the in-game mini map">Fit</button><button type="button" class="pipmm-btn" data-pip="world">World map</button></span></div>
       <div class="pipmm-stage"><div id="pip-map" class="pip-map"></div><div id="pip-mobs" class="pipmm-mobs hidden"></div></div><div id="pip-next" class="pipmm-next"></div><div class="pip-status pill" id="pip-status"></div></div>
       <div id="pip-world" class="hidden"></div><div id="pip-world-bar" class="pipmm-head hidden"><div class="pipmm-title"><b>World map</b></div><button type="button" class="pipmm-btn" data-pip="mini">Back</button></div>`;
     pip.document.body.addEventListener('click', event => {
