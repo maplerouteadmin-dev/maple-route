@@ -285,3 +285,25 @@ export function parseTooltip(text, catalog) {
   return { item, stats: item?.equip ? stats : {}, slotsLeft: item?.equip ? slotsLeft : null, candidates: best.map(c => c.item) };
 }
 
+// What needs you in the Market, newest first: offers waiting on your listings, your offers that were
+// answered (until you dismiss them), your listings that expired or end within a day.
+// `seen` = ids of answered offers you already dismissed.
+export function marketAlerts({ mine = [], offers = [], listings = [], me = null, seen = [], now = Date.now() } = {}) {
+  const alerts = [], dismissed = new Set(seen), mineIds = new Map(mine.map(l => [l.id, l]));
+  for (const o of offers) {
+    const listing = mineIds.get(o.listing_id);
+    if (listing && o.status === 'open') alerts.push({ kind: 'offer', id: o.id, listingId: listing.id, at: o.created_at, text: `${o.ign} offered ${o.price.toLocaleString()} mesos for your ${listing.item_name}` });
+    if (o.owner === me && o.status !== 'open' && !dismissed.has(o.id)) {
+      const theirs = listings.find(l => l.id === o.listing_id);
+      alerts.push({ kind: o.status, id: o.id, listingId: o.listing_id, ign: theirs?.ign ?? null, at: o.created_at,
+        text: o.status === 'accepted' ? `Your ${o.price.toLocaleString()} offer${theirs ? ` for ${theirs.item_name}` : ''} was accepted${theirs ? `: whisper ${theirs.ign} in game` : ''}` : `Your ${o.price.toLocaleString()} offer${theirs ? ` for ${theirs.item_name}` : ''} was declined` });
+    }
+  }
+  for (const l of mine) {
+    const left = Date.parse(l.expires_at) - now;
+    if (left <= 0) alerts.push({ kind: 'expired', id: l.id, listingId: l.id, at: l.expires_at, text: `Your ${l.item_name} listing expired: relist or remove it` });
+    else if (left < 86_400_000) alerts.push({ kind: 'ending', id: l.id, listingId: l.id, at: l.expires_at, text: `Your ${l.item_name} listing ends in ${Math.max(1, Math.round(left / 3_600_000))} h` });
+  }
+  return alerts.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+

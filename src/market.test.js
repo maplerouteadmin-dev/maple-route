@@ -175,3 +175,25 @@ test('real tooltip reads: matched by description, chat adverts ignored', async (
   assert.equal(parseTooltip('ft Chocolate Fondue Scepter PMO\nB> Meat 10k each', cat).item, null); // only chat: nothing
 });
 
+test('market alerts: offers waiting, answers to your offers, expired and ending listings', async () => {
+  const { marketAlerts } = await import('./market.js');
+  const now = Date.parse('2026-10-24T12:00:00Z');
+  const mine = [
+    { id: 'L1', item_name: 'War Bow', expires_at: '2026-10-28T00:00:00Z' },
+    { id: 'L2', item_name: 'Work Gloves', expires_at: '2026-10-24T00:00:00Z' }, // expired
+    { id: 'L3', item_name: 'Ilbi', expires_at: '2026-10-24T20:00:00Z' } // ends in 8 h
+  ];
+  const listings = [{ id: 'X1', item_name: 'Red Bandana', ign: 'Seller01' }];
+  const offers = [
+    { id: 'o1', listing_id: 'L1', owner: 'buyer', ign: 'Buyer01', price: 800000, status: 'open', created_at: '2026-10-24T11:00:00Z' },
+    { id: 'o2', listing_id: 'L1', owner: 'buyer', ign: 'Buyer02', price: 750000, status: 'declined', created_at: '2026-10-24T10:00:00Z' }, // answered by me: no alert
+    { id: 'o3', listing_id: 'X1', owner: 'me', ign: 'Mapler01', price: 50000, status: 'accepted', created_at: '2026-10-24T09:00:00Z' },
+    { id: 'o4', listing_id: 'X1', owner: 'me', ign: 'Mapler01', price: 40000, status: 'declined', created_at: '2026-10-24T08:00:00Z' }
+  ];
+  const alerts = marketAlerts({ mine, offers, listings, me: 'me', seen: ['o4'], now });
+  assert.deepEqual(alerts.map(a => a.kind).sort(), ['accepted', 'ending', 'expired', 'offer']);
+  assert.match(alerts.find(a => a.kind === 'accepted').text, /accepted: whisper Seller01/);
+  assert.match(alerts.find(a => a.kind === 'ending').text, /ends in 8 h/);
+  assert.equal(marketAlerts({ mine: [], offers: [], me: 'me', now }).length, 0);
+});
+

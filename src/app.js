@@ -17,7 +17,7 @@ import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
-import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
+import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -103,6 +103,7 @@ $('#app').innerHTML = `
       <fieldset class="voice-parts"><legend>Say out loud</legend><div id="voice-parts"></div></fieldset>
       <div class="action-row"><button type="button" class="button secondary" id="voice-test">Test voice</button></div></section>
 <section class="card market-card" aria-labelledby="market-title"><div class="data-row"><div><h2 id="market-title">Market ${UNTESTED}</h2><p class="muted">Items players are selling or looking for, with the real stats and upgrade slots left. Found something? <b>/find</b> the seller in game and whisper them. Mesos only.</p></div><span class="pill" id="market-mode"></span></div>
+      <div id="market-alerts" aria-live="polite"></div>
       <div class="market-notice" role="note"><strong>Maple Route is only a noticeboard that helps players find each other.</strong> We never take, hold or ask for your mesos or items, and we are not part of any trade. Every trade is agreed and settled in game, in mesos, between the two players, using the game's own trade window. Never pay or accept payment outside the game: real-money trading is against MapleStory's rules. Check the item in the trade window before you accept; you trade at your own risk.</div>
       <div class="market-filters"><label class="field">Item<input id="market-query" type="search" autocomplete="off" placeholder="e.g. work gloves, ilbi"></label>
         <label class="field">Show<select id="market-side"><option value="all">Selling and buying</option><option value="sell">Selling</option><option value="buy">Buying</option></select></label>
@@ -2355,7 +2356,7 @@ function listingHtml(listing) {
   const lines = item?.equip && listing.side === 'sell' ? statLines(listing, item) : [];
   const detail = lines.length ? `<details class="market-stats"><summary>Stats</summary><ul>${lines.map(line => `<li>${esc(line.label)} <b>${line.value}</b>${line.delta ? ` <span class="${line.delta > 0 ? 'up' : 'down'}">(${line.delta > 0 ? '+' : ''}${line.delta})</span>` : ''}</li>`).join('')}</ul>${item.reqLevel && !item.custom ? `<small>Level ${item.reqLevel}${item.job && item.job !== 'All' ? ` · ${esc(item.job)}` : ''} · ${item.slots} upgrade slot${item.slots === 1 ? '' : 's'} when clean</small>` : ''}</details>` : '';
   const report = issueUrl({ title: `Listing report: ${listing.item_name} by ${listing.ign}`, body: `Listing ${listing.id}: ${listing.side} ${listing.item_name} for ${listing.price} mesos by ${listing.ign}.\n\nWhat is wrong with it?\n`, labels: ['listing'] });
-  return `<li class="market-row"><div class="market-main"><span class="pill ${listing.side === 'sell' ? 'sell' : 'buy'}">${listing.side === 'sell' ? 'Selling' : 'Buying'}</span> <strong>${esc(listing.item_name)}</strong>${listing.item_id === 'custom' ? ' <small class="pill">custom</small>' : ''}${listing.quantity > 1 ? ` ×${listing.quantity}` : ''} <span class="market-price">${formatMesos(listing.price)}${listing.quantity > 1 ? ' each' : ''}</span>
+  return `<li class="market-row"${mine ? ` id="listing-${esc(listing.id)}"` : ''}><div class="market-main"><span class="pill ${listing.side === 'sell' ? 'sell' : 'buy'}">${listing.side === 'sell' ? 'Selling' : 'Buying'}</span> <strong>${esc(listing.item_name)}</strong>${listing.item_id === 'custom' ? ' <small class="pill">custom</small>' : ''}${listing.quantity > 1 ? ` ×${listing.quantity}` : ''} <span class="market-price">${formatMesos(listing.price)}${listing.quantity > 1 ? ' each' : ''}</span>
     ${item?.equip && listing.side === 'sell' && equipSummary(listing, item) ? `<div class="fine">${esc(equipSummary(listing, item))}</div>` : ''}${detail}
     <div class="fine">${esc(listing.ign)}${listing.channel ? ` · ch ${listing.channel}` : ''} · ${ago(listing.created_at)}${listing.note ? ` · “${esc(listing.note)}”` : ''}${mine ? (isExpired(listing) ? ' · <strong class="market-expired">expired: hidden from others</strong>' : ` · expires in ${daysLeft(listing)} day${daysLeft(listing) === 1 ? '' : 's'}`) : ''}</div>
     ${offersHtml(listing, mine)}</div>
@@ -2380,13 +2381,32 @@ function offersHtml(listing, mine) {
   const settings = `<div class="market-offer-edit"><label class="toggle"><input type="checkbox" data-offer-allowed="${esc(listing.id)}"${listing.offers_allowed !== false ? ' checked' : ''}> Accept offers</label><label class="field">Lowest offer<input data-offer-min="${esc(listing.id)}" inputmode="numeric" value="${listing.min_offer ? esc(String(listing.min_offer)) : ''}" placeholder="any"${listing.offers_allowed === false ? ' disabled' : ''}></label><button type="button" class="link-button" data-offer-save="${esc(listing.id)}">save</button></div>`;
   return terms + (rows ? `<ul class="market-offers">${rows}</ul>` : '<div class="fine">No offers yet.</div>') + settings;
 }
-// Open offers waiting on your listings: shown on the Market tab so sellers notice.
+// The bell: what needs you in the Market (offers waiting, answers to your offers, expired or ending
+// listings), on the Market tab link and as a list at the top of the Market.
+const SEEN_KEY = 'maple-route-market-seen';
+const seenAlerts = () => { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); } catch { return []; } };
 function renderOfferBadge() {
-  const mineIds = new Set((market.mine ?? []).map(l => l.id));
-  const waiting = market.offers.filter(o => o.status === 'open' && mineIds.has(o.listing_id)).length;
+  const alerts = marketAlerts({ mine: market.mine ?? [], offers: market.offers ?? [], listings: market.listings ?? [], me: market.me, seen: seenAlerts() });
   const link = document.querySelector('.top-link[href="#market"]');
-  if (link) link.textContent = waiting ? `Market (${waiting})` : 'Market';
+  if (link) link.innerHTML = alerts.length ? `Market <span class="market-bell" title="${alerts.length} thing${alerts.length === 1 ? '' : 's'} need you in the Market">🔔 ${alerts.length}</span>` : 'Market';
+  const box = $('#market-alerts'); if (!box) return;
+  const action = a => a.kind === 'offer' ? `<button type="button" class="button secondary" data-alert-view="${esc(a.listingId)}">View</button>`
+    : a.kind === 'accepted' ? `${a.ign ? `<button type="button" class="button secondary" data-market-find="${esc(a.ign)}">Copy /find</button>` : ''}<button type="button" class="link-button" data-alert-dismiss="${esc(a.id)}">OK</button>`
+    : a.kind === 'declined' ? `<button type="button" class="link-button" data-alert-dismiss="${esc(a.id)}">OK</button>`
+    : a.kind === 'expired' ? `<button type="button" class="button secondary" data-market-relist="${esc(a.listingId)}">Relist</button><button type="button" class="button light" data-market-remove="${esc(a.listingId)}">Remove</button>`
+    : `<button type="button" class="button light" data-market-relist="${esc(a.listingId)}">Relist now</button>`;
+  box.innerHTML = alerts.length ? `<div class="market-alerts"><strong>🔔 Needs your attention</strong><ul>${alerts.map(a => `<li class="alert-${a.kind}"><span>${esc(a.text)}</span><span class="market-offer-actions">${action(a)}</span></li>`).join('')}</ul></div>` : '';
 }
+// Checks the Market in the background every 2 minutes, but only for players who have used it.
+async function refreshMarketAlerts() {
+  if (market.loading || !market.store.hasSession?.()) return;
+  try {
+    market.me ??= await market.store.me();
+    [market.listings, market.mine, market.offers] = await Promise.all([market.store.list(), market.store.mine(), market.store.offers().catch(() => [])]);
+    if (document.querySelector('.view-market:not(.hidden)')) renderMarket(); else renderOfferBadge();
+  } catch { /* offline or busy: try again next time */ }
+}
+setTimeout(refreshMarketAlerts, 4000); setInterval(refreshMarketAlerts, 120_000);
 
 function renderMarket() {
   if (!$('#market-list')) return;
@@ -2559,6 +2579,10 @@ document.addEventListener('click', async event => {
   }
   const answer = event.target.closest('[data-offer-answer]');
   if (answer) { answer.disabled = true; try { await market.store.answerOffer(answer.dataset.offerAnswer, answer.dataset.status); } catch { /* shown on refresh */ } await loadMarket(true); return; }
+  const view = event.target.closest('[data-alert-view]');
+  if (view) { document.getElementById(`listing-${view.dataset.alertView}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  const dismiss = event.target.closest('[data-alert-dismiss]');
+  if (dismiss) { try { localStorage.setItem(SEEN_KEY, JSON.stringify([...seenAlerts(), dismiss.dataset.alertDismiss].slice(-200))); } catch { /* storage blocked */ } renderMarket(); return; }
   const removeOffer = event.target.closest('[data-offer-remove]');
   if (removeOffer) { removeOffer.disabled = true; try { await market.store.removeOffer(removeOffer.dataset.offerRemove); } catch { /* shown on refresh */ } await loadMarket(true); return; }
   const save = event.target.closest('[data-offer-save]');

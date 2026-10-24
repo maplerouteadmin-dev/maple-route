@@ -45,6 +45,8 @@ function sharedStore(url, key, fetchImpl) {
   }
   return {
     shared: true,
+    // Whether this browser has used the Market (so background checks never sign up a new player).
+    hasSession() { return Boolean(storage.get(SESSION_KEY)?.refresh_token); },
     async me() { return (await session()).user; },
     // Live listings, newest first (the database hides expired ones too).
     list({ itemId = null, limit = 300 } = {}) {
@@ -70,6 +72,7 @@ function practiceStore() {
   const all = () => storage.get(PRACTICE_KEY) ?? [], offersAll = () => storage.get(PRACTICE_OFFERS) ?? [];
   return {
     shared: false,
+    hasSession() { return all().length > 0; },
     async me() { return 'practice'; },
     async list({ itemId = null } = {}) { const now = Date.now(); return all().filter(l => Date.parse(l.expires_at) > now && (!itemId || l.item_id === itemId)).sort((a, b) => b.created_at.localeCompare(a.created_at)); },
     async mine() { return all().sort((a, b) => b.created_at.localeCompare(a.created_at)); },
