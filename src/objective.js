@@ -1,4 +1,4 @@
-import { normalize, shortestRoute } from './core.js';
+import { editDistance, normalize, shortestRoute } from './core.js';
 import { refineRecipe } from './refine.js';
 
 // What the player should be doing right now for one quest, from the live Quest Helper counts (or the
@@ -13,6 +13,28 @@ const npcMap = (data, npcName) => (data.targets ?? []).find(t => t.kind === 'npc
 
 // Each unfinished count becomes a goal with the monsters that satisfy it: the monster itself for a
 // kill count, or the monsters recorded as dropping the item.
+// The Quest Helper count for one need, by the closest whole name ("Omok Piece Mushroom" must not
+// take the count of "Omok Piece Octopus", which shares its first words). OCR slips allowed.
+const stemName = text => normalize(text).split(' ').map(word => word.replace(/(es|s)$/, '')).join(' ');
+export function matchCount(progress, name) {
+  const want = stemName(name);
+  if (!want) return null;
+  let best = null, bestDistance = Infinity, tie = false;
+  for (const p of progress ?? []) {
+    const got = stemName(p.name);
+    const distance = got === want ? 0 : got.startsWith(want) || want.startsWith(got) && got.length >= want.length - 2 ? 1 : editDistance(got, want);
+    if (distance < bestDistance) { best = p; bestDistance = distance; tie = false; } else if (distance === bestDistance) tie = true;
+  }
+  return best && !tie && bestDistance <= Math.max(2, Math.floor(want.length / 6)) ? best : null;
+}
+
+// A finished count is believable when it is not wildly over what is needed (a misread "7/1").
+export const believableDone = p => Boolean(p?.done) && p.need > 0 && p.have <= Math.max(p.need * 2, p.need + 2);
+
+// The Quest Helper says a quest is complete only if every one of its needs was read: a wrapped
+// line can hide one (read as its own heading), leaving only the finished counts on screen.
+export const helperComplete = (quest, expectedNeeds = null) => Boolean(quest?.progress?.length) && quest.progress.every(p => p.done) && (!expectedNeeds || quest.progress.length >= expectedNeeds);
+
 // When the wiki has no drop record for an item, the quest's own text often names the monsters
 // ("I can get them by defeating Stump, Orange Mushroom, and Octopus"); those become `guess` goals.
 export function huntGoals(data, progress, itemSources = {}, questText = '') {

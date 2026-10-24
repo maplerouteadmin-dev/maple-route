@@ -12,7 +12,7 @@ import { locateMinimap, readTitle, titleSignature, signatureChanged, locatePlaye
 import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { arrivalDetails } from './arrival.js';
-import { questObjective, huntGoals, planHuntTrip, rankObjectiveMaps, refineStops } from './objective.js';
+import { questObjective, huntGoals, planHuntTrip, rankObjectiveMaps, refineStops, matchCount, believableDone, helperComplete } from './objective.js';
 import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOUNTER_CODE } from './usage.js';
@@ -2403,6 +2403,8 @@ async function syncQuestHelper(parsed) {
   // last quests seen for two minutes.
   if (!quests.some(q => q.name) && state.hud.quests?.some(q => q.name) && Date.now() - (state.hud.questsAt ?? 0) < 120_000) { renderQuestHelper(); return; }
   if (quests.some(q => q.name)) state.hud.questsAt = Date.now();
+  // Complete only when every need the game lists was read (a wrapped line can hide an unfinished one).
+  for (const q of quests) if (q.name) q.complete = helperComplete(q, state.quests.find(x => x.name === q.name)?.needs?.length || null);
   state.hud.quests = quests;
   state.hud.quest = quests[0] ?? null;
   // A quest seen ready to hand in that is gone on two reads in a row (others still shown) was turned in.
@@ -2428,7 +2430,7 @@ async function syncQuestHelper(parsed) {
     // misread "0 / 15" as "15 / 15", or "150 / 15", must not tick a step).
     state.hud.doneSeen ??= {};
     const confirmed = q.progress.filter(p => {
-      const key = `${q.name}|${normalize(p.name)}`, believable = p.done && p.need > 0 && p.have <= p.need * 2 + 5;
+      const key = `${q.name}|${normalize(p.name)}`, believable = believableDone(p);
       state.hud.doneSeen[key] = believable ? (state.hud.doneSeen[key] ?? 0) + 1 : 0;
       return state.hud.doneSeen[key] >= 2;
     });
@@ -2525,7 +2527,7 @@ function huntOptions(g) {
   const helper = (state.hud.quests ?? []).find(q => q.name === g.name);
   const pending = g.steps.filter(step => !g.done.has(step.number) && (step.monster || step.item));
   const progress = pending.map(step => {
-    const name = step.monster || step.item, seen = helper?.progress?.find(p => normalize(p.name).startsWith(normalize(name).slice(0, 8)));
+    const name = step.monster || step.item, seen = matchCount(helper?.progress, name);
     return { name, have: seen?.have ?? 0, need: seen?.need ?? step.count ?? 1, done: false };
   });
   // Wiki steps name the monster but not always the item: add the quest's game-data list, minus
@@ -2534,7 +2536,7 @@ function huntOptions(g) {
   for (const need of g.quest?.needs ?? []) {
     const key = normalize(need.name).replace(/s$/, '');
     if (progress.some(p => normalize(p.name).replace(/s$/, '') === key) || doneTitles.some(title => title.includes(key))) continue;
-    const seen = helper?.progress?.find(p => normalize(p.name).startsWith(key.slice(0, 8)));
+    const seen = matchCount(helper?.progress, need.name);
     progress.push({ name: need.name, have: seen?.have ?? 0, need: seen?.need ?? need.count, done: false });
   }
   if (!progress.length) return null;

@@ -79,3 +79,19 @@ test('the hunting trip can split needs over two maps and counts the walk to the 
   assert.equal(trip.hops, 5); // start→home→hill→garden, then back through hill to home
   assert.equal(trip.endMapId, 'home');
 });
+
+test('Quest Helper counts match the whole item name, and a hidden line keeps a quest incomplete', async () => {
+  const { matchCount, believableDone, helperComplete } = await import('./objective.js');
+  const progress = [{ name: 'Omok Table', have: 1, need: 1, done: true }, { name: 'Omok Fiece Octopus', have: 1, need: 1, done: true }, { name: 'Omok Piece Muzhroom', have: 0, need: 1, done: false }];
+  assert.equal(matchCount(progress, 'Omok Piece: Mushroom').have, 0);
+  assert.equal(matchCount(progress, 'Omok Piece: Octopus').have, 1);
+  assert.equal(matchCount(progress, 'Omok Table').have, 1);
+  assert.equal(matchCount(progress, 'Stirge Wing'), null);
+  assert.equal(matchCount([{ name: 'Omok Piece Octopus', have: 1, need: 1 }], 'Omok Piece: Mushroom'), null); // only the other piece on screen
+  assert.equal(believableDone({ have: 7, need: 1, done: true }), false);
+  assert.equal(believableDone({ have: 1, need: 1, done: true }), true);
+  assert.equal(believableDone({ have: 20, need: 20, done: true }), true);
+  const wrapped = { progress: progress.slice(0, 2) }; // the Mushroom line was read as its own heading
+  assert.equal(helperComplete(wrapped, 3), false);
+  assert.equal(helperComplete(wrapped), true);
+});
