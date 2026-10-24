@@ -127,3 +127,12 @@ body.gps-page #mapview-note{line-height:1.3}
 .market-suggest li.active,.market-suggest li:hover{background:#e3f1dc}.market-suggest .market-suggest-note{cursor:default;color:#698074}
 .market-custom{font-weight:700;color:#8a5a00}
 .market-expired{color:#a8432f}
+.market-terms{color:#18573f}.market-offer-settings{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:flex-end;margin:6px 0}
+.market-offer-form{margin:6px 0;padding:8px 10px;border-radius:10px;background:#f4f8f5}
+.market-offers{list-style:none;padding:0;margin:6px 0;display:grid;gap:6px}
+.market-offer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;align-items:center;padding:6px 8px;border-radius:8px;background:#f7faf8;font-size:.86rem}
+.market-offer.accepted{background:#e3f1dc}.market-offer.declined{opacity:.6}
+.market-offer-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.market-offer-actions .button{min-height:30px;padding:4px 10px;font-size:.8rem}
+.market-offer-edit{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:flex-end;margin-top:6px;font-size:.84rem}.market-offer-edit .field{max-width:160px}
+.market-my-offer{color:#25507a}
+.market-more{margin:4px 0 8px}.market-more summary{cursor:pointer;font-weight:700;color:#18573f;font-size:.9rem}.market-more summary span{font-weight:400;color:#698074}

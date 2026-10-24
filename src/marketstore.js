@@ -7,6 +7,7 @@ export const MARKET_URL = 'https://kvcineivyzrvbgkmacmu.supabase.co';
 export const MARKET_KEY = 'sb_publishable_NbHieog1F-0uR_1I-Do77g_BWU-TQP_';
 const SESSION_KEY = 'maple-route-market-session';
 const PRACTICE_KEY = 'maple-route-market-practice';
+const PRACTICE_OFFERS = 'maple-route-market-practice-offers';
 
 const storage = {
   get(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } },
@@ -54,18 +55,31 @@ function sharedStore(url, key, fetchImpl) {
     // Your own listings, expired ones too (the database lets an owner see theirs), to relist or remove.
     async mine() { const me = (await session()).user; return call(`listings?${new URLSearchParams({ select: '*', owner: `eq.${me}`, order: 'created_at.desc', limit: '100' })}`); },
     async add(listing) { const [row] = await call('listings', { method: 'POST', body: listing, prefer: 'return=representation' }); return row; },
-    remove(id) { return call(`listings?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+    remove(id) { return call(`listings?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+    // Offer settings are the only part of a listing its owner can change after posting.
+    setOfferSettings(id, { offers_allowed, min_offer }) { return call(`listings?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: { offers_allowed, min_offer } }); },
+    // Offers: the database shows each one only to the buyer who made it and the seller it was made to.
+    offers() { return call(`offers?${new URLSearchParams({ select: '*', order: 'created_at.desc', limit: '300' })}`); },
+    async makeOffer(offer) { const [row] = await call('offers', { method: 'POST', body: offer, prefer: 'return=representation' }); return row; },
+    answerOffer(id, status) { return call(`offers?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: { status } }); },
+    removeOffer(id) { return call(`offers?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
   };
 }
 
 function practiceStore() {
-  const all = () => storage.get(PRACTICE_KEY) ?? [];
+  const all = () => storage.get(PRACTICE_KEY) ?? [], offersAll = () => storage.get(PRACTICE_OFFERS) ?? [];
   return {
     shared: false,
     async me() { return 'practice'; },
     async list({ itemId = null } = {}) { const now = Date.now(); return all().filter(l => Date.parse(l.expires_at) > now && (!itemId || l.item_id === itemId)).sort((a, b) => b.created_at.localeCompare(a.created_at)); },
     async mine() { return all().sort((a, b) => b.created_at.localeCompare(a.created_at)); },
     async add(listing) { const row = { ...listing, id: `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, owner: 'practice', created_at: new Date().toISOString() }; storage.set(PRACTICE_KEY, [row, ...all()].slice(0, 200)); return row; },
-    async remove(id) { storage.set(PRACTICE_KEY, all().filter(l => l.id !== id)); return null; }
+    async remove(id) { storage.set(PRACTICE_KEY, all().filter(l => l.id !== id)); storage.set(PRACTICE_OFFERS, offersAll().filter(o => o.listing_id !== id)); return null; },
+    async setOfferSettings(id, settings) { storage.set(PRACTICE_KEY, all().map(l => l.id === id ? { ...l, ...settings } : l)); return null; },
+    // Practice offers are made by "you" on your own practice listings, so the flow can be tried alone.
+    async offers() { return offersAll(); },
+    async makeOffer(offer) { const row = { ...offer, id: `o${Date.now().toString(36)}`, owner: 'practice-buyer', status: 'open', created_at: new Date().toISOString() }; storage.set(PRACTICE_OFFERS, [row, ...offersAll().filter(o => !(o.listing_id === offer.listing_id && o.owner === row.owner && o.status === 'open'))]); return row; },
+    async answerOffer(id, status) { storage.set(PRACTICE_OFFERS, offersAll().map(o => o.id === id ? { ...o, status } : o)); return null; },
+    async removeOffer(id) { storage.set(PRACTICE_OFFERS, offersAll().filter(o => o.id !== id)); return null; }
   };
 }

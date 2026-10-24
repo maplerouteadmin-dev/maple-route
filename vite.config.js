@@ -24,7 +24,7 @@ function liveLog() {
       server.middlewares.use('/__live-log', (req, res) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end(); return; }
         let body = '';
-        req.on('data', chunk => { body += chunk; if (body.length > 2_000_000) req.destroy(); });
+        req.on('data', chunk => { body += chunk; if (body.length > 8_000_000) req.destroy(); });
         req.on('end', () => {
           try { mkdirSync(dir, { recursive: true }); if (body.trim()) appendFileSync(file, `${body.trim()}\n`); res.end('ok'); }
           catch { res.statusCode = 500; res.end(); }

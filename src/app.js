@@ -17,7 +17,7 @@ import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
-import { OSMS_ITEMS as MARKET_ITEMS, STATS, fromOsmsItems, customItem, daysLeft, isExpired, relistCopy, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
+import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -106,20 +106,31 @@ $('#app').innerHTML = `
       <div class="market-notice" role="note"><strong>Maple Route is only a noticeboard that helps players find each other.</strong> We never take, hold or ask for your mesos or items, and we are not part of any trade. Every trade is agreed and settled in game, in mesos, between the two players, using the game's own trade window. Never pay or accept payment outside the game: real-money trading is against MapleStory's rules. Check the item in the trade window before you accept; you trade at your own risk.</div>
       <div class="market-filters"><label class="field">Item<input id="market-query" type="search" autocomplete="off" placeholder="e.g. work gloves, ilbi"></label>
         <label class="field">Show<select id="market-side"><option value="all">Selling and buying</option><option value="sell">Selling</option><option value="buy">Buying</option></select></label>
+        <label class="field">Sort<select id="market-sort"></select></label></div>
+      <p class="fine"><button type="button" class="link-button" id="market-search-read">Search from screen</button>: press it, then hover an item in game within 3 seconds, and the market shows that item.</p>
+      <details class="market-more" id="market-more"><summary>More filters <span id="market-filter-count"></span></summary><div class="market-filters">
+        <label class="field">Category<select id="market-category"><option value="">All categories</option></select></label>
+        <label class="field">Type<select id="market-type" disabled><option value="">Any type</option></select></label>
+        <label class="field">Job<select id="market-job"><option value="">Any job</option></select></label>
+        <label class="field">Level<span class="market-stat"><input id="market-level-min" type="number" min="0" max="200" placeholder="from"><input id="market-level-max" type="number" min="0" max="200" placeholder="to"></span></label>
         <label class="field">Stat at least<span class="market-stat"><select id="market-stat"><option value="">any stat</option></select><input id="market-stat-min" type="number" min="1" max="999" placeholder="0"></span></label>
         <label class="field">Slots left at least<input id="market-slots" type="number" min="0" max="20" placeholder="any"></label>
-        <label class="field">Max price<input id="market-max" type="text" inputmode="numeric" placeholder="e.g. 2m"></label></div>
+        <label class="field">Scroll success<select id="market-success"><option value="">any</option><option value="10">10%+</option><option value="30">30%+</option><option value="60">60%+</option><option value="70">70%+</option><option value="100">100%</option></select></label>
+        <label class="field">Max price<input id="market-max" type="text" inputmode="numeric" placeholder="e.g. 2m"></label>
+      </div><button type="button" class="link-button" id="market-clear">Clear filters</button></details>
       <div id="market-book" aria-live="polite"></div><div id="market-list" aria-live="polite"></div>
       <p class="fine">Listings last 7 days, then the poster can relist them. Anything wrong with a listing (a scam, real-money offer or fake item)? Use its Report link.</p></section>
     <section class="card" aria-labelledby="market-post-title"><h2 id="market-post-title">List an item</h2>
       <div class="market-side-pick" role="radiogroup"><label class="toggle"><input type="radio" name="market-post-side" value="sell" checked> I'm selling</label><label class="toggle"><input type="radio" name="market-post-side" value="buy"> I'm buying</label></div>
+      <div class="action-row market-read"><button type="button" class="button light" id="market-read">Read item from game screen</button>${UNTESTED}</div><p class="fine">With Live GPS on, press this, then hover the item in game within 3 seconds so its tooltip shows: the name, stats and slots are filled in for you to check.</p><p class="fine" id="market-read-note" role="status"></p>
       <div class="market-combo"><label class="field">Item<input id="market-item" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="market-item-suggest" placeholder="Type to search all items, or a custom name"></label><ul id="market-item-suggest" class="market-suggest" role="listbox" hidden></ul></div>
       <div id="market-item-card"></div>
       <div class="sell-fields"><label class="field">Price each (mesos)<input id="market-price" inputmode="numeric" placeholder="e.g. 1.5m or 250k"></label><label class="field">How many<input id="market-qty" type="number" min="1" max="9999" value="1"></label></div>
       <div class="sell-fields"><label class="field">Your character name<input id="market-ign" maxlength="12" placeholder="as in game"></label><label class="field">Channel (optional)<input id="market-channel" type="number" min="1" max="40"></label></div>
       <label class="field">Note (optional)<input id="market-note" maxlength="200" placeholder="e.g. clean, can meet in Henesys"></label>
+      <div id="market-offer-settings" class="market-offer-settings"><label class="toggle"><input type="checkbox" id="market-offers" checked> Accept offers</label><label class="field">Lowest offer I'll consider (optional)<input id="market-min-offer" inputmode="numeric" placeholder="e.g. 1.2m"></label></div>
       <p class="fine">By posting you agree the trade happens in game, in mesos, between you and the other player. Your character name and channel are shown to everyone.</p><div class="action-row"><button type="button" class="button" id="market-post">Post listing</button></div><p class="fine" id="market-post-note" role="status"></p>
-      <div class="divider"></div><h3 class="sub-title">My listings</h3><div id="market-mine"></div></section>
+      <div class="divider"></div><h3 class="sub-title">My listings</h3><div id="market-mine"></div><h3 class="sub-title">My offers</h3><div id="market-my-offers"></div></section>
 <section class="card" aria-labelledby="feedback-title"><h2 id="feedback-title">Report a problem or a drop</h2><p class="muted">Opens a GitHub issue already filled in with what Maple Route saw (map names, the last mini map reads, your screen size). You read it and press Submit yourself; nothing is sent before that. Chat, character names and other players are never included.</p>
       <label class="field">What went wrong (optional)<input id="report-what" maxlength="300" placeholder="e.g. it thought I was on Henesys Hunting Ground II"></label>
       <div class="action-row"><button type="button" class="button secondary" id="report-problem">Report a problem</button><button type="button" class="button light" id="report-copy">Copy mini map picture</button></div><p class="fine" id="report-note" role="status"></p>
@@ -2316,7 +2327,7 @@ $('#report-copy').addEventListener('click', async () => {
 });
 
 // ---------- Market (player listings: src/market.js, src/marketstore.js) ----------
-const market = { store: createMarketStore(), catalog: null, byId: new Map(), listings: [], mine: [], me: null, item: null, loading: false, error: '', loadedAt: 0, active: 0 };
+const market = { store: createMarketStore(), catalog: null, byId: new Map(), listings: [], mine: [], offers: [], offerFor: null, me: null, item: null, loading: false, error: '', loadedAt: 0, active: 0 };
 // The item a listing is for: from the game files, or rebuilt from the name for a custom item.
 const marketItem = listing => listing.item_id === 'custom' ? customItem(listing.item_name) : market.byId.get(listing.item_id);
 const IGN_KEY = 'maple-route-market-ign';
@@ -2327,12 +2338,13 @@ async function loadMarket(force = false) {
   market.loading = true; renderMarket();
   try {
     if (!market.catalog) {
-      const response = await fetch(MARKET_ITEMS);
+      const [response, cash] = await Promise.all([fetch(MARKET_ITEMS), fetch(MARKET_CASH).then(r => r.ok ? r.json() : null).catch(() => null)]);
       if (!response.ok) throw new Error('The item list is unavailable right now.');
-      market.catalog = fromOsmsItems(await response.json()); market.byId = new Map(market.catalog.map(item => [item.id, item]));
+      market.catalog = fromOsmsItems(await response.json(), cash); market.byId = new Map(market.catalog.map(item => [item.id, item]));
+      market.facets = catalogFacets(market.catalog.filter(item => item.tradeable !== false)); fillTypes();
     }
     market.me = await market.store.me();
-    [market.listings, market.mine] = await Promise.all([market.store.list(), market.store.mine()]);
+    [market.listings, market.mine, market.offers] = await Promise.all([market.store.list(), market.store.mine(), market.store.offers().catch(() => [])]);
     market.error = ''; market.loadedAt = Date.now();
   } catch (error) { market.error = error?.message || 'The marketplace is unavailable right now.'; }
   finally { market.loading = false; renderMarket(); }
@@ -2345,17 +2357,48 @@ function listingHtml(listing) {
   const report = issueUrl({ title: `Listing report: ${listing.item_name} by ${listing.ign}`, body: `Listing ${listing.id}: ${listing.side} ${listing.item_name} for ${listing.price} mesos by ${listing.ign}.\n\nWhat is wrong with it?\n`, labels: ['listing'] });
   return `<li class="market-row"><div class="market-main"><span class="pill ${listing.side === 'sell' ? 'sell' : 'buy'}">${listing.side === 'sell' ? 'Selling' : 'Buying'}</span> <strong>${esc(listing.item_name)}</strong>${listing.item_id === 'custom' ? ' <small class="pill">custom</small>' : ''}${listing.quantity > 1 ? ` ×${listing.quantity}` : ''} <span class="market-price">${formatMesos(listing.price)}${listing.quantity > 1 ? ' each' : ''}</span>
     ${item?.equip && listing.side === 'sell' && equipSummary(listing, item) ? `<div class="fine">${esc(equipSummary(listing, item))}</div>` : ''}${detail}
-    <div class="fine">${esc(listing.ign)}${listing.channel ? ` · ch ${listing.channel}` : ''} · ${ago(listing.created_at)}${listing.note ? ` · “${esc(listing.note)}”` : ''}${mine ? (isExpired(listing) ? ' · <strong class="market-expired">expired: hidden from others</strong>' : ` · expires in ${daysLeft(listing)} day${daysLeft(listing) === 1 ? '' : 's'}`) : ''}</div></div>
+    <div class="fine">${esc(listing.ign)}${listing.channel ? ` · ch ${listing.channel}` : ''} · ${ago(listing.created_at)}${listing.note ? ` · “${esc(listing.note)}”` : ''}${mine ? (isExpired(listing) ? ' · <strong class="market-expired">expired: hidden from others</strong>' : ` · expires in ${daysLeft(listing)} day${daysLeft(listing) === 1 ? '' : 's'}`) : ''}</div>
+    ${offersHtml(listing, mine)}</div>
     <div class="market-actions"><button type="button" class="button light" data-market-find="${esc(listing.ign)}">Copy /find</button>${mine ? `${isExpired(listing) ? `<button type="button" class="button secondary" data-market-relist="${esc(listing.id)}">Relist for 7 days</button>` : ''}<button type="button" class="button light" data-market-remove="${esc(listing.id)}">Remove</button>` : `<a class="link-button subtle" href="${esc(report)}" target="_blank" rel="noopener">Report</a>`}</div></li>`;
 }
+// Offers under a listing. Others' selling listings: the terms, "Make an offer" (and your offer, if
+// any). Your own: the offers received with Accept / Decline, and the offer settings to change.
+const offerStatus = { open: 'waiting for the seller', accepted: 'accepted', declined: 'declined' };
+function offersHtml(listing, mine) {
+  if (listing.side !== 'sell') return '';
+  const terms = `<div class="fine market-terms">${esc(offerTerms(listing))}</div>`;
+  if (!mine) {
+    const own = market.offers.find(o => o.listing_id === listing.id && o.owner === market.me);
+    const form = market.offerFor === listing.id ? `<div class="market-offer-form"><div class="sell-fields"><label class="field">Your offer (mesos each)<input data-offer-price inputmode="numeric" placeholder="${listing.min_offer ? `at least ${formatMesos(listing.min_offer)}` : 'e.g. 1.2m'}"></label><label class="field">Your character name<input data-offer-ign maxlength="12" value="${esc(localStorage.getItem(IGN_KEY) ?? '')}"></label></div><label class="field">Note (optional)<input data-offer-note maxlength="120" placeholder="e.g. online now, Henesys ch 3"></label><div class="action-row"><button type="button" class="button" data-offer-send="${esc(listing.id)}">Send offer</button><button type="button" class="link-button" data-offer-cancel>Cancel</button></div><p class="fine" data-offer-note-out></p></div>` : '';
+    const yours = own ? `<div class="fine market-my-offer">Your offer: <b>${formatMesos(own.price)}</b> · ${offerStatus[own.status] ?? own.status}${own.status === 'accepted' ? ` · whisper <b>${esc(listing.ign)}</b> in game to trade` : ''} <button type="button" class="link-button" data-offer-remove="${esc(own.id)}">withdraw</button></div>` : '';
+    const button = listing.offers_allowed !== false && !own && market.offerFor !== listing.id && !isExpired(listing) ? `<button type="button" class="link-button" data-offer-open="${esc(listing.id)}">Make an offer</button>` : '';
+    return terms + yours + button + form;
+  }
+  const received = market.offers.filter(o => o.listing_id === listing.id).sort((a, b) => b.price - a.price);
+  const rows = received.map(o => `<li class="market-offer ${o.status}"><span><b>${formatMesos(o.price)}</b>${o.quantity > 1 ? ` ×${o.quantity}` : ''} from <b>${esc(o.ign)}</b> · ${ago(o.created_at)}${o.note ? ` · “${esc(o.note)}”` : ''} · ${o.status === 'open' ? 'new' : o.status}</span>
+    <span class="market-offer-actions">${o.status === 'open' ? `<button type="button" class="button secondary" data-offer-answer="${esc(o.id)}" data-status="accepted">Accept</button><button type="button" class="button light" data-offer-answer="${esc(o.id)}" data-status="declined">Decline</button>` : ''}<button type="button" class="button light" data-market-find="${esc(o.ign)}">Copy /find</button><button type="button" class="link-button" data-offer-remove="${esc(o.id)}">clear</button></span></li>`).join('');
+  const settings = `<div class="market-offer-edit"><label class="toggle"><input type="checkbox" data-offer-allowed="${esc(listing.id)}"${listing.offers_allowed !== false ? ' checked' : ''}> Accept offers</label><label class="field">Lowest offer<input data-offer-min="${esc(listing.id)}" inputmode="numeric" value="${listing.min_offer ? esc(String(listing.min_offer)) : ''}" placeholder="any"${listing.offers_allowed === false ? ' disabled' : ''}></label><button type="button" class="link-button" data-offer-save="${esc(listing.id)}">save</button></div>`;
+  return terms + (rows ? `<ul class="market-offers">${rows}</ul>` : '<div class="fine">No offers yet.</div>') + settings;
+}
+// Open offers waiting on your listings: shown on the Market tab so sellers notice.
+function renderOfferBadge() {
+  const mineIds = new Set((market.mine ?? []).map(l => l.id));
+  const waiting = market.offers.filter(o => o.status === 'open' && mineIds.has(o.listing_id)).length;
+  const link = document.querySelector('.top-link[href="#market"]');
+  if (link) link.textContent = waiting ? `Market (${waiting})` : 'Market';
+}
+
 function renderMarket() {
   if (!$('#market-list')) return;
   $('#market-mode').textContent = market.store.shared ? 'Shared with all players' : 'Practice: only on this PC';
   if (market.error) { $('#market-list').innerHTML = `<p class="fine">${esc(market.error)} <button type="button" class="link-button" data-market-refresh>Try again</button></p>`; return; }
   if (market.loading && !market.listings.length) { $('#market-list').innerHTML = '<p class="fine">Loading listings…</p>'; return; }
   const stat = $('#market-stat').value, statMin = Number($('#market-stat-min').value) || 0, slots = $('#market-slots').value === '' ? null : Number($('#market-slots').value), max = $('#market-max').value.trim() ? parseMesos($('#market-max').value) : null;
-  const shown = filterListings(market.listings, { query: $('#market-query').value, side: $('#market-side').value, minStats: stat ? { [stat]: statMin } : {}, minSlots: slots, maxPrice: Number.isFinite(max) ? max : null })
-    .sort((a, b) => a.side === b.side ? (a.side === 'sell' ? a.price - b.price : b.price - a.price) : a.side === 'sell' ? -1 : 1);
+  const num = id => $(id).value === '' ? null : Number($(id).value);
+  const filters = { category: $('#market-category').value, type: $('#market-type').value, job: $('#market-job').value, minLevel: num('#market-level-min'), maxLevel: num('#market-level-max'), minSuccess: num('#market-success'), minStats: stat ? { [stat]: statMin } : {}, minSlots: slots, maxPrice: Number.isFinite(max) ? max : null };
+  const active = Object.values(filters).filter(value => value !== '' && value != null && !(typeof value === 'object' && !Object.keys(value).length)).length;
+  $('#market-filter-count').textContent = active ? `(${active} on)` : '';
+  const shown = sortListings(filterListings(market.listings, { query: $('#market-query').value, side: $('#market-side').value, ...filters, itemOf: marketItem }), $('#market-sort').value);
   const ids = [...new Set(shown.map(l => l.item_id))];
   const book = ids.length === 1 ? priceBook(market.listings, ids[0]) : null;
   $('#market-book').innerHTML = book ? `<p class="fine"><strong>${esc(shown[0].item_name)}:</strong> lowest asking ${book.lowestAsk ? formatMesos(book.lowestAsk) : '—'} (${book.sells} selling) · highest offer ${book.highestBid ? formatMesos(book.highestBid) : '—'} (${book.buys} buying)</p>` : '';
@@ -2363,13 +2406,19 @@ function renderMarket() {
     : `<p class="fine">${market.listings.length ? 'No listings match.' : 'No listings yet. Be the first: list an item below.'} <button type="button" class="link-button" data-market-refresh>Refresh</button></p>`;
   // Your listings: live ones with the days left, expired ones (hidden from everyone else) to relist or remove.
   const mine = market.mine ?? [];
+  renderOfferBadge();
+  // Offers you made, with the seller's answer.
+  const made = market.offers.filter(o => o.owner === market.me);
+  $('#market-my-offers').innerHTML = made.length ? `<ul class="market-offers">${made.map(o => { const l = market.listings.find(x => x.id === o.listing_id);
+    return `<li class="market-offer ${o.status}"><span><b>${formatMesos(o.price)}</b> for ${esc(l?.item_name ?? 'a listing that has ended')}${l ? ` from <b>${esc(l.ign)}</b>` : ''} · ${offerStatus[o.status] ?? o.status}${o.status === 'accepted' && l ? ' · whisper them in game to trade' : ''}</span><span class="market-offer-actions">${o.status === 'accepted' && l ? `<button type="button" class="button secondary" data-market-find="${esc(l.ign)}">Copy /find</button>` : ''}<button type="button" class="link-button" data-offer-remove="${esc(o.id)}">${o.status === 'open' ? 'withdraw' : 'clear'}</button></span></li>`; }).join('')}</ul>` : '<p class="fine">No offers made. Use "Make an offer" on a listing that takes offers.</p>';
   $('#market-mine').innerHTML = mine.length ? `<ul class="market-rows">${mine.map(listingHtml).join('')}</ul>` : '<p class="fine">Nothing listed. Listings stay up for 7 days; remove one when the item is gone, or relist it when it expires.</p>';
 }
 // The item picked for a new listing: its clean stats, and for selling equipment, fields for the real ones.
 function renderMarketItem() {
   const item = market.item, box = $('#market-item-card'), side = document.querySelector('input[name="market-post-side"]:checked')?.value;
   if (!item) { box.innerHTML = ''; return; }
-  const base = item.custom ? '<p class="fine">Custom item: not in the game\'s item list. If it is equipment, add its stats and slots (all optional).</p>' : item.equip ? `<p class="fine">${esc(item.type || item.category)}${item.reqLevel ? ` · Level ${item.reqLevel}` : ''}${item.job && item.job !== 'All' ? ` · ${esc(item.job)}` : ''} · ${item.slots} upgrade slot${item.slots === 1 ? '' : 's'} clean${Object.keys(item.base).length ? ` · clean stats: ${STATS.filter(([k]) => item.base[k]).map(([k, label]) => `${label} ${item.base[k]}`).join(', ')}` : ''}</p>` : `<p class="fine">${esc(item.category)}</p>`;
+  const unsure = item.unsure ? '<p class="fine market-expired">Only list it if the game lets you trade it (cash items and some others cannot be traded).</p>' : '';
+  const base = unsure + (item.custom ? '<p class="fine">Custom item: not in the game\'s item list. If it is equipment, add its stats and slots (all optional).</p>' : item.equip ? `<p class="fine">${esc(item.type || item.category)}${item.reqLevel ? ` · Level ${item.reqLevel}` : ''}${item.job && item.job !== 'All' ? ` · ${esc(item.job)}` : ''} · ${item.slots} upgrade slot${item.slots === 1 ? '' : 's'} clean${Object.keys(item.base).length ? ` · clean stats: ${STATS.filter(([k]) => item.base[k]).map(([k, label]) => `${label} ${item.base[k]}`).join(', ')}` : ''}</p>` : `<p class="fine">${esc(item.category === 'Consumable' ? 'Use' : item.category)}${item.type ? ` · ${esc(item.type)}` : ''}${item.success != null ? ` · ${item.success}% success` : ''}</p>`);
   const fields = item.equip && side === 'sell' ? `<p class="fine">${item.custom ? 'Its stats, if any:' : 'Enter the item\'s stats as they are now (they start at the clean values):'}</p><div class="market-stat-grid">${STATS.map(([key, label]) => `<label class="field">${label}<input type="number" data-market-stat="${key}" value="${item.base[key] ?? ''}" placeholder="0"></label>`).join('')}</div>
     <div class="sell-fields"><label class="field">Upgrade slots left<input id="market-slots-left" type="number" min="0" max="${item.custom ? 20 : item.slots + 2}" value="${item.custom ? '' : item.slots}" placeholder="${item.custom ? 'optional' : ''}"></label><label class="field">Scrolls passed<input id="market-scrolled" type="number" min="0" max="${item.custom ? 20 : item.slots + 2}" value="${item.custom ? '' : 0}" placeholder="${item.custom ? 'optional' : ''}"></label></div>` : '';
   box.innerHTML = `<div class="market-item"><strong>${esc(item.name)}</strong>${base}${fields}</div>`;
@@ -2378,17 +2427,20 @@ function renderMarketItem() {
 function renderItemSuggest() {
   const list = $('#market-item-suggest'), text = $('#market-item').value.trim();
   const found = market.catalog ? searchItems(market.catalog, text, 30) : [];
-  const custom = customItem(text);
+  // A game item that cannot be traded is never offered, not even typed in as a custom item.
+  const blocked = market.catalog?.find(item => item.tradeable === false && normalize(item.name) === normalize(text));
+  const custom = blocked ? null : customItem(text);
   const options = [...found.map(item => ({ id: item.id, html: `${esc(item.name)} <small>${esc(item.equip ? `${item.type || 'Equip'}${item.reqLevel ? ` · Lv ${item.reqLevel}` : ''}` : item.category)}</small>` })),
     ...(custom && !found.some(item => item.name.toLowerCase() === text.toLowerCase()) ? [{ id: 'custom', html: `<span class="market-custom">Custom item:</span> “${esc(custom.name)}” <small>not in the item list</small>` }] : [])];
   market.active = Math.min(market.active, Math.max(0, options.length - 1));
-  list.innerHTML = !market.catalog && text ? '<li class="market-suggest-note">Loading the item list…</li>'
+  list.innerHTML = blocked && !options.length ? `<li class="market-suggest-note">${esc(blocked.name)} cannot be traded in game, so it cannot be listed.</li>` : !market.catalog && text ? '<li class="market-suggest-note">Loading the item list…</li>'
     : options.map((option, i) => `<li role="option" id="market-opt-${i}" class="${i === market.active ? 'active' : ''}" aria-selected="${i === market.active}" data-market-pick="${esc(option.id)}">${option.html}</li>`).join('');
   list.hidden = !text || !list.innerHTML; $('#market-item').setAttribute('aria-expanded', String(!list.hidden));
   if (!list.hidden) list.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
 }
 function pickMarketItem(id) {
-  market.item = id === 'custom' ? customItem($('#market-item').value) : market.byId.get(id) ?? null;
+  const typed = $('#market-item').value, blocked = market.catalog?.some(item => item.tradeable === false && normalize(item.name) === normalize(typed));
+  market.item = id === 'custom' ? (blocked ? null : customItem(typed)) : market.byId.get(id) ?? null;
   if (market.item) $('#market-item').value = market.item.name;
   $('#market-item-suggest').hidden = true; $('#market-item').setAttribute('aria-expanded', 'false');
   renderMarketItem();
@@ -2403,18 +2455,85 @@ $('#market-item').addEventListener('keydown', event => {
   else if (event.key === 'Escape') { $('#market-item-suggest').hidden = true; }
 });
 document.addEventListener('pointerdown', event => { if (!event.target.closest('.market-combo')) $('#market-item-suggest').hidden = true; });
-for (const id of ['#market-query', '#market-side', '#market-stat', '#market-stat-min', '#market-slots', '#market-max']) $(id).addEventListener('input', renderMarket);
-document.querySelectorAll('input[name="market-post-side"]').forEach(radio => radio.addEventListener('change', renderMarketItem));
+// Filter choices: categories, jobs and sorts are fixed; types follow the chosen category.
+for (const [value, label] of SORTS) $('#market-sort').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
+for (const [value, label] of CATEGORIES) $('#market-category').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
+for (const [value, label] of JOBS) $('#market-job').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
+function fillTypes() {
+  const types = market.facets?.[$('#market-category').value] ?? [], select = $('#market-type'), keep = select.value;
+  select.innerHTML = '<option value="">Any type</option>' + types.map(type => `<option value="${esc(type)}">${esc(type)}</option>`).join('');
+  select.value = types.includes(keep) ? keep : ''; select.disabled = !types.length;
+}
+$('#market-category').addEventListener('change', () => { fillTypes(); renderMarket(); });
+$('#market-clear').addEventListener('click', () => {
+  for (const id of ['#market-category', '#market-type', '#market-job', '#market-level-min', '#market-level-max', '#market-stat', '#market-stat-min', '#market-slots', '#market-success', '#market-max']) $(id).value = '';
+  fillTypes(); renderMarket();
+});
+for (const id of ['#market-query', '#market-side', '#market-sort', '#market-type', '#market-job', '#market-level-min', '#market-level-max', '#market-stat', '#market-stat-min', '#market-slots', '#market-success', '#market-max']) $(id).addEventListener('input', renderMarket);
+const offerSettingsShown = () => { $('#market-offer-settings').hidden = document.querySelector('input[name="market-post-side"]:checked')?.value !== 'sell'; $('#market-min-offer').disabled = !$('#market-offers').checked; };
+document.querySelectorAll('input[name="market-post-side"]').forEach(radio => radio.addEventListener('change', () => { renderMarketItem(); offerSettingsShown(); }));
+$('#market-offers').addEventListener('change', offerSettingsShown);
+// Reads the hovered item's tooltip off the shared game screen (the whole frame, then the catalog
+// names and "STR : +3" lines in it). Nothing is sent anywhere: the picture is read on this PC.
+async function readItemFromScreen(note) {
+  const live = state.live;
+  if (!live || live.paused) { note('Start Live GPS first: the item is read from the same shared game window.'); return null; }
+  if (!market.catalog) await loadMarket(true);
+  if (!market.catalog) { note('The item list is unavailable right now.'); return null; }
+  // You cannot hover an item and press this button at once: count down, then read.
+  for (let left = 3; left > 0; left--) { note(`Hover the item in game now so its tooltip shows… reading in ${left}`); await new Promise(resolve => setTimeout(resolve, 1000)); }
+  note('Reading the screen… (a few seconds)');
+  let worker = null;
+  try {
+    const grabbed = await live.capture.grab();
+    worker = await createOcrWorker();
+    // The top four fifths: the bottom of the screen is chat and the status bars, never the tooltip you want.
+    const crop = document.createElement('canvas'); crop.width = grabbed.width; crop.height = Math.round(grabbed.height * .8);
+    crop.getContext('2d').drawImage(grabbed.source, 0, 0, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    // Your own copy only (dev server): keep the exact picture read, so tooltip reading can be tuned.
+    if (import.meta.env.DEV && isLocalHost()) fetch('/__live-log', { method: 'POST', body: JSON.stringify({ kind: 'item-frame', t: new Date().toISOString().slice(11, 19), image: crop.toDataURL('image/jpeg', .85) }) }).catch(() => {});
+    const text = await readWholeFrame(worker, crop, crop.width, crop.height);
+    const read = parseTooltip(text, market.catalog);
+    logTest('item-read', { item: read.item?.name ?? null, stats: read.stats, slotsLeft: read.slotsLeft, candidates: read.candidates.map(i => i.name), text: text.slice(0, 1500) });
+    if (!read.item) { note('No item name found on screen. Hover the item so its tooltip shows, then try again.'); return null; }
+    return read;
+  } catch { note('Could not read the screen right now.'); return null; }
+  finally { try { await worker?.terminate(); } catch { /* already gone */ } }
+}
+$('#market-read').addEventListener('click', async () => {
+  const note = text => { $('#market-read-note').innerHTML = text; };
+  $('#market-read').disabled = true;
+  const read = await readItemFromScreen(note);
+  $('#market-read').disabled = false;
+  if (!read) return;
+  document.querySelector('input[name="market-post-side"][value="sell"]').checked = true; offerSettingsShown();
+  market.item = read.item; $('#market-item').value = read.item.name; renderMarketItem();
+  for (const [key, value] of Object.entries(read.stats)) { const input = document.querySelector(`[data-market-stat="${key}"]`); if (input) input.value = value; }
+  if (read.slotsLeft != null && $('#market-slots-left')) $('#market-slots-left').value = read.slotsLeft;
+  const statText = Object.entries(read.stats).map(([key, value]) => `${STATS.find(([k]) => k === key)?.[1]} ${value}`).join(', ');
+  const others = read.candidates.slice(1).map(item => `<button type="button" class="link-button" data-market-pick="${esc(item.id)}">${esc(item.name)}</button>`).join(', ');
+  note(`Read <b>${esc(read.item.name)}</b>${statText ? `: ${esc(statText)}` : ''}${read.slotsLeft != null ? `, ${read.slotsLeft} slots left` : ''}. Check everything before posting.${others ? ` Not it? ${others}` : ''}`);
+});
+$('#market-search-read').addEventListener('click', async () => {
+  const button = $('#market-search-read'), label = button.textContent;
+  const read = await readItemFromScreen(text => { button.textContent = text.length > 60 ? `${text.slice(0, 57)}…` : text; });
+  setTimeout(() => { button.textContent = label; }, read ? 0 : 4000);
+  if (read) { $('#market-query').value = read.item.name; renderMarket(); }
+});
+
 $('#market-post').addEventListener('click', async () => {
   const note = text => { $('#market-post-note').textContent = text; };
   const stats = {}; document.querySelectorAll('[data-market-stat]').forEach(input => { if (input.value !== '') stats[input.dataset.marketStat] = input.value; });
-  const { listing, errors } = checkListing({ side: document.querySelector('input[name="market-post-side"]:checked')?.value, price: $('#market-price').value, quantity: $('#market-qty').value, ign: $('#market-ign').value, channel: $('#market-channel').value, note: $('#market-note').value, stats, slotsLeft: $('#market-slots-left')?.value, scrolled: $('#market-scrolled')?.value }, market.item);
+  const { listing, errors } = checkListing({ side: document.querySelector('input[name="market-post-side"]:checked')?.value, price: $('#market-price').value, quantity: $('#market-qty').value, ign: $('#market-ign').value, channel: $('#market-channel').value, note: $('#market-note').value, offersAllowed: $('#market-offers').checked, minOffer: $('#market-min-offer').value, stats, slotsLeft: $('#market-slots-left')?.value, scrolled: $('#market-scrolled')?.value }, market.item);
   if (errors) { note(errors.join(' ')); return; }
   try { localStorage.setItem(IGN_KEY, listing.ign); } catch { /* storage blocked */ }
   $('#market-post').disabled = true; note('Posting…');
   try { await market.store.add(listing); note(`Listed: ${listing.item_name} for ${formatMesos(listing.price)}.`); $('#market-price').value = ''; $('#market-note').value = ''; await loadMarket(true); }
   catch (error) { note(error?.message || 'Could not post that right now.'); }
   finally { $('#market-post').disabled = false; }
+});
+document.addEventListener('change', event => {
+  const allowed = event.target.closest('[data-offer-allowed]'); if (allowed) { const min = document.querySelector(`[data-offer-min="${CSS.escape(allowed.dataset.offerAllowed)}"]`); if (min) min.disabled = !allowed.checked; }
 });
 document.addEventListener('click', async event => {
   const pick = event.target.closest('[data-market-pick]');
@@ -2423,6 +2542,34 @@ document.addEventListener('click', async event => {
   if (find) { const text = findCommand(find.dataset.marketFind); try { await navigator.clipboard.writeText(text); find.textContent = 'Copied'; setTimeout(() => { find.textContent = 'Copy /find'; }, 1500); } catch { find.textContent = text; } return; }
   const remove = event.target.closest('[data-market-remove]');
   if (remove) { remove.disabled = true; try { await market.store.remove(remove.dataset.marketRemove); } catch { /* shown on refresh */ } await loadMarket(true); return; }
+  // Offers
+  const openOffer = event.target.closest('[data-offer-open]');
+  if (openOffer) { market.offerFor = openOffer.dataset.offerOpen; renderMarket(); document.querySelector('[data-offer-price]')?.focus(); return; }
+  if (event.target.closest('[data-offer-cancel]')) { market.offerFor = null; renderMarket(); return; }
+  const send = event.target.closest('[data-offer-send]');
+  if (send) {
+    const form = send.closest('.market-offer-form'), out = form.querySelector('[data-offer-note-out]'), listing = market.listings.find(l => l.id === send.dataset.offerSend);
+    const { offer, errors } = checkOffer({ price: form.querySelector('[data-offer-price]').value, ign: form.querySelector('[data-offer-ign]').value, note: form.querySelector('[data-offer-note]').value }, listing, { me: market.me });
+    if (errors) { out.textContent = errors.join(' '); return; }
+    try { localStorage.setItem(IGN_KEY, offer.ign); } catch { /* storage blocked */ }
+    send.disabled = true; out.textContent = 'Sending…';
+    try { await market.store.makeOffer(offer); market.offerFor = null; await loadMarket(true); }
+    catch (error) { send.disabled = false; out.textContent = /lowest|not taking|not open|own listing|too many/i.test(error?.message ?? '') ? error.message : 'Could not send that offer right now.'; }
+    return;
+  }
+  const answer = event.target.closest('[data-offer-answer]');
+  if (answer) { answer.disabled = true; try { await market.store.answerOffer(answer.dataset.offerAnswer, answer.dataset.status); } catch { /* shown on refresh */ } await loadMarket(true); return; }
+  const removeOffer = event.target.closest('[data-offer-remove]');
+  if (removeOffer) { removeOffer.disabled = true; try { await market.store.removeOffer(removeOffer.dataset.offerRemove); } catch { /* shown on refresh */ } await loadMarket(true); return; }
+  const save = event.target.closest('[data-offer-save]');
+  if (save) {
+    const id = save.dataset.offerSave, listing = market.mine.find(l => l.id === id), allowed = document.querySelector(`[data-offer-allowed="${CSS.escape(id)}"]`).checked;
+    const minText = document.querySelector(`[data-offer-min="${CSS.escape(id)}"]`).value.trim(), min = allowed && minText ? parseMesos(minText) : null;
+    if (min !== null && (!Number.isFinite(min) || min < 1 || min > listing.price)) { save.textContent = 'lowest offer must be up to your price'; return; }
+    save.textContent = 'saving…';
+    try { await market.store.setOfferSettings(id, { offers_allowed: allowed, min_offer: min }); } catch { /* shown on refresh */ }
+    await loadMarket(true); return;
+  }
   // Relist: post it again for a fresh 7 days (the old copy is removed). Only ever done by the owner pressing it.
   const relist = event.target.closest('[data-market-relist]');
   if (relist) {

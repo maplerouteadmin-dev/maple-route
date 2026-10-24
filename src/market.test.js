@@ -75,3 +75,103 @@ test('listings run 7 days; an expired one can be relisted for a fresh 7', async 
   assert.deepEqual([daysLeft(old, now), isExpired(old, now)], [0, true]);
   assert.deepEqual(relistCopy(old, now), { item_name: 'Work Gloves', price: 5, expires_at: '2026-10-31T00:00:00.000Z' });
 });
+
+test('offers: allowed or not, a lowest offer, and the checks a buyer meets', async () => {
+  const { checkOffer, offerTerms } = await import('./market.js');
+  const now = Date.parse('2026-10-24T00:00:00Z');
+  const posted = checkListing({ side: 'sell', price: '2m', ign: 'Mapler01', minOffer: '1.5m' }, shell, now).listing;
+  assert.deepEqual([posted.offers_allowed, posted.min_offer], [true, 1500000]);
+  assert.deepEqual(checkListing({ side: 'sell', price: '2m', ign: 'Mapler01', offersAllowed: false, minOffer: '1m' }, shell, now).listing.min_offer, null);
+  assert.ok(checkListing({ side: 'sell', price: '2m', ign: 'Mapler01', minOffer: '3m' }, shell, now).errors); // above the asking price
+  assert.equal(checkListing({ side: 'buy', price: '2m', ign: 'Mapler01' }, shell, now).listing.offers_allowed, false);
+  const listing = { ...posted, id: 'L1', owner: 'seller', quantity: 1 };
+  assert.equal(offerTerms(listing), 'Offers from 1,500,000 mesos');
+  assert.deepEqual(checkOffer({ price: '1.6m', ign: 'Buyer01', note: 'can meet now' }, listing, { me: 'buyer', now }).offer, { listing_id: 'L1', price: 1600000, quantity: 1, ign: 'Buyer01', note: 'can meet now' });
+  assert.match(checkOffer({ price: '1m', ign: 'Buyer01' }, listing, { me: 'buyer', now }).errors.join(), /lowest offer is 1,500,000/);
+  assert.match(checkOffer({ price: '1.6m', ign: 'Buyer01' }, listing, { me: 'seller', now }).errors.join(), /your own listing/);
+  assert.match(checkOffer({ price: '1.6m', ign: 'Buyer01' }, { ...listing, offers_allowed: false }, { me: 'buyer', now }).errors.join(), /fixed price/);
+  assert.match(checkOffer({ price: '1.6m', ign: 'Buyer01', note: 'or $10 paypal' }, listing, { me: 'buyer', now }).errors.join(), /real-money/);
+  assert.equal(offerTerms({ ...listing, offers_allowed: false }), 'Fixed price: no offers');
+});
+
+test('filters: category, type (weapon kind), job, level, scroll success, cash items, sorting', async () => {
+  const { fromOsmsItems, catalogFacets, filterListings, sortListings, forJob } = await import('./market.js');
+  const cat = fromOsmsItems({ items: [
+    { id: 1452002, name: 'War Bow', category: 'Equipment', sub_category: 'Weapon', req_job_label: 'Bowman', stats: { reqLevel: 20, incPAD: 40, tuc: 7 } },
+    { id: 1040002, name: 'White Undershirt', category: 'Equipment', sub_category: 'Top', req_job_label: 'All', stats: { reqLevel: 0, tuc: 7 } },
+    { id: 1302000, name: 'Sword', category: 'Equipment', sub_category: 'Weapon', req_job_label: 'Warrior/Thief', stats: { reqLevel: 0, incPAD: 17, tuc: 7 } }
+  ], scrolls: [{ id: 2040805, name: 'Scroll for Gloves for DEX 60%', equip_slot: 'Gloves', stat_type: 'DEX', success_rate: 60 }, { id: 2040804, name: 'Scroll for Gloves for DEX 10%', equip_slot: 'Gloves', success_rate: 10 }] },
+  { categories: [{ category: 'Pet', items: [{ id: 5000000, name: 'Brown Kitty' }] }] });
+  const byId = new Map(cat.map(i => [i.id, i])), itemOf = l => byId.get(l.item_id);
+  assert.equal(byId.get('1452002').type, 'Bow'); assert.equal(byId.get('1302000').type, 'One-Handed Sword');
+  assert.deepEqual([byId.get('5000000').category, byId.get('5000000').type], ['Cash', 'Pet']);
+  assert.deepEqual(catalogFacets(cat).Equipment, ['Bow', 'One-Handed Sword', 'Top']);
+  assert.equal(forJob(byId.get('1302000'), 'Thief'), true); assert.equal(forJob(byId.get('1452002'), 'Thief'), false);
+  const later = '2026-11-30T00:00:00Z', now = Date.parse('2026-10-24T00:00:00Z');
+  const L = (id, item_id, price, created, expires = later) => ({ id, side: 'sell', item_id, item_name: byId.get(item_id)?.name ?? 'Thing', price, created_at: created, expires_at: expires });
+  const listings = [L(1, '1452002', 900, '2026-10-20'), L(2, '1040002', 50, '2026-10-22'), L(3, '1302000', 300, '2026-10-23', '2026-10-25T00:00:00Z'), L(4, '2040805', 400, '2026-10-21'), L(5, '2040804', 20, '2026-10-21'), L(6, '5000000', 5000, '2026-10-19'), { ...L(7, 'custom', 70, '2026-10-18'), item_id: 'custom', item_name: 'Odd Hat' }];
+  const ids = f => filterListings(listings, { ...f, itemOf, now }).map(l => l.id);
+  assert.deepEqual(ids({ category: 'Equipment' }), [1, 2, 3]);
+  assert.deepEqual(ids({ category: 'Equipment', type: 'Bow' }), [1]);
+  assert.deepEqual(ids({ job: 'Thief' }), [2, 3]); // All + Warrior/Thief
+  assert.deepEqual(ids({ minLevel: 10 }), [1]);
+  assert.deepEqual(ids({ category: 'Scroll', minSuccess: 60 }), [4]);
+  assert.deepEqual(ids({ category: 'Cash' }), [6]);
+  assert.deepEqual(ids({ category: 'Custom' }), [7]);
+  assert.deepEqual(sortListings(listings, 'price-desc').map(l => l.id).slice(0, 2), [6, 1]);
+  assert.deepEqual(sortListings(listings, 'newest').map(l => l.id)[0], 3);
+  assert.deepEqual(sortListings(listings, 'ending').map(l => l.id)[0], 3);
+});
+
+test('only tradeable items can be listed', async () => {
+  const { fromOsmsItems, searchItems, checkListing } = await import('./market.js');
+  const cat = fromOsmsItems({ items: [
+    { id: 4031000, name: "Roger's Apple", category: 'Etc', stats: { tradeBlock: '1' } },
+    { id: 4031001, name: "Sera's Mirror", category: 'Etc', stats: { quest: 1 } },
+    { id: 4000000, name: 'Blue Snail Shell', category: 'Etc', stats: {} }
+  ] });
+  assert.deepEqual(cat.map(i => i.tradeable), [false, false, true]);
+  assert.deepEqual(searchItems(cat, 's').map(i => i.name), ['Blue Snail Shell']);
+  assert.match(checkListing({ side: 'sell', price: '1k', ign: 'Mapler01' }, cat[1]).errors.join(), /cannot be traded/);
+});
+
+test('an item tooltip read off the screen becomes a listing draft', async () => {
+  const { parseTooltip, fromOsmsItems } = await import('./market.js');
+  const cat = fromOsmsItems({ items: [
+    { id: 1452002, name: 'War Bow', category: 'Equipment', sub_category: 'Weapon', req_job_label: 'Bowman', stats: { reqLevel: 10, incPAD: 30, tuc: 7 } },
+    { id: 1452003, name: 'Wooden Bow', category: 'Equipment', sub_category: 'Weapon', req_job_label: 'Bowman', stats: { reqLevel: 5, incPAD: 20, tuc: 7 } },
+    { id: 4000000, name: 'Blue Snail Shell', category: 'Etc', stats: {} }
+  ] });
+  // OCR of a tooltip, with the usual slips (| for I, stray spaces).
+  const text = 'War Bow\nREQ LEV : 10\nREQ DEX : 25\nCategory : Bow\nAttack Speed : Normal\nDEX : +3\nWeapon Attack : 33\nAccuracy: +2\nNumber of upgrades available : 4\n[trade chat] S> Wooden Bow 50k';
+  const read = parseTooltip(text, cat);
+  assert.equal(read.item.name, 'War Bow');
+  assert.deepEqual(read.stats, { incDEX: 3, incPAD: 33, incACC: 2 });
+  assert.equal(read.slotsLeft, 4);
+  assert.equal(parseTooltip('Blue Snai1 Shell\nQuantity : 30', cat).item.name, 'Blue Snail Shell'); // a 1 read for l
+  assert.deepEqual(parseTooltip('Blue Snail Shell', cat).stats, {});
+  assert.equal(parseTooltip('nothing useful here', cat).item, null);
+});
+
+test('real tooltip reads: matched by description, chat adverts ignored', async () => {
+  const { parseTooltip, fromOsmsItems } = await import('./market.js');
+  const cat = fromOsmsItems({ items: [
+    { id: 2000002, name: 'White Potion', category: 'Consumable', description: 'A highly concentrated potion made out of red herbs.\nRestores 500 HP.' },
+    { id: 2000001, name: 'Orange Potion', category: 'Consumable', description: 'A concentrated potion made out of red herbs.\nRestores 250 HP.' },
+    { id: 2000000, name: 'Red Potion', category: 'Consumable', description: 'A potion made out of red herbs.\nRestores 100 HP.' },
+    { id: 2010004, name: 'Orange', category: 'Consumable', description: 'A sweet, tasty orange.\nRestores around 50 MP.' },
+    { id: 2010009, name: 'Meat', category: 'Consumable', description: 'Tasty-looking meat.\nRestores around 160 HP.' },
+    { id: 2070000, name: 'Subi Throwing Stars', category: 'Consumable', description: 'Throwing stars made out of steel. Once they run out, they need to be recharged.' },
+    { id: 2070006, name: 'Ilbi Throwing Stars', category: 'Consumable', description: 'Throwing stars made out of steel. Once they run out, they need to be recharged.' },
+    { id: 1372999, name: 'Soft Chocolate Fondue Scepter', category: 'Equipment', sub_category: 'Weapon', stats: { tuc: 7 } }
+  ] });
+  // Text as Live GPS read it in play (inventory tooltips + trade chat), player names left out.
+  const orangePotion = 'ITEM INVENTORY\nSli\nA concentrated potion made out\n1,\nof red herbs\nRestores 250 HP\nKumbi 3\nets\n280K each\nft Chocolate Fondue Scepter PMO\nHP e46/646';
+  assert.equal(parseTooltip(orangePotion, cat).item.name, 'Orange Potion');
+  const orange = 'ITEM INVENTORY\nA sweet, tasty orange.\n1\n118\nRestores around 50 MP\nB> Kumbi 3 sets\nscepter PMO';
+  assert.equal(parseTooltip(orange, cat).item.name, 'Orange');
+  const stars = 'Pinca N SHE q subi Throwing stars\nREQ LEV : 10\nThrowing stars made out of\nsteel. Once they run out, they\nneed to be recharged\nAttack +15\nKumbi 3\nsets\n280K each\nft Chocolate Fondue Scepter PMO';
+  assert.equal(parseTooltip(stars, cat).item.name, 'Subi Throwing Stars');
+  assert.equal(parseTooltip('ft Chocolate Fondue Scepter PMO\nB> Meat 10k each', cat).item, null); // only chat: nothing
+});
+
