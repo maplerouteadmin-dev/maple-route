@@ -1,5 +1,5 @@
 import { editDistance, normalize, shortestRoute } from './core.js';
-import { refineRecipe } from './refine.js';
+import { craftRecipe, craftNeeds } from './refine.js';
 
 // What the player should be doing right now for one quest, from the live Quest Helper counts (or the
 // wiki steps when the quest is not on screen): hunt/collect on the best map, or hand the quest in.
@@ -37,36 +37,66 @@ export const helperComplete = (quest, expectedNeeds = null) => Boolean(quest?.pr
 
 // When the wiki has no drop record for an item, the quest's own text often names the monsters
 // ("I can get them by defeating Stump, Orange Mushroom, and Octopus"); those become `guess` goals.
-export function huntGoals(data, progress, itemSources = {}, questText = '', allNeeds = []) {
-  const goals = progress.filter(p => !p.done).map(p => {
+export function huntGoals(data, progress, itemSources = {}, questText = '', allNeeds = [], crafting = null) {
+  const goals = progress.filter(p => !p.done).flatMap(p => {
     const mob = mobByName(data, p.name);
     if (mob) return { ...p, kind: 'kill', monsters: [mob.name], pending: false };
-    // A jewel or ingot: hunt its ore (10 per item), then have it refined (`refine` says where).
-    const recipe = refineRecipe(p.name);
-    if (recipe) {
-      const droppers = itemSources[recipe.ore];
-      return { ...p, kind: 'collect', lookup: recipe.ore, refine: recipe, ores: Math.max(1, (p.need ?? 1) - (p.have ?? 0)) * recipe.per, monsters: (droppers ?? []).filter(name => mobByName(data, name)), pending: droppers === undefined };
-    }
+    // Made, not dropped (a Garnet, an ingot, a Screw): each ingredient becomes a goal, and `craft`
+    // says where to make it (the game files' recipe; the trip passes that NPC before the hand-in).
+    // An ingredient that is itself made (Screws for a Monkey Wrench) is expanded once more.
+    const expand = (name, count, depth) => {
+      const recipe = itemSources[name]?.length || depth > 2 ? null : craftRecipe(crafting, name);
+      if (!recipe) return null;
+      const plan = craftNeeds(recipe, count);
+      const craft = { item: name, discipline: recipe.discipline, npc: recipe.npcs.find(npc => npcMap(data, npc)) ?? recipe.npc, npcs: recipe.npcs, town: recipe.town, meso: plan.meso, makes: count };
+      return plan.ingredients.flatMap(i => {
+        const mob = mobByName(data, i.name), droppers = itemSources[i.name];
+        if (mob) return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'kill', monsters: [mob.name], pending: false, craft }];
+        if (!droppers?.length) { const deeper = expand(i.name, i.count, depth + 1); if (deeper) return deeper; }
+        return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'collect', lookup: i.name, craft, monsters: (droppers ?? []).filter(mobName => mobByName(data, mobName)), pending: droppers === undefined }];
+      });
+    };
+    const crafted = expand(p.name, Math.max(1, (p.need ?? 1) - (p.have ?? 0)), 1);
+    if (crafted) return crafted;
     const droppers = itemSources[p.name];
     return { ...p, kind: 'collect', monsters: (droppers ?? []).filter(name => mobByName(data, name)), pending: droppers === undefined };
   });
-  const missing = goals.filter(g => g.kind === 'collect' && !g.refine && !g.pending && !g.monsters.length);
-  if (!missing.length || !questText) return goals;
-  const named = textMonsters(data, questText);
-  // Which named monster drops which item: a shared word ("Omok Piece: Mushroom" → Orange Mushroom),
-  // otherwise the named monsters no other need accounts for (Omok Table → Stump).
-  const words = name => normalize(name).split(' ').filter(word => word.length >= 3);
-  const byWord = item => named.filter(mob => words(mob).some(word => words(item).includes(word.replace(/s$/, '')) || words(item).includes(word)));
-  // Monsters already accounted for by any need, finished ones included (the Octopus of a finished
+  const missing = goals.filter(g => g.kind === 'collect' && !g.pending && !g.monsters.length);
+  if (!missing.length) return goals;
+  const named = questText ? textMonsters(data, questText) : [];
+  const mobNames = (data.targets ?? []).filter(t => t.kind === 'mob').map(t => t.name);
+  const words = name => normalize(name).split(' ').filter(word => word.length >= 3).map(word => word.replace(/(es|s)$/, ''));
+  // Monsters whose whole name is in the item's name ("Lorang Claw" → Lorang), named in the text or not.
+  const inName = item => { const text = ` ${words(item).join(' ')} `; return mobNames.filter(mob => words(mob).length && text.includes(` ${words(mob).join(' ')} `)); };
+  // The monsters that best fit an item: most shared words, then fewest extra words ("Dark Stone Golem
+  // Rubble" → Dark Stone Golem, "Pig's Ribbon" → Ribbon Pig, "Omok Piece: Mushroom" → Orange Mushroom).
+  const bestFit = item => {
+    const want = words(item), pool = [...new Set([...named, ...inName(item)])];
+    let best = [], top = 0, fewest = Infinity;
+    for (const mob of pool) {
+      const own = words(mob), shared = own.filter(word => want.includes(word)).length, extra = own.length - shared;
+      if (!shared) continue;
+      if (shared > top || (shared === top && extra < fewest)) { best = [mob]; top = shared; fewest = extra; }
+      else if (shared === top && extra === fewest) best.push(mob);
+    }
+    return best;
+  };
+  // Monsters already accounted for by any need, finished ones included (the Octopus of a ticked-off
   // "Omok Piece: Octopus" does not drop the table).
   const claimed = new Set(goals.flatMap(g => g.monsters));
-  // Every need of the quest counts here, also ones already ticked off (and not in `progress`).
-  for (const p of [...progress, ...allNeeds.map(name => ({ name }))]) { for (const mob of byWord(p.name)) claimed.add(mob); for (const mob of itemSources[p.name] ?? []) claimed.add(mob); if (mobByName(data, p.name)) claimed.add(mobByName(data, p.name).name); }
+  for (const p of [...progress, ...allNeeds.map(name => ({ name }))]) {
+    for (const mob of bestFit(p.name)) claimed.add(mob);
+    for (const mob of itemSources[p.name] ?? []) claimed.add(mob);
+    if (mobByName(data, p.name)) claimed.add(mobByName(data, p.name).name);
+  }
   for (const g of missing) {
-    const matched = byWord(g.name);
-    const left = named.filter(mob => !claimed.has(mob));
-    g.monsters = matched.length ? matched : left.length ? left : named;
+    const fit = bestFit(g.name), left = named.filter(mob => !claimed.has(mob));
+    // A crafting ingredient is matched by its name only ("Iron Hog's Metal Hoof" → Iron Hog): the
+    // quest text is about the finished item, not what it is made from.
+    g.monsters = fit.length ? fit : g.craft ? [] : left.length ? left : named;
     if (g.monsters.length) g.guess = true;
+    // Nothing drops it as far as any source knows: usually handed over by an NPC during the quest.
+    else if (!g.craft) g.given = true;
   }
   return goals;
 }
@@ -86,8 +116,9 @@ export function textMonsters(data, text) {
   return found;
 }
 
-// Where ores get refined on the way to the hand-in (Sleepywood for jewels, Perion for ingots).
-export const refineStops = (data, goals) => [...new Set(goals.filter(g => g.refine).map(g => npcMap(data, g.refine.npc)).filter(Boolean))];
+// Where crafted items get made on the way to the hand-in (Sleepywood for jewels, Perion for ingots…).
+export const craftNpc = (data, craft) => (craft?.npcs ?? []).find(name => npcMap(data, name)) ?? null;
+export const craftStops = (data, goals) => [...new Set(goals.filter(g => g.craft).map(g => npcMap(data, craftNpc(data, g.craft) ?? '')).filter(Boolean))];
 
 // Map-to-map hop counts, remembered per dataset (trip planning asks for the same pairs a lot).
 const hopCache = new WeakMap();
@@ -113,7 +144,7 @@ export function planHuntTrip(data, goals, currentMapId = null, endMapId = null, 
   };
   // Candidates per goal: its densest maps, the current map, and maps that cover several goals.
   const shared = rankObjectiveMaps(data, active, null).filter(m => m.goals.length > 1).slice(0, 3).map(m => m.mapId);
-  const cap = goal => Math.min(20, 8 + Math.ceil((goal.ores ?? Math.max(1, (goal.need ?? 1) - (goal.have ?? 0))) / 5));
+  const cap = goal => Math.min(20, 8 + Math.ceil(Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)) / 5));
   const near = mapId => Math.min(...[currentMapId, endMapId].filter(Boolean).map(from => hops(data, from, mapId) ?? 99), currentMapId || endMapId ? 99 : 0);
   const candidates = active.map(goal => {
     const maps = new Map();
@@ -164,7 +195,7 @@ export function rankObjectiveMaps(data, goals, currentMapId = null) {
   }).filter(entry => entry.hops !== null || entry.mapId === currentMapId).sort((a, b) => b.score - a.score);
 }
 
-export function questObjective(data, { quest, helperQuest = null, catalogQuest = null, itemSources = {}, currentMapId = null, handIn = false }) {
+export function questObjective(data, { quest, helperQuest = null, catalogQuest = null, itemSources = {}, currentMapId = null, handIn = false, crafting = null }) {
   const turnInNpc = catalogQuest?.turnIn || catalogQuest?.giver || null;
   const turnIn = () => { const mapId = turnInNpc ? npcMap(data, turnInNpc) : null; return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId }; };
   if (handIn) return turnIn();
@@ -173,9 +204,9 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
       const mapId = turnInNpc ? npcMap(data, turnInNpc) : null;
       return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId };
     }
-    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name));
+    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name), crafting);
     const maps = rankObjectiveMaps(data, goals, currentMapId);
-    const trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: refineStops(data, goals) });
+    const trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: craftStops(data, goals) });
     const best = trip?.stops[0] ?? maps[0] ?? null;
     const hereEntry = maps.find(m => m.mapId === currentMapId) ?? null;
     // Already on a map that covers something: stay and hunt rather than being sent elsewhere.
@@ -190,8 +221,8 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
   const needs = catalogQuest?.needs ?? null;
   if (Array.isArray(needs)) {
     if (!needs.length) return turnIn();
-    const goals = huntGoals(data, needs.map(n => ({ name: n.name, have: 0, need: n.count, done: false })), itemSources, catalogQuest?.text, needs.map(n => n.name));
-    const maps = rankObjectiveMaps(data, goals, currentMapId), trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: refineStops(data, goals) });
+    const goals = huntGoals(data, needs.map(n => ({ name: n.name, have: 0, need: n.count, done: false })), itemSources, catalogQuest?.text, needs.map(n => n.name), crafting);
+    const maps = rankObjectiveMaps(data, goals, currentMapId), trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: craftStops(data, goals) });
     const hereEntry = maps.find(m => m.mapId === currentMapId) ?? null, target = hereEntry ?? trip?.stops[0] ?? maps[0] ?? null;
     return { quest, stage: 'hunt', goals, maps: maps.slice(0, 4), trip, mapId: target?.mapId ?? null, here: Boolean(hereEntry), done: [], pending: goals.some(g => g.pending), countsUnknown: true };
   }

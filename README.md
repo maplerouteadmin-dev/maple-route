@@ -87,9 +87,11 @@ quick.
   then tells you which portal to take on every map. **Cancel** on the Live GPS card clears it.
 - **Quests:** in **Go to** or **Quests**, press **Go** on a suggested quest (or **Guide me**). The app walks
   you through it: the NPC to talk to, the best maps to hunt or collect on (planned as one trip that ends at
-  the hand-in), then the hand-in. Jewels and ingots are planned as ore hunts plus a stop at the refiner
-  (Chrishrama in Sleepywood, Silas Irons in Perion). Droppers taken from the quest text are marked
-  "best guess".
+  the hand-in), then the hand-in. Crafted items (jewels, ingots, screws…) use the game's own recipes:
+  hunt the ingredients, then stop at the crafter (Chrishrama in Sleepywood for jewels, Silas Irons in
+  Perion for ingots…). Drop data comes from the MapleClassic Wiki; where it has none, the monsters named
+  in the game's quest text are used and marked "best guess" (drop tables live on Nexon's servers, so no
+  site has official ones).
   - In game, press **Q** and open the **Available** or **Completed** tab: the app reads them so its
     suggestions match what the game offers you.
 - **Travel options:** the **Taxis** switch on the Live GPS card, plus **Nearest town scroll** and **Town

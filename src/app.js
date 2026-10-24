@@ -12,9 +12,10 @@ import { locateMinimap, readTitle, titleSignature, signatureChanged, locatePlaye
 import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { arrivalDetails } from './arrival.js';
-import { questObjective, huntGoals, planHuntTrip, rankObjectiveMaps, refineStops, matchCount, believableDone, helperComplete } from './objective.js';
+import { questObjective, huntGoals, planHuntTrip, rankObjectiveMaps, craftStops, matchCount, believableDone, helperComplete } from './objective.js';
 import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
+import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
 import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOUNTER_CODE } from './usage.js';
 
 // As a public website, keep OSMS pictures in the player's browser (public/sw.js). On this PC the local
@@ -382,8 +383,29 @@ function setCurrent(id, detected = false) {
   status(detected ? (previous === id ? `Still at ${mapById(id).name}. Route unchanged.` : `Recognized ${mapById(id).name}. Directions updated.`) : `Current map set to ${mapById(id).name}.`);
 }
 
+// Crafting recipes from the game files (what a Garnet or an ingot is made from, and where), saved
+// for a day like the quest list. Loaded with the quest list; guiding works without them.
+async function loadCrafting() {
+  if (state.crafting || state.craftingLoading) return;
+  state.craftingLoading = true;
+  const KEY = 'maple-route-crafting-v1';
+  let cached = null; try { cached = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { cached = null; }
+  try {
+    if (cached?.recipes && Date.now() - cached.savedAt < 24 * 60 * 60 * 1000) state.crafting = cached.recipes;
+    else {
+      const response = await fetch(OSMS_CRAFTING, { cache: 'no-store' });
+      if (!response.ok) throw new Error('crafting list unavailable');
+      state.crafting = fromOsmsCrafting(await response.json());
+      try { localStorage.setItem(KEY, JSON.stringify({ savedAt: Date.now(), recipes: state.crafting })); } catch { /* storage full: fine */ }
+    }
+    state.tripCache = null; applyObjective(); renderLive();
+  } catch { state.crafting = cached?.recipes ?? null; } // offline: last saved recipes, else none
+  finally { state.craftingLoading = false; }
+}
+
 async function loadQuestCatalog() {
   if (state.questCatalogStatus !== 'idle') return;
+  loadCrafting();
   state.questCatalogStatus = 'loading'; renderQuestResults();
   try {
     const QUESTS_KEY = 'maple-route-quests-v2'; // v2: quest text kept (names the monsters when the wiki has no drops)
@@ -2499,7 +2521,7 @@ function currentObjective() {
   if (!quest) return null;
   const helperQuest = (state.hud.quests ?? []).find(q => q.name === quest) ?? null;
   const catalogQuest = state.quests.find(q => q.name === quest) ?? null;
-  const objective = questObjective(travel(), { quest, helperQuest, catalogQuest, itemSources: state.itemSources, currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
+  const objective = questObjective(travel(), { quest, helperQuest, catalogQuest, itemSources: state.itemSources, crafting: state.crafting, currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
   if (objective.stage === 'hunt') loadItemSources(objective.goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
   return objective;
 }
@@ -2556,20 +2578,20 @@ function huntOptions(g) {
     progress.push({ name: need.name, have: seen?.have ?? 0, need: seen?.need ?? need.count, done: false });
   }
   if (!progress.length) return null;
-  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text, (g.quest?.needs ?? []).map(need => need.name));
+  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting);
   loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.lookup ?? goal.name));
   // The trip ends where the quest is handed in, so stops on the way there are preferred.
   const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(endNpc))?.locations[0]?.mapId ?? null : null;
   const key = JSON.stringify([goals.map(goal => [goal.name, goal.monsters]), state.current, endMapId, state.useTaxis, state.useNearestScroll, state.useTownScrolls]);
-  if (state.tripCache?.key !== key) state.tripCache = { key, trip: planHuntTrip(travel(), goals, state.current, endMapId, { via: refineStops(state.data, goals) }), endNpc };
+  if (state.tripCache?.key !== key) state.tripCache = { key, trip: planHuntTrip(travel(), goals, state.current, endMapId, { via: craftStops(state.data, goals) }), endNpc };
   return { goals, maps: rankObjectiveMaps(travel(), goals, state.current).slice(0, 4), trip: state.tripCache.trip, endNpc };
 }
 function huntOptionsHtml(options) {
   if (!options) return '';
   if (!options.maps.length) return `<p class="fine">${options.goals.some(goal => goal.pending) ? 'Looking up which monsters drop what you need…' : 'No mapped hunting spot for these yet.'}</p>`;
-  const trip = options.trip?.stops.length > 1 || (options.trip && options.goals.some(goal => goal.refine)) || (options.trip && options.trip.stops[0]?.mapId !== options.maps[0]?.mapId) ? options.trip : null;
-  const tripHtml = trip ? `<div class="fine hunt-trip"><strong>Best trip:</strong> ${trip.stops.map(stop => `${esc(mapById(stop.mapId)?.name ?? '?')} <small>(${esc(stop.monsters.join(', '))})</small>`).join(' → ')}${[...new Set(options.goals.filter(goal => goal.refine).map(goal => goal.refine.npc))].map(npc => ` → ${esc(npc)} <small>(refine)</small>`).join('')}${options.endNpc ? ` → ${esc(options.endNpc)}` : ''} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${trip.stops[0].mapId !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(trip.stops[0].mapId)}">Go</button>` : ''}</div>` : '';
-  return `<div class="hunt-options">${tripHtml}<div class="fine"><strong>Where to hunt:</strong> ${options.goals.map(goal => `${esc(goal.name)}${goal.refine ? ` <small>(${goal.ores} × ${esc(goal.refine.ore)}, refined by ${esc(goal.refine.npc)} in ${esc(goal.refine.town)})</small>` : ''}${goal.kind === 'collect' && goal.monsters.length ? ` <small>(from ${esc(goal.monsters.slice(0, 2).join(', '))}${goal.guess ? ', best guess from the quest text' : ''})</small>` : ''}`).join(' · ')}</div>
+  const trip = options.trip?.stops.length > 1 || (options.trip && options.goals.some(goal => goal.craft)) || (options.trip && options.trip.stops[0]?.mapId !== options.maps[0]?.mapId) ? options.trip : null;
+  const tripHtml = trip ? `<div class="fine hunt-trip"><strong>Best trip:</strong> ${trip.stops.map(stop => `${esc(mapById(stop.mapId)?.name ?? '?')} <small>(${esc(stop.monsters.join(', '))})</small>`).join(' → ')}${[...new Set(options.goals.filter(goal => goal.craft?.npc).map(goal => goal.craft.npc))].map(npc => ` → ${esc(npc)} <small>(make ${esc([...new Set(options.goals.filter(goal => goal.craft?.npc === npc).map(goal => goal.craft.item))].join(', '))})</small>`).join('')}${options.endNpc ? ` → ${esc(options.endNpc)}` : ''} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${trip.stops[0].mapId !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(trip.stops[0].mapId)}">Go</button>` : ''}</div>` : '';
+  return `<div class="hunt-options">${tripHtml}<div class="fine"><strong>Where to hunt:</strong> ${options.goals.map(goal => `${esc(goal.name)}${goal.craft ? ` <small>(${goal.need} for ${goal.craft.makes} ${esc(goal.craft.item)}: ${esc(goal.craft.discipline)} at ${esc(goal.craft.npc ?? goal.craft.town)}${goal.craft.town ? `, ${esc(goal.craft.town)}` : ''}${goal.craft.meso ? `, ${goal.craft.meso.toLocaleString()} mesos` : ''})</small>` : ''}${goal.given ? ' <small>(no monster is known to drop it: probably handed to you during the quest)</small>' : ''}${goal.craft && goal.kind === 'collect' && !goal.pending && !goal.monsters.length ? ' <small>(no monster is known to drop it: try the shops or the market)</small>' : ''}${goal.kind === 'collect' && goal.monsters.length ? ` <small>(from ${esc(goal.monsters.slice(0, 2).join(', '))}${goal.guess ? ', best guess from the quest text' : ''})</small>` : ''}`).join(' · ')}</div>
     <ul>${options.maps.map(m => { const map = mapById(m.mapId), chosen = m.mapId === state.destination;
       return `<li class="${chosen ? 'chosen' : ''}"><span><strong>${esc(map?.name ?? '?')}</strong><small>${esc(m.goals.join(', '))} · ${m.spawns} spawns · ${m.hops === 0 ? 'you are here' : `${m.hops} map${m.hops === 1 ? '' : 's'} away`}</small></span>${chosen ? '<span class="pill">heading here</span>' : `<button type="button" class="button secondary wm-go" data-hunt-map="${esc(m.mapId)}">Go</button>`}</li>`; }).join('')}</ul></div>`;
 }
