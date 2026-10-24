@@ -27,7 +27,7 @@ if (!isLocalHost() && 'serviceWorker' in navigator) navigator.serviceWorker.regi
 import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn } from './questrecs.js';
 import { buildSteps, currentStep } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
-import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName } from './hud.js';
+import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines } from './hud.js';
 import { parseTradeChat, addTrades, summarizePrices, formatMesos } from './prices.js';
 import { findCatalogItem, sellVerdict, listingOpportunities, MEOWDB_PRICE_CHECK } from './sellcheck.js';
 import { createExpTracker, addExpReading, expSummary, sessionFromTracker } from './exptracker.js';
@@ -2470,8 +2470,9 @@ async function hudTick(live, grabbed, ocrUsed) {
     const signature = hudSignature(regionImage(source, rect));
     if (!hudChanged(signature, live.helperSignature) && !due('helperFull', 30_000)) return;
     live.helperSignature = signature; live.jobs.helperFull = now;
-    const parsed = parseQuestHelper(await readRegion(live.hudWorker, source, rect, { ink: image => inkDark(image, settings.helper.threshold), scale: settings.helper.scale }));
-    logTest('helper', { quests: parsed?.quests?.map(q => `${q.title}${q.truncated ? '…' : ''}: ${q.progress.map(p => `${p.have}/${p.need} ${p.name}`).join(', ')}`) ?? [] });
+    const helperText = await readRegion(live.hudWorker, source, rect, { ink: image => inkDark(image, settings.helper.threshold), scale: settings.helper.scale });
+    const parsed = parseQuestHelper(helperText);
+    logTest('helper', { quests: parsed?.quests?.map(q => `${q.title}${q.truncated ? '…' : ''}: ${q.progress.map(p => `${p.have}/${p.need} ${p.name}`).join(', ')}`) ?? [], raw: helperText.slice(0, 600) });
     if (parsed) await syncQuestHelper(parsed);
     return;
   }
@@ -2499,7 +2500,8 @@ async function syncQuestHelper(parsed) {
   const names = gameQuestNames(state.quests);
   const resolve = (title, truncated) => { const seen = matchQuestTitle(title, names, false) ?? (truncated ? matchQuestTitle(title, names, true) : null); return seen ? questsForGameNames(state.quests, [seen], { tab: 'available', finished: state.questsFinished })[0] ?? null : null; };
   // Every tracked quest on screen; lines that match no quest and have no counts are OCR noise.
-  const quests = (parsed.quests ?? [parsed]).map(q => ({ ...q, name: resolve(q.title, q.truncated) })).filter(q => q.name || q.progress.length);
+  // A wrapped line read as its own heading goes back into the quest above it (hud.js mergeWrappedLines).
+  const quests = mergeWrappedLines((parsed.quests ?? [parsed]).map(q => ({ ...q, name: resolve(q.title, q.truncated) })), name => state.quests.find(q => q.name === name)?.needs ?? []).filter(q => q.name || q.progress.length);
   // An unreadable or briefly hidden Quest Helper must not wipe the list on the Quests page: keep the
   // last quests seen for two minutes.
   if (!quests.some(q => q.name) && state.hud.quests?.some(q => q.name) && Date.now() - (state.hud.questsAt ?? 0) < 120_000) { renderQuestHelper(); return; }

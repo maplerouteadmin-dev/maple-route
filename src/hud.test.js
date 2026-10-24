@@ -152,3 +152,32 @@ test('trade log keeps the seller so you can contact them, and still catches repe
   assert.equal(log[0].seller, 'AlpacaParka');
   assert.equal(addTrades(log, [{ seller: 'AlpacaParka', kind: 'sell', item: 'Cute Mouse Ears', price: 75_000 }], 60_000).length, 1);
 });
+
+test('wrapped Quest Helper lines read as headings go back into the quest above', async () => {
+  const { mergeWrappedLines } = await import('./hud.js');
+  const needs = {
+    'Luke the Security Guy': [{ name: 'Salad', count: 1 }, { name: 'Jr. Necki Skin', count: 10 }, { name: 'Stirge Wing', count: 10 }, { name: 'Jr. Necki', count: 20 }, { name: 'Stirge', count: 20 }],
+    'Make a Octopus & Mushroom Omok Set': [{ name: 'Omok Table', count: 1 }, { name: 'Omok Piece: Octopus', count: 1 }, { name: 'Omok Piece: Mushroom', count: 1 }]
+  };
+  const p = (have, need, name) => ({ have, need, name, done: have >= need });
+  // As logged in play: "Luke the Security Guy: 0/1 Salad" then "Jr. Necki Skin: 0/10 Stirge Wing, 0/20 Jr Necki, 0/20 Stirge".
+  const luke = mergeWrappedLines([
+    { title: 'Luke the Security Guy', name: 'Luke the Security Guy', progress: [p(0, 1, 'Salad')] },
+    { title: 'Jr. Necki Skin', name: null, progress: [p(0, 10, 'Stirge Wing'), p(0, 20, 'Jr Necki'), p(0, 20, 'Stirge')] }
+  ], name => needs[name]);
+  assert.equal(luke.length, 1);
+  assert.deepEqual(luke[0].progress.map(x => [x.name, x.have]), [['Salad', 0], ['Jr. Necki Skin', null], ['Stirge Wing', 0], ['Jr Necki', 0], ['Stirge', 0]]);
+  // "Make a Octopus & Mushroom O…: 1/1 Omok Table, 1/1 Omok Piece Octopus" then "Omok Piece: Mushroom:" with no count.
+  const omok = mergeWrappedLines([
+    { title: 'Make a Octopus  Mushroom O', name: 'Make a Octopus & Mushroom Omok Set', progress: [p(1, 1, 'Omok Table'), p(1, 1, 'Omok Piece Octopus')], complete: true },
+    { title: 'Omok Piece: Mushroom', name: null, progress: [] }
+  ], name => needs[name]);
+  assert.deepEqual(omok[0].progress.map(x => x.name), ['Omok Table', 'Omok Piece Octopus', 'Omok Piece: Mushroom']);
+  assert.equal(omok[0].complete, false);
+  // A real quest the catalog does not know, with its own unrelated counts, stays separate.
+  const kept = mergeWrappedLines([
+    { title: 'Luke the Security Guy', name: 'Luke the Security Guy', progress: [] },
+    { title: 'Event The Journey Begins', name: null, progress: [p(3, 10, 'Maple Leaf')] }
+  ], name => needs[name]);
+  assert.equal(kept.length, 2);
+});

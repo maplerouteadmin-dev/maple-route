@@ -208,6 +208,36 @@ export function parseQuestHelper(text) {
   return quests.length ? { ...quests[0], quests } : null;
 }
 
+// A wrapped Quest Helper line can be read as its own heading: "Omok Piece: Octopus" with its count
+// lost, or "Jr. Necki Skin" above counts that belong to the quest before it. A heading that is not a
+// quest (`name` unresolved) goes back into the quest above when it names one of that quest's needs
+// (as an item with an unknown count) or when the counts under it do. `needsOf(name)` → [{ name, count }].
+const looksLike = (a, b) => {
+  const x = normalize(a), y = normalize(b);
+  if (!x || !y) return false;
+  if (x.length >= 4 && (y.startsWith(x) || x.startsWith(y))) return true;
+  return 1 - editDistance(x, y) / Math.max(x.length, y.length) >= .75;
+};
+export function mergeWrappedLines(quests, needsOf) {
+  const out = [];
+  for (const q of quests ?? []) {
+    const prev = out.at(-1);
+    if (!q.name && prev?.name) {
+      const needs = needsOf(prev.name) ?? [];
+      const named = needs.filter(n => looksLike(q.title, n.name)), countsFit = q.progress.some(p => needs.some(n => looksLike(p.name, n.name)));
+      if (named.length || countsFit) {
+        const need = named.find(n => !prev.progress.some(p => looksLike(p.name, n.name)));
+        if (need) prev.progress.push({ name: need.name, have: null, need: need.count ?? null, done: false, unknown: true });
+        prev.progress.push(...q.progress);
+        prev.complete = false;
+        continue;
+      }
+    }
+    out.push(q);
+  }
+  return out;
+}
+
 // Matches a (possibly truncated, possibly misread) Quest Helper title to a catalog quest name.
 // Truncated titles are compared with the same-length start of each name.
 export function matchQuestTitle(title, names, truncated = false) {
@@ -367,7 +397,7 @@ export function listChanged(previous, next, share = .04) {
   return differ > next.length * share;
 }
 
-// The job and character name sit between the level and the HP bar ("Rogue" over the character name).
+// The job and character name sit between the level and the HP bar ("Rogue" over "Mapler01").
 export function nameRect(bars) {
   const level = levelRect(bars), x = level.x + level.w;
   return { x, y: Math.max(0, level.y - Math.round(level.h * .15)), w: Math.max(10, bars.hp.x0 - x - 4), h: Math.round(level.h * 1.3) };
