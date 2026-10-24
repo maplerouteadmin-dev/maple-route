@@ -30,7 +30,7 @@ import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGam
 import { buildSteps, currentStep } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
 import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines } from './hud.js';
-import { parseTradeChat, addTrades, summarizePrices, formatMesos } from './prices.js';
+import { parseTradeChat, addTrades, summarizePrices, itemNamer, formatMesos } from './prices.js';
 import { findCatalogItem, sellVerdict, listingOpportunities, MEOWDB_PRICE_CHECK } from './sellcheck.js';
 import { createExpTracker, addExpReading, expSummary, sessionFromTracker } from './exptracker.js';
 import { inkTitle } from './minimap.js';
@@ -84,14 +84,14 @@ $('#app').innerHTML = `
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
     <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div><p class="fine">To show only quests the game is offering you, read your in-game Available tab (below, or on the <b>Quests</b> page).</p></section>
-    <section class="card" aria-labelledby="questlog-title"><h2 id="questlog-title">Read your in-game quest list ${UNTESTED}</h2><p class="muted">While Live GPS runs, an open quest window (<b>Q</b>) is read by itself. These buttons read it on demand.</p>
+    <section class="card" aria-labelledby="questlog-title"><h2 id="questlog-title">Read your in-game quest list</h2><p class="muted">While Live GPS runs, an open quest window (<b>Q</b>) is read by itself. These buttons read it on demand.</p>
       <p class="fine">For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-available" data-read-quests="available">Read my Available tab</button></div><div id="available-read" aria-live="polite"></div>
       <div class="divider"></div><h3 class="sub-title">What have I finished?</h3><p class="fine">Quests are marked finished automatically when Live GPS sees one leave the Quest Helper after it was ready to hand in. To catch up on older ones: in game press <b>Q</b>, open the <b>Completed</b> tab, then press the button below (once per page of the list). Only your shared screen is read.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-completed" data-read-quests="completed">Read my Completed tab</button></div><div id="completed-read" aria-live="polite"></div><div id="finished-list"></div></section>
     <section class="card" aria-labelledby="quest-helper-title"><h2 id="quest-helper-title">Quest Helper sync</h2><p class="muted">While Live GPS runs, the app reads the in-game Quest Helper, ticks finished counts and tells you when a quest is ready to hand in.</p><div id="quest-helper" aria-live="polite"></div></section>
     <section class="card" aria-labelledby="live-exp-title"><h2 id="live-exp-title">Live EXP tracker</h2><p class="muted">Reads EXP from the status bar while Live GPS runs and checks it against the bar's fill, so misreads are ignored.</p><div id="live-exp" aria-live="polite"></div></section>
-    <section class="card" aria-labelledby="prices-title"><div class="data-row"><div><h2 id="prices-title">Market prices ${UNTESTED}</h2><p class="muted">Asking and buying prices collected from trade chat (S&gt; / B&gt; adverts) while Live GPS runs. These are adverts, not completed sales.</p></div><span class="pill" id="price-count">0 adverts logged</span></div>
+    <section class="card" aria-labelledby="prices-title"><div class="data-row"><div><h2 id="prices-title">Market prices</h2><p class="muted">Asking and buying prices collected from trade chat (S&gt; / B&gt; adverts) while Live GPS runs. These are adverts, not completed sales.</p></div><span class="pill" id="price-count">0 adverts logged</span></div>
       <div class="price-tools"><label class="field">Search items<input id="price-query" type="search" autocomplete="off" placeholder="e.g. earring, scroll"></label><button type="button" class="button light" id="price-clear">Clear log</button></div><div id="price-table"></div></section>
     <section class="card" aria-labelledby="sell-title"><h2 id="sell-title">Shop or players? ${UNTESTED}</h2><p class="muted">Compare what an NPC shop pays for an item with what players are asking, before you sell.</p>
       <label class="field">Item<input id="sell-query" type="search" autocomplete="off" placeholder="Type an item name"></label><div id="sell-suggest" class="start-results"></div>
@@ -102,7 +102,7 @@ $('#app').innerHTML = `
       <label class="field">Voice<select id="voice-name"></select></label><label class="field">Speed<select id="voice-rate"><option value="0.85">Slower</option><option value="1">Normal</option><option value="1.15">Faster</option></select></label>
       <fieldset class="voice-parts"><legend>Say out loud</legend><div id="voice-parts"></div></fieldset>
       <div class="action-row"><button type="button" class="button secondary" id="voice-test">Test voice</button></div></section>
-<section class="card market-card" aria-labelledby="market-title"><div class="data-row"><div><h2 id="market-title">Market ${UNTESTED}</h2><p class="muted">Items players are selling or looking for, with the real stats and upgrade slots left. Found something? <b>/find</b> the seller in game and whisper them. Mesos only.</p></div><span class="pill" id="market-mode"></span></div>
+<section class="card market-card" aria-labelledby="market-title"><div class="data-row"><div><h2 id="market-title">Market</h2><p class="muted">Items players are selling or looking for, with the real stats and upgrade slots left. Found something? <b>/find</b> the seller in game and whisper them. Mesos only.</p></div><span class="pill" id="market-mode"></span></div>
       <div id="market-alerts" aria-live="polite"></div>
       <div class="market-notice" role="note"><strong>Maple Route is only a noticeboard that helps players find each other.</strong> We never take, hold or ask for your mesos or items, and we are not part of any trade. Every trade is agreed and settled in game, in mesos, between the two players, using the game's own trade window. Never pay or accept payment outside the game: real-money trading is against MapleStory's rules. Check the item in the trade window before you accept; you trade at your own risk.</div>
       <div class="market-filters"><label class="field">Item<input id="market-query" type="search" autocomplete="off" placeholder="e.g. work gloves, ilbi"></label>
@@ -142,7 +142,7 @@ $('#app').innerHTML = `
 <section class="card" aria-labelledby="settings-title"><h2 id="settings-title">Live tools</h2><p class="muted">What Live GPS reads besides the mini map.</p><div class="tool-grid">
         <label class="toggle"><input type="checkbox" id="tool-exp"> EXP tracker</label>
         <label class="toggle"><input type="checkbox" id="tool-quest"> Quest Helper sync</label>
-        <label class="toggle"><input type="checkbox" id="tool-prices"> Trade chat prices ${UNTESTED}</label>
+        <label class="toggle"><input type="checkbox" id="tool-prices"> Trade chat prices</label>
         <label class="toggle"><input type="checkbox" id="tool-mobcount"> Monster spawn counts in pop-out</label>
         <button type="button" class="button light" id="download-test-log">Download test log</button>
       </div><p class="fine">These read the status bar, the Quest Helper and the last chat lines from the same shared window. Nothing is pressed for you.</p></section>
@@ -2421,7 +2421,9 @@ function renderMarket() {
   const shown = sortListings(filterListings(market.listings, { query: $('#market-query').value, side: $('#market-side').value, ...filters, itemOf: marketItem }), $('#market-sort').value);
   const ids = [...new Set(shown.map(l => l.item_id))];
   const book = ids.length === 1 ? priceBook(market.listings, ids[0]) : null;
-  $('#market-book').innerHTML = book ? `<p class="fine"><strong>${esc(shown[0].item_name)}:</strong> lowest asking ${book.lowestAsk ? formatMesos(book.lowestAsk) : '—'} (${book.sells} selling) · highest offer ${book.highestBid ? formatMesos(book.highestBid) : '—'} (${book.buys} buying)</p>` : '';
+  const chat = book ? summarizePrices(state.prices, shown[0].item_name, priceNamer()).find(row => normalize(row.item) === normalize(shown[0].item_name)) : null;
+  const chatText = chat?.sell || chat?.buy ? ` · trade chat: ${chat.sell ? `asking about ${formatMesos(chat.sell.median)} (${chat.sell.count} ad${chat.sell.count === 1 ? '' : 's'})` : ''}${chat.sell && chat.buy ? ', ' : ''}${chat.buy ? `buying about ${formatMesos(chat.buy.median)}` : ''}` : '';
+  $('#market-book').innerHTML = book ? `<p class="fine"><strong>${esc(shown[0].item_name)}:</strong> lowest asking ${book.lowestAsk ? formatMesos(book.lowestAsk) : '—'} (${book.sells} selling) · highest offer ${book.highestBid ? formatMesos(book.highestBid) : '—'} (${book.buys} buying)${esc(chatText)}</p>` : '';
   $('#market-list').innerHTML = shown.length ? `<ul class="market-rows">${shown.slice(0, 100).map(listingHtml).join('')}</ul>${shown.length > 100 ? `<p class="fine">${shown.length - 100} more: narrow the search.</p>` : ''}`
     : `<p class="fine">${market.listings.length ? 'No listings match.' : 'No listings yet. Be the first: list an item below.'} <button type="button" class="link-button" data-market-refresh>Refresh</button></p>`;
   // Your listings: live ones with the days left, expired ones (hidden from everyone else) to relist or remove.
@@ -3012,10 +3014,22 @@ function allTripHtml(all) {
   const first = trip.stops[0]?.mapId;
   return `<div class="fine hunt-trip"><strong>All quests trip:</strong> ${parts.join(' → ')} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${first && first !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(first)}">Go</button>` : ''}${trip.missing.length ? `<br><small>No known spot for: ${esc(trip.missing.join(', '))}</small>` : ''}</div>`;
 }
+// Trade-chat adverts grouped under real item names (OCR slips split them otherwise), once the item
+// list has loaded (game items, plus the Market's list with cash items when it is open).
+let namerCache = { size: -1, namer: null }, cashNames = null;
+function priceNamer() {
+  if (state.itemCatalogStatus === 'idle') ensureItemCatalog();
+  // Cash items (glasses, rings, beanies) are a big share of trade chat: their names too, fetched once.
+  if (!cashNames) { cashNames = []; fetch(MARKET_CASH).then(r => r.ok ? r.json() : null).then(cash => { cashNames = (cash?.categories ?? []).flatMap(group => (group.items ?? []).map(item => item.name)).filter(Boolean); renderPrices(); }).catch(() => {}); }
+  const names = [...(state.items ?? []).map(item => item.name), ...(market?.catalog ?? []).map(item => item.name), ...cashNames];
+  if (!names.length) return null;
+  if (namerCache.size !== names.length) namerCache = { size: names.length, namer: itemNamer(names) };
+  return namerCache.namer;
+}
 // What players were asking for an item in your trade-chat log (Untested feature), to compare with hunting it.
 function marketNote(itemName) {
   if (!state.prices?.length) return '';
-  const row = summarizePrices(state.prices, itemName).find(r => normalize(r.item) === normalize(itemName));
+  const row = summarizePrices(state.prices, itemName, priceNamer()).find(r => normalize(r.item) === normalize(itemName));
   return row?.sell ? `; market: about ${formatMesos(row.sell.median)} each (${row.sell.count} ad${row.sell.count === 1 ? '' : 's'} in your trade-chat log)` : '';
 }
 function huntOptionsHtml(options) {
@@ -3172,7 +3186,7 @@ function renderLiveExp() {
 
 function renderPrices() {
   const panel = $('#price-table'); if (!panel) return;
-  const rows = summarizePrices(state.prices, $('#price-query')?.value ?? '').slice(0, 60);
+  const rows = summarizePrices(state.prices, $('#price-query')?.value ?? '', priceNamer()).slice(0, 60);
   $('#price-count').textContent = `${state.prices.length} adverts logged`;
   if (!rows.length) { panel.innerHTML = `<p class="fine">${state.prices.length ? 'No item matches that search.' : 'Nothing logged yet. Keep Live GPS running with trade chat logging on and the chat visible.'}</p>`; return; }
   // The most recent players advertising this item, to contact in game.
@@ -3219,7 +3233,7 @@ function sellSuggestions() {
 
 function loggedMarket(item) {
   if (!item) return null;
-  return summarizePrices(state.prices).find(row => findCatalogItem(row.item, [item])) ?? null;
+  return summarizePrices(state.prices, '', priceNamer()).find(row => findCatalogItem(row.item, [item])) ?? null;
 }
 
 function prefillSellPrice() {
@@ -3249,7 +3263,7 @@ function renderSellCheck() {
 function renderListingTable() {
   const panel = $('#sell-opportunities'); if (!panel) return;
   if (state.itemCatalogStatus !== 'loaded') { panel.innerHTML = state.prices.length ? '<p class="fine">Loading shop prices…</p>' : ''; if (state.prices.length) ensureItemCatalog().then(renderListingTable); return; }
-  const rows = listingOpportunities(summarizePrices(state.prices), state.items);
+  const rows = listingOpportunities(summarizePrices(state.prices, '', priceNamer()), state.items);
   panel.innerHTML = rows.length ? `<h3>Worth listing for players</h3><table class="price-grid"><thead><tr><th>Item</th><th>Shop pays</th><th>Players ask</th><th>Adverts</th></tr></thead><tbody>${rows.map(row => `<tr><td>${esc(row.item)}</td><td>${row.shop ? row.shop.toLocaleString() : '—'}</td><td>${formatMesos(row.market)}</td><td>${row.adverts}</td></tr>`).join('')}</tbody></table>`
     : `<p class="fine">${state.prices.length ? 'Nothing in your price log beats the shop by much yet.' : 'Items from your trade-chat price log that players pay well above shop value will be listed here.'}</p>`;
 }

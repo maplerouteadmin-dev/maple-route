@@ -48,8 +48,8 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - **More**: world map, leveling guide, EXP-per-hour tracker, a "sell to shop or players?" check, and
   separate progress per character.
 
-Parts marked **Untested** in the app (trade-chat prices, the shop-or-players check, reading the in-game
-quest window) have not been checked in real play yet. Double-check what they tell you,
+Parts marked **Untested** in the app (the shop-or-players check, reading an item from the game screen)
+have not been checked in real play yet. Double-check what they tell you,
 and please report anything wrong.
 
 ## What it never does
@@ -99,7 +99,8 @@ quick.
 - **Market:** list items you're selling or looking for: pick from every item in the game (equipment starts
   at its clean stats for you to edit, plus upgrade slots left) or type a custom item, browse other players' listings with filters (category, equipment or weapon type, job, level, stats,
   slots left, scroll success, price), make or take **offers** (sellers can set a lowest offer or fixed price),
-  and **Copy /find** to reach the seller in game. Only tradeable items can be listed. **Read item from game
+  and **Copy /find** to reach the seller in game. A 🔔 on the Market tab shows offers waiting, answers to
+  your offers and listings that expired or end soon. Only tradeable items can be listed. **Read item from game
   screen** (Untested) fills a listing from the item tooltip you hover. Maple Route is only
   a noticeboard: we never take, hold or ask for your mesos or items. Every trade is settled **in game, in
   mesos**, between the two players. Never pay outside the game (real-money trading is against the game's

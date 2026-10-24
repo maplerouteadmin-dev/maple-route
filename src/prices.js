@@ -1,4 +1,4 @@
-import { normalize } from './core.js';
+import { normalize, editDistance } from './core.js';
 
 // Trade chat → price log. Only lines that clearly name an item and a price are kept; everything is
 // stored in this browser. Prices are what players *asked or offered*, not completed sales.
@@ -57,11 +57,34 @@ export function addTrades(log, trades, now = Date.now(), cap = 2000) {
   return list.slice(0, cap);
 }
 
-export function summarizePrices(log, query = '') {
+// OCR slips split one item into several ("Mushmom Spare", "Frarmeless Glasses"): snap an advert's
+// item to the game item whose name is very close (same first letter, 85% alike), else keep it as read.
+export function itemNamer(names) {
+  const exact = new Map(), byFirst = new Map();
+  for (const name of names ?? []) { const key = normalize(name); if (!key) continue; exact.set(key, name); (byFirst.get(key[0]) ?? byFirst.set(key[0], []).get(key[0])).push([key, name]); }
+  const cache = new Map();
+  return text => {
+    const key = normalize(text);
+    if (!key) return null;
+    if (cache.has(key)) return cache.get(key);
+    let best = exact.get(key) ?? null, top = 0;
+    if (!best && key.length >= 6) for (const [other, name] of byFirst.get(key[0]) ?? []) {
+      if (Math.abs(other.length - key.length) > 2) continue;
+      const score = 1 - editDistance(key, other) / Math.max(key.length, other.length);
+      if (score >= .85 && score > top) { top = score; best = name; }
+    }
+    cache.set(key, best);
+    return best;
+  };
+}
+
+// Price groups per item. With `namer` (itemNamer), adverts are grouped under the real item name.
+export function summarizePrices(log, query = '', namer = null) {
   const wanted = normalize(query), groups = new Map();
   for (const row of log ?? []) {
-    if (wanted && !row.key.includes(wanted)) continue;
-    const group = groups.get(row.key) ?? groups.set(row.key, { item: row.item, sells: [], buys: [], lastSeen: 0 }).get(row.key);
+    const name = (namer && namer(row.item)) || row.item, key = namer ? normalize(name) : row.key;
+    if (wanted && !key.includes(wanted) && !row.key.includes(wanted)) continue;
+    const group = groups.get(key) ?? groups.set(key, { item: name, sells: [], buys: [], lastSeen: 0 }).get(key);
     (row.kind === 'buy' ? group.buys : group.sells).push(row.price);
     group.lastSeen = Math.max(group.lastSeen, row.at);
   }
