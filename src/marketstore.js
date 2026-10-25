@@ -48,6 +48,13 @@ function sharedStore(url, key, fetchImpl) {
     // Whether this browser has used the Market (so background checks never sign up a new player).
     hasSession() { return Boolean(storage.get(SESSION_KEY)?.refresh_token); },
     async me() { return (await session()).user; },
+    // Live listings of one item, read without signing in (the shop check uses it for anyone).
+    async browse(itemId) {
+      const params = new URLSearchParams({ select: 'id,side,item_id,item_name,price,quantity,stats,slots_left,ign,created_at,expires_at', item_id: `eq.${itemId}`, expires_at: `gt.${new Date().toISOString()}`, order: 'price.asc', limit: '50' });
+      const response = await fetchImpl(`${url}/rest/v1/listings?${params}`, { headers: { apikey: key } });
+      if (!response.ok) throw new Error('The marketplace is unavailable right now.');
+      return response.json();
+    },
     // Live listings, newest first (the database hides expired ones too).
     list({ itemId = null, limit = 300 } = {}) {
       const params = new URLSearchParams({ select: '*', order: 'created_at.desc', limit: String(limit), expires_at: `gt.${new Date().toISOString()}` });
@@ -74,6 +81,7 @@ function practiceStore() {
     shared: false,
     hasSession() { return all().length > 0; },
     async me() { return 'practice'; },
+    async browse(itemId) { const now = Date.now(); return all().filter(l => l.item_id === itemId && Date.parse(l.expires_at) > now); },
     async list({ itemId = null } = {}) { const now = Date.now(); return all().filter(l => Date.parse(l.expires_at) > now && (!itemId || l.item_id === itemId)).sort((a, b) => b.created_at.localeCompare(a.created_at)); },
     async mine() { return all().sort((a, b) => b.created_at.localeCompare(a.created_at)); },
     async add(listing) { const row = { ...listing, id: `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, owner: 'practice', created_at: new Date().toISOString() }; storage.set(PRACTICE_KEY, [row, ...all()].slice(0, 200)); return row; },

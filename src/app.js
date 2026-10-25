@@ -17,7 +17,7 @@ import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
-import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
+import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, suggestPrice, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -2443,7 +2443,19 @@ function renderMarketItem() {
   const base = unsure + (item.custom ? '<p class="fine">Custom item: not in the game\'s item list. If it is equipment, add its stats and slots (all optional).</p>' : item.equip ? `<p class="fine">${esc(item.type || item.category)}${item.reqLevel ? ` · Level ${item.reqLevel}` : ''}${item.job && item.job !== 'All' ? ` · ${esc(item.job)}` : ''} · ${item.slots} upgrade slot${item.slots === 1 ? '' : 's'} clean${Object.keys(item.base).length ? ` · clean stats: ${STATS.filter(([k]) => item.base[k]).map(([k, label]) => `${label} ${item.base[k]}`).join(', ')}` : ''}</p>` : `<p class="fine">${esc(item.category === 'Consumable' ? 'Use' : item.category)}${item.type ? ` · ${esc(item.type)}` : ''}${item.success != null ? ` · ${item.success}% success` : ''}</p>`);
   const fields = item.equip && side === 'sell' ? `<p class="fine">${item.custom ? 'Its stats, if any:' : 'Enter the item\'s stats as they are now (they start at the clean values):'}</p><div class="market-stat-grid">${STATS.map(([key, label]) => `<label class="field">${label}<input type="number" data-market-stat="${key}" value="${item.base[key] ?? ''}" placeholder="0"></label>`).join('')}</div>
     <div class="sell-fields"><label class="field">Upgrade slots left<input id="market-slots-left" type="number" min="0" max="${item.custom ? 20 : item.slots + 2}" value="${item.custom ? '' : item.slots}" placeholder="${item.custom ? 'optional' : ''}"></label><label class="field">Scrolls passed<input id="market-scrolled" type="number" min="0" max="${item.custom ? 20 : item.slots + 2}" value="${item.custom ? '' : 0}" placeholder="${item.custom ? 'optional' : ''}"></label></div>` : '';
-  box.innerHTML = `<div class="market-item"><strong>${esc(item.name)}</strong>${base}${fields}</div>`;
+  box.innerHTML = `<div class="market-item"><strong>${esc(item.name)}</strong>${base}${fields}</div><div id="market-suggest-price"></div>`;
+  renderPriceSuggestion();
+}
+// A suggested price for the item being listed: live listings, your trade-chat log, the shop price.
+function renderPriceSuggestion() {
+  const box = $('#market-suggest-price'), item = market.item; if (!box || !item) return;
+  const side = document.querySelector('input[name="market-post-side"]:checked')?.value ?? 'sell';
+  if (state.itemCatalogStatus === 'idle') ensureItemCatalog().then(renderPriceSuggestion);
+  const chat = summarizePrices(state.prices, item.name, priceNamer()).find(row => normalize(row.item) === normalize(item.name));
+  const shop = (state.items ?? []).find(i => i.id === item.id)?.npcPrice ?? null;
+  const tip = suggestPrice({ side, chat, book: item.custom ? null : priceBook(market.listings, item.id), shop });
+  box.innerHTML = tip ? `<p class="fine market-suggestion">Suggested ${side === 'sell' ? 'price' : 'offer'}: <b>${tip.price.toLocaleString()} mesos</b> <button type="button" class="link-button" data-use-price="${tip.price}">use it</button><br><small>Because ${esc(tip.basis.join('; '))}.${item.equip && !item.custom ? ' Better stats or more slots left are worth more.' : ''}</small></p>`
+    : '<p class="fine">No price data for this item yet: check trade chat, or look it up in the Market.</p>';
 }
 // Item box: a dropdown of matching game items (arrow keys + Enter), and always a custom item option.
 function renderItemSuggest() {
@@ -2494,6 +2506,10 @@ $('#market-clear').addEventListener('click', () => {
 for (const id of ['#market-query', '#market-side', '#market-sort', '#market-type', '#market-job', '#market-level-min', '#market-level-max', '#market-stat', '#market-stat-min', '#market-slots', '#market-success', '#market-max']) $(id).addEventListener('input', renderMarket);
 const offerSettingsShown = () => { $('#market-offer-settings').hidden = document.querySelector('input[name="market-post-side"]:checked')?.value !== 'sell'; $('#market-min-offer').disabled = !$('#market-offers').checked; };
 document.querySelectorAll('input[name="market-post-side"]').forEach(radio => radio.addEventListener('change', () => { renderMarketItem(); offerSettingsShown(); }));
+document.addEventListener('click', event => {
+  const use = event.target.closest('[data-use-price]'); if (use) { $('#market-price').value = Number(use.dataset.usePrice).toLocaleString(); $('#market-price').focus(); }
+  const search = event.target.closest('[data-market-search]'); if (search) { $('#market-query').value = search.dataset.marketSearch; setTimeout(renderMarket, 50); }
+});
 $('#market-offers').addEventListener('change', offerSettingsShown);
 // Reads the hovered item's tooltip off the shared game screen (the whole frame, then the catalog
 // names and "STR : +3" lines in it). Nothing is sent anywhere: the picture is read on this PC.
@@ -3261,8 +3277,23 @@ function renderSellCheck() {
   renderListingTable();
 }
 
+// Shop or players? with an item picked: what players are doing with that item (Market listings,
+// read without signing in, and your trade-chat log). Without one: the items worth listing.
+function renderItemPlayers(panel, item) {
+  const chat = summarizePrices(state.prices, item.name, priceNamer()).find(row => normalize(row.item) === normalize(item.name));
+  const cached = state.sell.market?.id === item.id ? state.sell.market : null;
+  if (!cached) { state.sell.market = { id: item.id, rows: null }; market.store.browse(item.id).then(rows => { if (state.sell.market?.id === item.id) { state.sell.market.rows = rows; renderListingTable(); } }).catch(() => { if (state.sell.market?.id === item.id) { state.sell.market.rows = []; renderListingTable(); } }); }
+  const rows = cached?.rows;
+  const listings = rows == null ? '<p class="fine">Checking the Market…</p>' : rows.length
+    ? `<ul class="market-rows">${rows.slice(0, 8).map(l => `<li class="market-row"><div class="market-main"><span class="pill ${l.side}">${l.side === 'sell' ? 'Selling' : 'Buying'}</span> <span class="market-price">${formatMesos(l.price)}</span>${l.quantity > 1 ? ` ×${l.quantity}` : ''} <span class="fine">· ${esc(l.ign)} · ${ago(l.created_at)}</span></div><div class="market-actions"><button type="button" class="button light" data-market-find="${esc(l.ign)}">Copy /find</button></div></li>`).join('')}</ul>`
+    : '<p class="fine">Nobody has it listed in the Market right now.</p>';
+  const chatText = chat?.sell || chat?.buy ? `<p class="fine"><strong>Trade chat</strong> (your log): ${chat.sell ? `asking ${formatMesos(chat.sell.low)}–${formatMesos(chat.sell.high)}, usually ${formatMesos(chat.sell.median)} (${chat.sell.count} ad${chat.sell.count === 1 ? '' : 's'})` : ''}${chat.sell && chat.buy ? ' · ' : ''}${chat.buy ? `buying at about ${formatMesos(chat.buy.median)} (${chat.buy.count})` : ''}</p>`
+    : `<p class="fine"><strong>Trade chat</strong>: no adverts for it in your log yet${state.tools.prices ? '' : ' (turn on Trade chat prices in Settings → Live tools to collect them)'}.</p>`;
+  panel.innerHTML = `<h3>Players and ${esc(item.name)}</h3>${chatText}<h4 class="sub-title">In the Market</h4>${listings}<p class="fine"><a href="#market" data-market-search="${esc(item.name)}">Open it in the Market</a></p>`;
+}
 function renderListingTable() {
   const panel = $('#sell-opportunities'); if (!panel) return;
+  if (state.sell.item) { renderItemPlayers(panel, state.sell.item); return; }
   if (state.itemCatalogStatus !== 'loaded') { panel.innerHTML = state.prices.length ? '<p class="fine">Loading shop prices…</p>' : ''; if (state.prices.length) ensureItemCatalog().then(renderListingTable); return; }
   const rows = listingOpportunities(summarizePrices(state.prices, '', priceNamer()), state.items);
   panel.innerHTML = rows.length ? `<h3>Worth listing for players</h3><table class="price-grid"><thead><tr><th>Item</th><th>Shop pays</th><th>Players ask</th><th>Adverts</th></tr></thead><tbody>${rows.map(row => `<tr><td>${esc(row.item)}</td><td>${row.shop ? row.shop.toLocaleString() : '—'}</td><td>${formatMesos(row.market)}</td><td>${row.adverts}</td></tr>`).join('')}</tbody></table>`

@@ -197,3 +197,16 @@ test('market alerts: offers waiting, answers to your offers, expired and ending 
   assert.equal(marketAlerts({ mine: [], offers: [], me: 'me', now }).length, 0);
 });
 
+test('a suggested price comes from live listings, trade chat and the shop price', async () => {
+  const { suggestPrice } = await import('./market.js');
+  const chat = { sell: { median: 790000, count: 4 }, buy: { median: 700000, count: 2 } };
+  assert.equal(suggestPrice({ side: 'sell', chat }).price, 790000);
+  assert.equal(suggestPrice({ side: 'sell', chat, book: { lowestAsk: 750000 } }).price, 730000); // just under the cheapest listing
+  assert.equal(suggestPrice({ side: 'sell', shop: 29750 }).price, 33000); // nothing else known: a bit over the shop
+  assert.equal(suggestPrice({ side: 'sell', chat: { sell: { median: 20000, count: 1 } }, shop: 29750 }).price, 33000); // never below the shop
+  assert.equal(suggestPrice({ side: 'buy', chat }).price, 700000);
+  assert.equal(suggestPrice({ side: 'buy', chat: { sell: { median: 790000, count: 4 } } }).price, 670000);
+  assert.equal(suggestPrice({ side: 'sell' }), null);
+  assert.match(suggestPrice({ side: 'sell', chat, shop: 29750 }).basis.join('; '), /trade chat asks about 790,000 \(4 ads\); a shop pays 29,750/);
+});
+

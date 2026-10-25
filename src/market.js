@@ -307,3 +307,24 @@ export function marketAlerts({ mine = [], offers = [], listings = [], me = null,
   return alerts.sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
+// A price to suggest when listing, from what is known, with the reasons shown to the player:
+// selling: just under the cheapest live listing, else the usual trade-chat ask, never below what a shop
+// pays; buying: the best live offer, else the usual trade-chat buying price, else a bit under the ask.
+// `chat` = summarizePrices row ({ sell, buy } stats), `book` = priceBook, `shop` = NPC shop price.
+const nice = value => { if (!(value > 0)) return null; const digits = 10 ** Math.max(0, Math.floor(Math.log10(value)) - 1); return Math.max(1, Math.round(value / digits) * digits); };
+export function suggestPrice({ side = 'sell', chat = null, book = null, shop = null } = {}) {
+  const basis = [];
+  let price = null;
+  if (side === 'sell') {
+    if (book?.lowestAsk) { price = nice(book.lowestAsk * .97); basis.push(`cheapest listing here is ${book.lowestAsk.toLocaleString()}`); }
+    if (chat?.sell) { basis.push(`trade chat asks about ${chat.sell.median.toLocaleString()} (${chat.sell.count} ad${chat.sell.count === 1 ? '' : 's'})`); price ??= nice(chat.sell.median); }
+    if (shop) { basis.push(`a shop pays ${shop.toLocaleString()}`); if (price === null || price < shop) price = nice(shop * 1.1); }
+  } else {
+    if (book?.highestBid) { price = book.highestBid; basis.push(`best offer here is ${book.highestBid.toLocaleString()}`); }
+    if (chat?.buy) { basis.push(`trade chat buys at about ${chat.buy.median.toLocaleString()}`); price ??= nice(chat.buy.median); }
+    if (chat?.sell) { basis.push(`trade chat asks about ${chat.sell.median.toLocaleString()}`); price ??= nice(chat.sell.median * .85); }
+    if (book?.lowestAsk) { basis.push(`cheapest listing here is ${book.lowestAsk.toLocaleString()}`); price ??= nice(book.lowestAsk * .9); }
+  }
+  return price ? { price, basis } : null;
+}
+

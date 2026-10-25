@@ -57,9 +57,36 @@ export function addTrades(log, trades, now = Date.now(), cap = 2000) {
   return list.slice(0, cap);
 }
 
+// Trade chat writes scrolls the player way ("60% glove att", "GFA 60%", "Cape luk 60%"); Classic names
+// them by tier: Lesser = 100%, Intermediate = 60%, Greater = 10%, Chaos = 10% ("Gloves Attack Scroll:
+// Intermediate"). Turns the shorthand into the scroll's name, or null.
+const TIER_BY_RATE = { 100: 'lesser', 60: 'intermediate', 10: 'greater' };
+const SCROLL_WORDS = [
+  [/\bgfa\b/g, 'gloves attack'], [/\bgfma\b|\bgfm\b/g, 'gloves magic attack'], [/\bm\s?att?k?\b|\bmagic att?k?\b/g, 'magic attack'], [/\bw?att?k?\b|\bwa\b/g, 'attack'],
+  [/\bacc\b/g, 'accuracy'], [/\bdef\b/g, 'defense'], [/\bcrit\b/g, 'crit rate'], [/\bglove\b/g, 'gloves'], [/\bshoe\b/g, 'shoes'], [/\bhelm(et)?\b/g, 'hat'],
+  [/\b1h\b/g, '1h'], [/\b2h\b/g, '2h'], [/\bbw\b/g, 'blunt'], [/\bspd\b/g, 'speed'], [/\bmaxhp\b/g, 'hp'], [/\bmaxmp\b/g, 'mp']
+];
+export function scrollNamer(names) {
+  const scrolls = (names ?? []).map(name => /^(.*?)\s*Scroll:\s*(Lesser|Intermediate|Greater|Chaos)$/i.exec(name)).filter(Boolean)
+    .map(([full, what, tier]) => ({ full, tier: tier.toLowerCase(), words: normalize(what).split(' ').filter(Boolean) }));
+  return text => {
+    let t = ` ${normalize(String(text ?? '').replace(/(\d+)\s*%/g, ' $1pct '))} `;
+    const rate = /\b(100|60|10)pct\b/.exec(t)?.[1];
+    const tier = /\bchaos\b/.test(t) ? 'chaos' : /\b(lesser|intermediate|greater)\b/.exec(t)?.[1] ?? TIER_BY_RATE[rate];
+    if (!tier || !(/\bscroll\b|pct\b|\bgfa\b|\bchaos\b/.test(t))) return null;
+    for (const [pattern, word] of SCROLL_WORDS) t = t.replace(pattern, ` ${word} `);
+    const words = new Set(t.split(' ').filter(Boolean).flatMap(w => [w, w.replace(/s$/, '')]));
+    // The scroll whose every name word is in the advert; the most specific wins (Magic Attack over Attack).
+    const fits = scrolls.filter(s => s.tier === tier && s.words.every(w => words.has(w) || words.has(w.replace(/s$/, ''))));
+    return fits.sort((a, b) => b.words.length - a.words.length)[0]?.full ?? null;
+  };
+}
+
 // OCR slips split one item into several ("Mushmom Spare", "Frarmeless Glasses"): snap an advert's
 // item to the game item whose name is very close (same first letter, 85% alike), else keep it as read.
+// Scroll shorthand ("60% glove att") is turned into the scroll's name first.
 export function itemNamer(names) {
+  const scroll = scrollNamer(names);
   const exact = new Map(), byFirst = new Map();
   for (const name of names ?? []) { const key = normalize(name); if (!key) continue; exact.set(key, name); (byFirst.get(key[0]) ?? byFirst.set(key[0], []).get(key[0])).push([key, name]); }
   const cache = new Map();
@@ -67,7 +94,7 @@ export function itemNamer(names) {
     const key = normalize(text);
     if (!key) return null;
     if (cache.has(key)) return cache.get(key);
-    let best = exact.get(key) ?? null, top = 0;
+    let best = exact.get(key) ?? scroll(text), top = 0;
     if (!best && key.length >= 6) for (const [other, name] of byFirst.get(key[0]) ?? []) {
       if (Math.abs(other.length - key.length) > 2) continue;
       const score = 1 - editDistance(key, other) / Math.max(key.length, other.length);
