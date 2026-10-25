@@ -166,7 +166,7 @@ test('wrapped Quest Helper lines read as headings go back into the quest above',
     { title: 'Jr. Necki Skin', name: null, progress: [p(0, 10, 'Stirge Wing'), p(0, 20, 'Jr Necki'), p(0, 20, 'Stirge')] }
   ], name => needs[name]);
   assert.equal(luke.length, 1);
-  assert.deepEqual(luke[0].progress.map(x => [x.name, x.have]), [['Salad', 0], ['Jr. Necki Skin', null], ['Stirge Wing', 0], ['Jr Necki', 0], ['Stirge', 0]]);
+  assert.deepEqual(luke[0].progress.map(x => [x.name, x.have]), [['Salad', 0], ['Jr. Necki Skin', 0], ['Stirge Wing', 0], ['Jr Necki', 0], ['Stirge', 0]]);
   // "Make a Octopus & Mushroom O…: 1/1 Omok Table, 1/1 Omok Piece Octopus" then "Omok Piece: Mushroom:" with no count.
   const omok = mergeWrappedLines([
     { title: 'Make a Octopus  Mushroom O', name: 'Make a Octopus & Mushroom Omok Set', progress: [p(1, 1, 'Omok Table'), p(1, 1, 'Omok Piece Octopus')], complete: true },
@@ -181,3 +181,20 @@ test('wrapped Quest Helper lines read as headings go back into the quest above',
   ], name => needs[name]);
   assert.equal(kept.length, 2);
 });
+
+test('needed counts come from the game data, not the OCR ("0 / 12" read as "0 / 712")', async () => {
+  const { fixCounts } = await import('./hud.js');
+  const needs = { 'Searching for Fossils': [{ name: 'Plant Fossil', count: 12 }, { name: 'Animal Fossil', count: 12 }, { name: 'Green Mushroom', count: 25 }, { name: 'Axe Stump', count: 25 }] };
+  const quests = [{ title: 'Searching for Fossils', name: 'Searching for Fossils', progress: [
+    { name: 'Plant Fossil', have: 0, need: 712, done: false },
+    { name: 'Animal Fossil', have: 712, need: 12, done: true },   // the slash read into "have"
+    { name: 'Green Mushroom', have: 1, need: 25, done: false },
+    { name: 'Axe Stump', have: 925, need: 25, done: true }        // nonsense: counted from 0, not done
+  ] }];
+  fixCounts(quests, name => needs[name]);
+  assert.deepEqual(quests[0].progress.map(p => [p.name, p.have, p.need, p.done]), [
+    ['Plant Fossil', 0, 12, false], ['Animal Fossil', 12, 12, true], ['Green Mushroom', 1, 25, false], ['Axe Stump', 0, 25, false]
+  ]);
+  assert.equal(quests[0].complete, false);
+});
+

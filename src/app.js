@@ -29,7 +29,7 @@ if (!isLocalHost() && 'serviceWorker' in navigator) navigator.serviceWorker.regi
 import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn } from './questrecs.js';
 import { buildSteps, currentStep } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
-import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines } from './hud.js';
+import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines, fixCounts } from './hud.js';
 import { parseTradeChat, addTrades, summarizePrices, itemNamer, formatMesos } from './prices.js';
 import { findCatalogItem, sellVerdict, listingOpportunities, MEOWDB_PRICE_CHECK } from './sellcheck.js';
 import { createExpTracker, addExpReading, expSummary, sessionFromTracker } from './exptracker.js';
@@ -2832,7 +2832,9 @@ async function syncQuestHelper(parsed) {
   const resolve = (title, truncated) => { const seen = matchQuestTitle(title, names, false) ?? (truncated ? matchQuestTitle(title, names, true) : null); return seen ? questsForGameNames(state.quests, [seen], { tab: 'available', finished: state.questsFinished })[0] ?? null : null; };
   // Every tracked quest on screen; lines that match no quest and have no counts are OCR noise.
   // A wrapped line read as its own heading goes back into the quest above it (hud.js mergeWrappedLines).
-  const quests = mergeWrappedLines((parsed.quests ?? [parsed]).map(q => ({ ...q, name: resolve(q.title, q.truncated) })), name => state.quests.find(q => q.name === name)?.needs ?? []).filter(q => q.name || q.progress.length);
+  // Then the needed counts come from the game data (OCR read "0 / 12" as "0 / 712"); only "have" is read.
+  const needsOf = name => state.quests.find(q => q.name === name)?.needs ?? [];
+  const quests = fixCounts(mergeWrappedLines((parsed.quests ?? [parsed]).map(q => ({ ...q, name: resolve(q.title, q.truncated) })), needsOf), needsOf).filter(q => q.name || q.progress.length);
   // An unreadable or briefly hidden Quest Helper must not wipe the list on the Quests page: keep the
   // last quests seen for two minutes.
   if (!quests.some(q => q.name) && state.hud.quests?.some(q => q.name) && Date.now() - (state.hud.questsAt ?? 0) < 120_000) { renderQuestHelper(); return; }
@@ -2967,7 +2969,7 @@ function huntOptions(g) {
   const pending = g.steps.filter(step => !g.done.has(step.number) && (step.monster || step.item));
   const progress = pending.map(step => {
     const name = step.monster || step.item, seen = matchCount(helper?.progress, name);
-    return { name, have: seen?.have ?? 0, need: seen?.need ?? step.count ?? 1, done: false };
+    return { name, have: seen?.have ?? 0, need: step.count ?? seen?.need ?? 1, done: false };
   });
   // Wiki steps name the monster but not always the item: add the quest's game-data list, minus
   // anything already listed or whose step is ticked.
@@ -2976,7 +2978,7 @@ function huntOptions(g) {
     const key = normalize(need.name).replace(/s$/, '');
     if (progress.some(p => normalize(p.name).replace(/s$/, '') === key) || doneTitles.some(title => title.includes(key))) continue;
     const seen = matchCount(helper?.progress, need.name);
-    progress.push({ name: need.name, have: seen?.have ?? 0, need: seen?.need ?? need.count, done: false });
+    progress.push({ name: need.name, have: seen?.have ?? 0, need: need.count ?? seen?.need, done: false });
   }
   if (!progress.length) return null;
   const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting);
@@ -3003,7 +3005,7 @@ function allQuestsTrip() {
     if (name === state.guide.quest) goals = (huntOptions(guideSteps())?.goals ?? []).filter(goal => !isTicked(goal));
     else {
       if (!quest.needs?.length) continue;
-      const progress = quest.needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: seen?.have ?? 0, need: seen?.need ?? n.count, done: Boolean(seen && believableDone(seen)) || ticked.has(normalize(n.name)) }; });
+      const progress = quest.needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: seen?.have ?? 0, need: n.count ?? seen?.need, done: Boolean(seen && believableDone(seen)) || ticked.has(normalize(n.name)) }; });
       goals = huntGoals(state.data, progress, state.itemSources, quest.text, quest.needs.map(n => n.name), state.crafting);
       loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
     }
@@ -3031,7 +3033,7 @@ function allChecklistHtml(all) {
       const seen = matchCount(helper?.progress, need.name), auto = Boolean(seen && believableDone(seen)), done = auto || ticked.has(normalize(need.name));
       const goal = all.goals.find(g => normalize(g.name) === normalize(need.name) || normalize(g.craft?.item ?? '') === normalize(need.name));
       const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.given ? 'from an NPC' : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `from ${goal.monsters.slice(0, 2).join(', ')}${goal.guess ? ' (best guess)' : ''}` : '';
-      const count = seen ? `${seen.have ?? '?'}/${seen.need ?? need.count}` : `0/${need.count}`;
+      const count = `${seen?.have ?? 0}/${need.count}`;
       return `<li class="${done ? 'done' : ''}"><label><input type="checkbox" data-need-tick="${esc(name)}" data-need="${esc(need.name)}"${done ? ' checked' : ''}${auto ? ' disabled title="Done, says your Quest Helper"' : ''}> ${esc(need.name)} <small>${count}${where ? ` · ${esc(where)}` : ''}</small></label></li>`;
     }).join('');
     return `<li><strong>${esc(quest.arc && normalize(quest.arc) !== normalize(name) ? `${quest.arc} · ${name}` : name)}</strong><ul class="need-list">${items}</ul></li>`;

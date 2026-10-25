@@ -227,7 +227,7 @@ export function mergeWrappedLines(quests, needsOf) {
       const named = needs.filter(n => looksLike(q.title, n.name)), countsFit = q.progress.some(p => needs.some(n => looksLike(p.name, n.name)));
       if (named.length || countsFit) {
         const need = named.find(n => !prev.progress.some(p => looksLike(p.name, n.name)));
-        if (need) prev.progress.push({ name: need.name, have: null, need: need.count ?? null, done: false, unknown: true });
+        if (need) prev.progress.push({ name: need.name, have: 0, need: need.count ?? null, done: false, unknown: true });
         prev.progress.push(...q.progress);
         prev.complete = false;
         continue;
@@ -236,6 +236,30 @@ export function mergeWrappedLines(quests, needsOf) {
     out.push(q);
   }
   return out;
+}
+
+// The game data says how many each quest needs; the Quest Helper is only trusted for how many you
+// have. OCR reads "0 / 12" as "0 / 712" (the slash as a 7): the needed count always comes from
+// `needsOf(name)` when the item matches, and an impossible "have" (over twice the need) loses a
+// leading 7 or 1 that was really the slash; a count that cannot be read is shown as 0 (never as done).
+export function fixCounts(quests, needsOf) {
+  for (const q of quests ?? []) {
+    const needs = q.name ? needsOf(q.name) ?? [] : [];
+    if (!needs.length) continue;
+    for (const p of q.progress ?? []) {
+      const need = needs.find(n => looksLike(p.name, n.name));
+      if (!need?.count) continue;
+      p.need = need.count;
+      if (p.have != null && p.have > need.count * 2) {
+        const text = String(p.have), trimmed = /^[17]\d+$/.test(text) ? Number(text.slice(1)) : null;
+        p.have = trimmed !== null && trimmed <= need.count * 2 ? trimmed : 0; // unreadable: count from 0 rather than guess
+      }
+      p.have ??= 0;
+      p.done = p.have >= p.need;
+    }
+    q.complete = q.progress.length > 0 && q.progress.every(p => p.done);
+  }
+  return quests;
 }
 
 // Matches a (possibly truncated, possibly misread) Quest Helper title to a catalog quest name.
