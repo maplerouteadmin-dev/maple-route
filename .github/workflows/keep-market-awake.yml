@@ -1,0 +1,18 @@
+# Supabase's free plan pauses a project after about a week without activity, which would switch the
+# Market off for everyone. Once a day this reads one row (with the public key the app itself uses),
+# which counts as activity. Nothing is written. Run it by hand from the Actions tab any time.
+name: Keep the Market awake
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+permissions: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read one listing
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' 'https://kvcineivyzrvbgkmacmu.supabase.co/rest/v1/listings?select=id&limit=1' -H 'apikey: sb_publishable_NbHieog1F-0uR_1I-Do77g_BWU-TQP_')
+          echo "Market answered HTTP $code"
+          test "$code" = 200

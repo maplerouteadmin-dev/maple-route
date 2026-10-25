@@ -23,3 +23,22 @@ connected. To make listings shared between all players:
 What players see and agree to: mesos only (real-money trading is against the game's rules), the
 seller's character name and channel are public, contact happens in game (`/find` + whisper).
 Reported listings arrive as GitHub issues labelled `listing`; remove one in **Table Editor → listings**.
+
+## Keeping it running
+
+- **Pausing:** Supabase pauses a free project after about a week without activity. The public repo's
+  **Keep the Market awake** workflow (Actions tab) reads one listing every day to prevent that. GitHub
+  switches scheduled workflows off after 60 days without a commit; if that happens, open the Actions tab
+  and press **Enable workflow**. If the project ever does pause, **Restore** it from the Supabase dashboard.
+- **Spam:**
+  1. First: **Authentication → Rate Limits** and lower *anonymous sign-ins per hour* (per IP). Each new
+     anonymous player needs one sign-in, and the 20-live-listings limit is per player, so this caps how
+     fast one person can flood the Market. No app change needed.
+  2. Remove spam in **Table Editor → listings** (offers on a listing go with it). To clear everything one
+     player posted, copy the `owner` of one of their listings and run in the SQL Editor:
+     `delete from public.listings where owner = '<owner id>';`
+  3. Last resort, CAPTCHA (**Authentication → Attack Protection**): the app must first send a CAPTCHA
+     answer when it signs in, so turning it on alone stops new players from using the Market. Ask for the
+     app change (a Cloudflare Turnstile or hCaptcha widget) before switching it on.
+- **Reports** arrive as GitHub issues labelled `listing` (from a listing's Report link).
+
