@@ -26,7 +26,9 @@ export function validateDataset(input) {
     const picture = typeof raw.picture === 'string' && /^images\/maps\/\d{1,12}\.png$/.test(raw.picture) ? raw.picture : null;
     const mobSpots = Array.isArray(raw.mobSpots) ? raw.mobSpots.slice(0, 400).map(spot => { const at = point(spot); return at && spot.name ? { name: String(spot.name).slice(0, 60), ...at } : null; }).filter(Boolean) : [];
     const returnTo = typeof raw.returnTo === 'string' && raw.returnTo !== id ? raw.returnTo : null;
-    maps.set(id, { id, name, area: String(raw.area ?? '').slice(0, 120), aliases, bounds: spatial, marks, spots, npcs, mobSpots, picture, returnTo });
+    // How many monsters can be alive at once (the game's mob cap), and how many spawn points the map has.
+    const capacity = Number.isInteger(raw.capacity) && raw.capacity > 0 && raw.capacity < 1000 ? raw.capacity : null;
+    maps.set(id, { id, name, area: String(raw.area ?? '').slice(0, 120), aliases, bounds: spatial, marks, spots, npcs, mobSpots, picture, returnTo, capacity });
   }
   if (!maps.size) throw new Error('The file has no maps.');
   const portals = [];

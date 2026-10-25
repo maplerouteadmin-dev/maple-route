@@ -128,3 +128,32 @@ test('one trip for several quests: each quest handed in on the way when its hunt
   // Plain map ids still work (no quest names: every hand-in waits until the end).
   assert.deepEqual(planMultiTrip(world, goals, 'start', ['rocky', 'kerning']).order.map(o => o.type), ['hunt', 'hunt', 'handin', 'handin']);
 });
+
+test('a hunting map needs enough of the monster for what is left (25 kills: not a map with 2)', async () => {
+  const { minSpawns, goalSpawns, planMultiTrip } = await import('./objective.js');
+  assert.deepEqual([minSpawns({ need: 25 }), minSpawns({ need: 25, have: 20 }), minSpawns({ need: 12 }), minSpawns({ need: 1 })], [8, 4, 6, 2]);
+  const world = validateDataset({ schemaVersion: 1, maps: ['start', 'near', 'far'].map(id => ({ id, name: id })), portals: [
+    ['start', 'near'], ['near', 'far']
+  ].flatMap(([a, b], i) => [{ from: a, to: b, name: `p${i}` }, { from: b, to: a, name: `q${i}` }]), targets: [
+    { id: 'g', name: 'Green Mushroom', kind: 'mob', locations: [{ mapId: 'near', count: 2 }, { mapId: 'far', count: 14 }] },
+    { id: 'r', name: 'Rare Boss', kind: 'mob', locations: [{ mapId: 'near', count: 1 }] }
+  ] });
+  const mushrooms = { name: 'Green Mushroom', need: 25, monsters: ['Green Mushroom'], quests: ['Fossils'] };
+  assert.deepEqual([...goalSpawns(world, mushrooms).keys()], ['far']);
+  assert.deepEqual([...goalSpawns(world, { ...mushrooms, need: 1 }).keys()], ['near', 'far']); // one left: 2 is enough
+  assert.deepEqual([...goalSpawns(world, { name: 'Rare Boss', need: 5, monsters: ['Rare Boss'] }).keys()], ['near']); // nowhere better: still listed
+  assert.deepEqual(planMultiTrip(world, [mushrooms], 'start', []).stops.map(s => s.mapId), ['far']);
+});
+
+test('spawns count what can be alive at once (the map mob cap)', async () => {
+  const { goalSpawns } = await import('./objective.js');
+  // East Domain of Perion: 71 spawn points, 40 alive at once; 12 of the points are Green Mushrooms.
+  const world = validateDataset({ schemaVersion: 1, maps: [{ id: 'east', name: 'East Domain of Perion', capacity: 40 }, { id: 'wisdom', name: 'The Forest of Wisdom', capacity: 31 }], portals: [], targets: [
+    { id: 'g', name: 'Green Mushroom', kind: 'mob', locations: [{ mapId: 'east', count: 12 }, { mapId: 'wisdom', count: 30 }] },
+    { id: 'o', name: 'Other', kind: 'mob', locations: [{ mapId: 'east', count: 59 }, { mapId: 'wisdom', count: 28 }] }
+  ] });
+  const spawns = goalSpawns(world, { name: 'Green Mushroom', need: 25, monsters: ['Green Mushroom'] });
+  assert.deepEqual([...spawns], [['wisdom', 16]]); // about 7 alive at East Domain: below the 8 needed for 25
+  assert.equal(world.maps[0].capacity, 40);
+});
+

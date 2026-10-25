@@ -137,18 +137,13 @@ function hops(data, from, to) {
 export function planHuntTrip(data, goals, currentMapId = null, endMapId = null, { via = [] } = {}) {
   const active = goals.filter(g => g.monsters?.length).slice(0, 3);
   if (!active.length) return null;
-  const spawnsOn = (goal, mapId) => {
-    let total = 0;
-    for (const name of goal.monsters) total += mobByName(data, name)?.locations.find(l => l.mapId === mapId)?.count ?? 0;
-    return total;
-  };
+  const spawnsOn = (goal, mapId) => goalSpawns(data, goal).get(mapId) ?? 0;
   // Candidates per goal: its densest maps, the current map, and maps that cover several goals.
   const shared = rankObjectiveMaps(data, active, null).filter(m => m.goals.length > 1).slice(0, 3).map(m => m.mapId);
   const cap = goal => Math.min(20, 8 + Math.ceil(Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)) / 5));
   const near = mapId => Math.min(...[currentMapId, endMapId].filter(Boolean).map(from => hops(data, from, mapId) ?? 99), currentMapId || endMapId ? 99 : 0);
   const candidates = active.map(goal => {
-    const maps = new Map();
-    for (const name of goal.monsters) for (const l of mobByName(data, name)?.locations ?? []) maps.set(l.mapId, (maps.get(l.mapId) ?? 0) + (l.count ?? 1));
+    const maps = goalSpawns(data, goal);
     // Worth a look: enough spawns for what is left, close to where you are or where you hand in.
     const top = [...maps].map(([mapId, count]) => [mapId, Math.min(count, cap(goal)) * 3 - near(mapId) * 4]).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([mapId]) => mapId);
     for (const mapId of [currentMapId, ...shared]) if (mapId && maps.has(mapId) && !top.includes(mapId)) top.push(mapId);
@@ -174,16 +169,53 @@ export function planHuntTrip(data, goals, currentMapId = null, endMapId = null, 
   return best;
 }
 
+// A map is only worth hunting on if the monster spawns there often enough for what is still needed:
+// 25 Green Mushrooms cannot be done on a map with 2 of them. Fewest spawns: 8 when 20+ are left, 6 for
+// 10+, 4 for 4+, else 2. If no map anywhere has that many (a rare monster), the best maps still count.
+export function minSpawns(goal) {
+  const left = Math.max(1, (goal?.need ?? 1) - (goal?.have ?? 0));
+  return left >= 20 ? 8 : left >= 10 ? 6 : left >= 4 ? 4 : 2;
+}
+// Monsters of one kind alive at once on a map: its spawn points there, scaled down when the map's mob
+// cap is below its total spawn points (East Domain of Perion: 71 points, 40 alive at once, so its 12
+// Green Mushroom points give about 7). Without a cap in the data, the listed points.
+const totalPoints = new WeakMap();
+function aliveAtOnce(data, mapId, count) {
+  const map = (data.maps ?? []).find(m => m.id === mapId);
+  if (!map?.capacity) return count;
+  let totals = totalPoints.get(data);
+  if (!totals) {
+    totalPoints.set(data, totals = new Map());
+    for (const t of data.targets ?? []) if (t.kind === 'mob') for (const l of t.locations ?? []) totals.set(l.mapId, (totals.get(l.mapId) ?? 0) + (l.count ?? 1));
+  }
+  const all = totals.get(mapId) ?? count;
+  return all > map.capacity ? Math.round(count * map.capacity / all * 10) / 10 : count;
+}
+// The maps a goal can be done on: map id → its monsters alive there at once (summed).
+const spawnCache = new WeakMap();
+export function goalSpawns(data, goal) {
+  const key = `${goal.monsters?.join('|')}#${minSpawns(goal)}`;
+  let byData = spawnCache.get(data); if (!byData) spawnCache.set(data, byData = new Map());
+  if (byData.has(key)) return byData.get(key);
+  const all = new Map();
+  for (const name of goal.monsters ?? []) for (const l of mobByName(data, name)?.locations ?? []) all.set(l.mapId, (all.get(l.mapId) ?? 0) + aliveAtOnce(data, l.mapId, l.count ?? 1));
+  const min = minSpawns(goal), most = Math.max(0, ...all.values());
+  const usable = new Map([...all].filter(([, count]) => count >= Math.min(min, most)));
+  byData.set(key, usable);
+  return usable;
+}
+
 // Maps ranked by how much of the remaining work they cover (listed spawns of useful monsters),
-// lightly penalised by distance.
+// lightly penalised by distance. Maps with too few of a goal's monsters do not count for it.
 export function rankObjectiveMaps(data, goals, currentMapId = null) {
   const scores = new Map();
   for (const goal of goals) for (const name of goal.monsters) {
-    const mob = mobByName(data, name);
+    const mob = mobByName(data, name), usable = goalSpawns(data, goal);
     for (const location of mob?.locations ?? []) {
+      if (!usable.has(location.mapId)) continue;
       const entry = scores.get(location.mapId) ?? { mapId: location.mapId, spawns: 0, goals: new Set(), monsters: new Set() };
       // A monster that covers two needs (kill it AND collect its drop) is still one set of spawns.
-      if (!entry.monsters.has(mob.name)) entry.spawns += location.count ?? 1;
+      if (!entry.monsters.has(mob.name)) entry.spawns += Math.round(aliveAtOnce(data, location.mapId, location.count ?? 1));
       entry.goals.add(goal.name); entry.monsters.add(mob.name);
       scores.set(location.mapId, entry);
     }
@@ -207,10 +239,10 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
   if (!active.length) return null;
   const ends = handIns.map(h => typeof h === 'string' ? { mapId: h, quests: [] } : h).filter(h => h.mapId);
   const cap = goal => Math.min(20, 8 + Math.ceil(Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)) / 5));
-  const spawnsOn = (goal, mapId) => goal.monsters.reduce((sum, name) => sum + (mobByName(data, name)?.locations.find(l => l.mapId === mapId)?.count ?? 0), 0);
+  const spawnsOn = (goal, mapId) => goalSpawns(data, goal).get(mapId) ?? 0;
   // Candidate maps: the 25 that cover the most (by capped spawns over all goals).
   const value = new Map();
-  for (const goal of active) for (const name of goal.monsters) for (const l of mobByName(data, name)?.locations ?? []) value.set(l.mapId, (value.get(l.mapId) ?? 0) + Math.min(l.count ?? 1, cap(goal)));
+  for (const goal of active) for (const [mapId, count] of goalSpawns(data, goal)) value.set(mapId, (value.get(mapId) ?? 0) + Math.min(count, cap(goal)));
   const candidates = [...value].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([mapId]) => mapId);
   if (currentMapId && value.has(currentMapId) && !candidates.includes(currentMapId)) candidates.push(currentMapId);
   const order = [], left = new Set(active);
