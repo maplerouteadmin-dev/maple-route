@@ -191,4 +191,4 @@ body.gps-page #live-plan{max-height:var(--plan-h,30vh);overflow:auto;overscroll-
 body.gps-page .view-navigate>.live-plan-card{padding:8px 12px}
 .choose-row{align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.choose-row #guide-offer{flex:1;min-width:0}.choose-row #guide-offer:empty{display:none}
 .choose-row .objective.offer{margin:0;padding:4px 10px;font-size:.84rem}
-
+.top-report{border:1px solid rgba(255,255,255,.35);background:transparent;color:inherit;font:inherit;cursor:pointer}.top-report:hover{background:rgba(255,255,255,.12)}

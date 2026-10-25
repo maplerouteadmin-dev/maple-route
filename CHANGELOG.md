@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.9
+
+- The Report button moved to the top menu, right of Settings.
+
 ## 1.0.8
 
 - Separate switches for taxis (Regular Cabs and Phil) and the VIP taxi (10,000 mesos to Ant Tunnel Park), on the Live card and in the route options. The VIP taxi is off unless you turn it on.
