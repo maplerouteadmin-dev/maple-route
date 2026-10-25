@@ -174,6 +174,7 @@ $('#app').innerHTML = `
         <button type="button" class="button light" id="download-test-log">Download test log</button>
       </div><p class="fine">These read the status bar, the Quest Helper and the last chat lines from the same shared window. Nothing is pressed for you.</p></section>
     <section class="card world-card" aria-labelledby="world-title"><h2 id="world-title">World map</h2><p class="muted">Explore any map and what it connects to, with monster levels, NPCs and rides. Search a map, NPC or monster and press Go to route there.</p><div id="world-map"></div></section>
+    <section class="card live-plan-card" aria-labelledby="liveplan-title"><h2 id="liveplan-title" class="sr-only">Quests</h2><div id="live-plan" aria-live="polite"></div></section>
     <section class="card mapview-card" aria-labelledby="mapview-title"><div class="live-head"><div><div class="eyebrow">Map</div><h2 id="mapview-title">Where you are</h2></div><label class="toggle"><input type="checkbox" id="map-detailed"> Detailed render (may show monsters)</label></div>
       <div id="mapview" aria-live="off"></div><p class="fine" id="mapview-note"></p></section>
     <section class="card dashboard-card" aria-labelledby="next-title"><div class="dashboard-heading"><div><div class="eyebrow">Your local plan</div><h2 id="next-title">Next stop</h2><p class="muted">Set your character and today’s focus. This dashboard updates when you mark quest steps or confirm a new map.</p></div><span class="pill">Manual progress</span></div><div class="profile-fields"><label class="field">Level<input id="profile-level" type="number" min="1" max="200" value="15"></label><label class="field">Job<select id="profile-job"><option>Any</option><option>Beginner</option><option>Warrior</option><option>Magician</option><option>Bowman</option><option>Thief</option></select></label><label class="field">Focus<select id="focus-mode"><option value="quests">Active quests</option><option value="training">Training</option><option value="money">Money candidates</option><option value="item">Chosen item</option></select></label></div><div id="next-stop" aria-live="polite"></div><p class="fine">Stored only in this browser. Suggestions use community data and do not read your character, inventory, or quest log.</p></section>
@@ -211,7 +212,7 @@ for (const id of ['#current-map', '#destination-map', '#session-map', '#goal-map
 
 // Four views instead of one long page. Sections keep their markup; they are just regrouped.
 const VIEWS = {
-  navigate: ['live-title', 'mapview-title'],
+  navigate: ['live-title', 'mapview-title', 'liveplan-title'],
   goto: ['plan-title', 'recs-title', 'targets-title', 'quest-title', 'item-title', 'guide-title', 'journey-title', 'route-title'],
   world: ['world-title', 'atlas-title'],
   quests: ['quest-helper-title', 'questplan-title', 'ticks-title', 'notes-title', 'questlog-title', 'next-title', 'trip-title', 'goals-title'],
@@ -273,7 +274,8 @@ function fitLivePage() {
   const measure = () => { const box = document.querySelector('#mapview .mv-picture, #mapview svg'); return box ? window.innerHeight - box.getBoundingClientRect().top - (document.querySelector('#mapview-note')?.offsetHeight ?? 0) - 20 + window.scrollY : 300; };
   let room = measure();
   if (room < 180 && step) { root.style.setProperty('--step-h', `${Math.max(90, step.offsetHeight - (180 - room))}px`); room = measure(); }
-  root.style.setProperty('--map-h', `${Math.max(120, Math.round(room))}px`);
+  const planShown = Boolean($('#live-plan')?.innerHTML.trim());
+  root.style.setProperty('--map-h', `${Math.max(planShown ? 220 : 120, Math.round(planShown ? Math.min(room, window.innerHeight * .55) : room))}px`);
 }
 window.addEventListener('resize', fitLivePage);
 
@@ -1765,9 +1767,11 @@ function cancelDestination() {
 }
 
 function renderLive() {
-  const html = destinationHtml() + hudHtml() + liveHtml(liveModel());
-  const card = $('#live-step');
+  // Directions above the map (the map's header); quests, checklist and EXP in the card below it.
+  const html = destinationHtml() + liveHtml(liveModel()), planHtml = hudHtml();
+  const card = $('#live-step'), plan = $('#live-plan');
   if (card && card.dataset.html !== html) { card.innerHTML = html; card.dataset.html = html; }
+  if (plan && plan.dataset.html !== planHtml) { plan.innerHTML = planHtml; plan.dataset.html = planHtml; plan.closest('section')?.classList.toggle('hidden', !planHtml); setTimeout(fitLivePage, 0); }
   if (state.pipDoc) {
     const map = mapById(state.current), model = liveModel();
     const title = state.pipDoc.getElementById('pip-title'); if (title) title.innerHTML = map ? `${esc(map.area || '')}<br><b>${esc(map.name)}</b>` : '<b>Maple Route</b>';
@@ -3701,7 +3705,7 @@ function renderQuestHelper() {
 
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-guide]');
-  if (!button || !(button.closest('#quest-helper') || button.closest('#live-step'))) return;
+  if (!button || !(button.closest('#quest-helper') || button.closest('#live-step') || button.closest('#live-plan'))) return;
   setGuide(button.dataset.guide || null);
   if (button.dataset.guide) reveal('#live-title');
 });
@@ -3895,7 +3899,7 @@ function arrivalHtml(d) {
     <p class="fine">Monsters, NPCs and exits from OSMS Data Explorer; drops and quests from MapleClassic Wiki contributors (CC BY-NC-SA 4.0).</p></details></div>`;
 }
 
-$('#live-step').addEventListener('click', event => { if (event.target.closest('[data-share-now]')) { startLive(); return; }
+function liveCardClick(event) { if (event.target.closest('[data-share-now]')) { startLive(); return; }
   if (event.target.closest('[data-cancel-destination]')) { cancelDestination(); return; }
   const pickName = event.target.closest('[data-character-name]');
   if (pickName) {
@@ -4007,7 +4011,8 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
   }
   const button = event.target.closest('[data-route]'); if (!button || !mapById(button.dataset.route)) return;
   routeToMap(button.dataset.route, button.dataset.routeNpc || null);
-});
+}
+for (const id of ['#live-step', '#live-plan']) $(id).addEventListener('click', liveCardClick);
 
 async function loadPublicData(force = false) {
   if (state.data.portals.length && state.data.targets.length && !force) return;

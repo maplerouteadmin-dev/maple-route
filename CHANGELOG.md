@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- Live GPS page: the directions (destination, next move, Start/Stop and the Voice/Taxis/scroll switches) sit at the top as the map's header; your quests, checklist and EXP are in a card below the map.
+
 ## 1.0.4
 
 - Your ticks always win over screen reading: Quest Helper counts are shown as hints but never tick a step, finish a quest or bring back a hand-in you ticked. Ticking a hand-in (e.g. Donating to Kerning City) now always takes the quest off your plan, with Undo.
