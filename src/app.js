@@ -2976,7 +2976,7 @@ function huntOptions(g) {
 // use the Quest Helper counts when on screen, else what the game data says they need.
 function allQuestsTrip() {
   const names = [...new Set([state.guide.quest, ...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests].filter(Boolean))].slice(0, 8);
-  const byName = new Map(), ends = new Map();
+  const byName = new Map(), ends = new Map(), endQuests = new Map();
   for (const name of names) {
     const quest = state.quests.find(q => q.name === name);
     if (!quest || state.questsFinished?.includes?.(name)) continue;
@@ -2995,11 +2995,11 @@ function allQuestsTrip() {
       else byName.set(key, { ...goal, quests: [name] });
     }
     const npc = quest.turnIn || quest.giver, mapId = npc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(npc))?.locations[0]?.mapId : null;
-    if (mapId && (goals.length || helper?.complete)) ends.set(mapId, [...(ends.get(mapId) ?? []), npc]);
+    if (mapId && (goals.length || helper?.complete)) { ends.set(mapId, [...(ends.get(mapId) ?? []), npc]); endQuests.set(mapId, [...(endQuests.get(mapId) ?? []), name]); }
   }
   const goals = [...byName.values()];
   const key = JSON.stringify([goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], state.current, state.useTaxis, state.useNearestScroll, state.useTownScrolls]);
-  if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()], { via: craftStops(state.data, goals) }) };
+  if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()].map(mapId => ({ mapId, quests: endQuests.get(mapId) ?? [] })), { via: craftStops(state.data, goals) }) };
   return { goals, ends, quests: names, trip: state.allTripCache.trip };
 }
 function allTripHtml(all) {
@@ -3007,9 +3007,10 @@ function allTripHtml(all) {
   if (!trip) return `<p class="fine">${all?.goals.some(g => g.pending) ? 'Looking up which monsters drop what you need…' : 'Nothing to hunt for your other quests right now.'}</p>`;
   const npcsAt = mapId => [...new Set(all.ends.get(mapId) ?? [])].join(', ');
   const parts = [
-    ...trip.stops.map(stop => `${esc(mapById(stop.mapId)?.name ?? '?')} <small>(${esc(stop.monsters.join(', '))} · ${esc(stop.quests.join(', '))})</small>`),
-    ...trip.via.map(mapId => `${esc(mapById(mapId)?.name ?? '?')} <small>(craft)</small>`),
-    ...trip.ends.map(mapId => `${esc(npcsAt(mapId) || mapById(mapId)?.name || '?')} <small>(hand in)</small>`)
+    // In the order you go: hunting maps, each quest's hand-in as soon as it is done (when close), crafters.
+    ...trip.order.map(step => step.type === 'hunt' ? `${esc(mapById(step.mapId)?.name ?? '?')} <small>(${esc(step.monsters.join(', '))} · ${esc(step.quests.join(', '))})</small>`
+      : step.type === 'craft' ? `${esc(mapById(step.mapId)?.name ?? '?')} <small>(craft)</small>`
+      : `${esc(npcsAt(step.mapId) || mapById(step.mapId)?.name || '?')} <small>(hand in${step.quests?.length ? `: ${esc(step.quests.join(', '))}` : ''}${step.noRoute ? '; no walking route there' : ''})</small>`)
   ];
   const first = trip.stops[0]?.mapId;
   return `<div class="fine hunt-trip"><strong>All quests trip:</strong> ${parts.join(' → ')} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${first && first !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(first)}">Go</button>` : ''}${trip.missing.length ? `<br><small>No known spot for: ${esc(trip.missing.join(', '))}</small>` : ''}</div>`;

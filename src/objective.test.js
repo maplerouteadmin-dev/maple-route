@@ -105,25 +105,26 @@ test('short monster names count, and finished needs still claim their monster', 
   assert.deepEqual(goals.map(g => [g.name, g.monsters]), [['Omok Table', ['Stump']], ['Omok Piece: Pig', ['Pig']]]);
 });
 
-test('one trip for several quests: shared maps first, then every hand-in, nearest first', async () => {
+test('one trip for several quests: each quest handed in on the way when its hunting is done', async () => {
   const { planMultiTrip } = await import('./objective.js');
-  // start - henesys(Casey) - hill(Stump, Pig) ; start - kerning(Luke) - swamp(Jr. Necki, Stirge)
-  const world = validateDataset({ schemaVersion: 1, maps: ['start', 'henesys', 'hill', 'kerning', 'swamp'].map(id => ({ id, name: id })), portals: [
-    ['start', 'henesys'], ['henesys', 'hill'], ['start', 'kerning'], ['kerning', 'swamp']
+  // start - perion - rocky(Winston) - east(Green Mushroom, Axe Stump) ; start - kerning(Luke) - swamp(Jr. Necki, Stirge)
+  const world = validateDataset({ schemaVersion: 1, maps: ['start', 'perion', 'rocky', 'east', 'kerning', 'swamp'].map(id => ({ id, name: id })), portals: [
+    ['start', 'perion'], ['perion', 'rocky'], ['rocky', 'east'], ['start', 'kerning'], ['kerning', 'swamp']
   ].flatMap(([a, b], i) => [{ from: a, to: b, name: `p${i}` }, { from: b, to: a, name: `q${i}` }]), targets: [
-    { id: 's', name: 'Stump', kind: 'mob', locations: [{ mapId: 'hill', count: 16 }] },
-    { id: 'p', name: 'Pig', kind: 'mob', locations: [{ mapId: 'hill', count: 16 }] },
+    { id: 'g', name: 'Green Mushroom', kind: 'mob', locations: [{ mapId: 'east', count: 20 }] },
+    { id: 'a', name: 'Axe Stump', kind: 'mob', locations: [{ mapId: 'east', count: 20 }] },
     { id: 'n', name: 'Jr. Necki', kind: 'mob', locations: [{ mapId: 'swamp', count: 10 }] },
     { id: 't', name: 'Stirge', kind: 'mob', locations: [{ mapId: 'swamp', count: 10 }] }
   ] });
   const goals = [
-    { name: 'Omok Table', need: 1, monsters: ['Stump'], quests: ['Omok'] }, { name: 'Omok Piece: Pig', need: 1, monsters: ['Pig'], quests: ['Omok'] },
-    { name: 'Jr. Necki', need: 20, monsters: ['Jr. Necki'], quests: ['Luke'] }, { name: 'Stirge Wing', need: 10, monsters: ['Stirge'], quests: ['Luke'] }
+    { name: 'Green Mushroom', need: 25, monsters: ['Green Mushroom'], quests: ['Fossils'] }, { name: 'Axe Stump', need: 25, monsters: ['Axe Stump'], quests: ['Fossils'] },
+    { name: 'Jr. Necki', need: 20, monsters: ['Jr. Necki'], quests: ['Luke'] }, { name: 'Stirge', need: 20, monsters: ['Stirge'], quests: ['Luke'] }
   ];
-  const trip = planMultiTrip(world, goals, 'start', ['henesys', 'kerning']);
-  assert.deepEqual(trip.stops.map(s => [s.mapId, s.quests]).sort(), [['hill', ['Omok']], ['swamp', ['Luke']]]);
-  // The hand-in nearest the last hunting map comes first (Casey after the hill, Luke after the swamp).
-  assert.deepEqual(trip.ends, trip.stops.at(-1).mapId === 'hill' ? ['henesys', 'kerning'] : ['kerning', 'henesys']);
-  assert.equal(trip.hops, 2 + 4 + 1 + 2); // to the first map, across to the other, its hand-in, the other hand-in
-  assert.deepEqual(trip.missing, []);
+  const trip = planMultiTrip(world, goals, 'start', [{ mapId: 'rocky', quests: ['Fossils'] }, { mapId: 'kerning', quests: ['Luke'] }]);
+  // Fossils hunted first (more spawns), handed in to Winston right next door, then Luke's hunt and hand-in.
+  assert.deepEqual(trip.order.map(o => `${o.type}:${o.mapId}`), ['hunt:east', 'handin:rocky', 'hunt:swamp', 'handin:kerning']);
+  assert.equal(trip.hops, 3 + 1 + 4 + 1);
+  assert.deepEqual([trip.stops.length, trip.ends, trip.missing], [2, ['rocky', 'kerning'], []]);
+  // Plain map ids still work (no quest names: every hand-in waits until the end).
+  assert.deepEqual(planMultiTrip(world, goals, 'start', ['rocky', 'kerning']).order.map(o => o.type), ['hunt', 'hunt', 'handin', 'handin']);
 });
