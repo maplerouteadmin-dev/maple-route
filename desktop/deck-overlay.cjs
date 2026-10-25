@@ -7,6 +7,12 @@ const execFileAsync = promisify(execFile);
 // Bottom-left sits over the event icons only.
 const OVERLAY_POSITIONS = ['bottom-left', 'bottom-right', 'upper-right'];
 const overlayPosition = value => OVERLAY_POSITIONS.includes(value) ? value : 'bottom-left';
+// While the phone QR code shows (the first minute, until a phone connects) the box is taller so the
+// code is big enough for a phone camera (about 230 px); it grows upward, still clear of the HUD.
+function pairingBounds(position = 'bottom-left') {
+  const b = overlayBounds(position), height = 300;
+  return position === 'upper-right' ? { ...b, height } : { ...b, y: b.y + b.height - height, height };
+}
 function overlayBounds(position = 'bottom-left') {
   if (position === 'upper-right') return { x: 1020, y: 150, width: 250, height: 142 };
   if (position === 'bottom-right') return { x: 1020, y: 608, width: 250, height: 142 };
@@ -23,4 +29,4 @@ async function markOwnWindowAsOverlay(window) {
   return id;
 }
 
-module.exports = { overlayBounds, overlayPosition, OVERLAY_POSITIONS, markOwnWindowAsOverlay };
+module.exports = { overlayBounds, pairingBounds, overlayPosition, OVERLAY_POSITIONS, markOwnWindowAsOverlay };

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.5
+
+- Steam Deck: the phone QR code is big enough to scan (the pop-up grows taller while it shows, then back to the small map).
+
 ## 1.1.0-beta.4
 
 - Steam Deck: the phone QR code fits the pop-up (code on the left, instructions beside it).

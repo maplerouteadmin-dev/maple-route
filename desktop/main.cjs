@@ -5,7 +5,7 @@ const { join } = require('node:path');
 const { spawn } = require('node:child_process');
 const { readFileSync } = require('node:fs');
 const { DeckStream } = require('./deck-stream.cjs');
-const { overlayBounds } = require('./deck-overlay.cjs');
+const { overlayBounds, pairingBounds } = require('./deck-overlay.cjs');
 
 const deckMode = process.platform === 'linux' && process.argv.includes('--deck-service');
 if (deckMode) {
@@ -52,16 +52,20 @@ function setKeepReading(on) {
 const keepReading = () => { try { return require('node:fs').existsSync(readingFlag()); } catch { return false; } };
 function explicitStop() { setKeepReading(false); deckStream.stop(); mainWindow.webContents.send('deck:phone-stop'); }
 function placeOverlayBox(window, position) {
-  const b = overlayBounds(position);
+  const b = boxBounds(position);
+  if (!window.isDestroyed()) window.setSize(b.width, b.height);
+  overlayToHelper({ x: b.x, y: b.y });
   window.webContents.executeJavaScript(`window.placeMapleBox(${JSON.stringify({ x: 0, y: 0, width: b.width, height: b.height })})`).catch(() => {});
 }
 // QR code first: while no phone is connected, the pop-up shows the phone's QR code for the first
 // minute after the game opens (and whenever reading is off), then the map. A connected phone hides it.
-let gameOpenedAt = 0;
+let gameOpenedAt = 0, pairingShown = false;
+const boxBounds = position => (pairingShown ? pairingBounds : overlayBounds)(position);
 function showPairing() {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const noPhone = !phone?.clients?.size, early = Date.now() - gameOpenedAt < 60_000;
   const svg = phone?.qr && noPhone && (early || deckStream?.status().state !== 'reading') ? phone.qr : '';
+  if (Boolean(svg) !== pairingShown) { pairingShown = Boolean(svg); placeOverlayBox(overlayWindow, overlayPosition); }
   overlayWindow.webContents.executeJavaScript(`window.setMaplePairing(${JSON.stringify(svg)})`).catch(() => {});
 }
 
@@ -122,9 +126,7 @@ async function setDeckOverlay(enabled, position = 'bottom-left', { remember = tr
     return false;
   }
   if (overlayWindow && !overlayWindow.isDestroyed()) {
-    overlayWindow.setSize(bounds.width, bounds.height);
     placeOverlayBox(overlayWindow, position);
-    overlayToHelper({ x: bounds.x, y: bounds.y });
     phone?.publish({ overlay: true, overlayPosition });
     return true;
   }
@@ -151,7 +153,7 @@ async function setDeckOverlay(enabled, position = 'bottom-left', { remember = tr
       const png = image.toPNG().toString('base64');
       if (png === lastSent) return;
       lastSent = png;
-      const b = overlayBounds(overlayPosition);
+      const b = boxBounds(overlayPosition);
       overlayToHelper({ x: b.x, y: b.y, png });
     });
     placeOverlayBox(window, position);
