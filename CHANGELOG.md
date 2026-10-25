@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.6
+
+- Live GPS page fits the window again: the map sits right under the buttons (Choose destination moved above them) and is a little shorter, and your quests and checklist scroll in their own box below the map.
+- The detailed map render is on by default; its switch moved to Settings → Map.
+
 ## 1.0.5
 
 - Live GPS page: the directions (destination, next move, Start/Stop and the Voice/Taxis/scroll switches) sit at the top as the map's header; your quests, checklist and EXP are in a card below the map.

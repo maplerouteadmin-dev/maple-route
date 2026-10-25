@@ -182,4 +182,11 @@ body.gps-page #mapview-note{line-height:1.3}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .live-plan-card{background:#fffefa}.live-plan-card.hidden{display:none}
 body.gps-page .live-plan-card .objective{font-size:.84rem}
+.choose-row{display:flex;justify-content:flex-end;margin:4px 0 0}
+body.gps-page .view-navigate>.live-card{margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;padding-bottom:8px}
+body.gps-page .view-navigate>.mapview-card{margin-top:0;border-top:0;border-top-left-radius:0;border-top-right-radius:0;padding-top:0}
+body.gps-page .mapview-card>.live-head{display:none}
+body.gps-page #mapview .mv-picture{margin-top:0}
+body.gps-page #live-plan{max-height:var(--plan-h,30vh);overflow:auto;overscroll-behavior:contain}
+body.gps-page .view-navigate>.live-plan-card{padding:8px 12px}
 
