@@ -176,3 +176,23 @@ test('quests not started yet: picked up at the giver before hunting for them, ha
   assert.deepEqual(planMultiTrip(world, [], 'start', [{ mapId: 'shop', quests: ['Delivery'] }], { starts: [{ mapId: 'town', quests: ['Delivery'] }] }).order.map(o => o.type), ['start', 'handin']);
 });
 
+test('items sold in NPC shops are bought, at the seller that fits the trip, before the hand-in', async () => {
+  const { planMultiTrip } = await import('./objective.js');
+  const { fromWikiShops } = await import('./shops.js');
+  const shops = fromWikiShops([{ page: 'Raymond', npc: 'Raymond', map: 'Henesys Town Hall' }, { page: '24 Hr Mobile Store', npc: '24 Hr Mobile Store', map: 'Ant Tunnel Park' }],
+    [{ 'shop id': '24 Hr Mobile Store', 'item id': 'Salad', price: '220' }, { 'shop id': 'Raymond', 'item id': 'Salad', price: '220' }]);
+  // start - hall(Raymond) - dungeon(Luke) ; start - swamp(Stirge) - sleepy - antpark(Mobile Store)
+  const world = validateDataset({ schemaVersion: 1, maps: ['start', 'hall', 'dungeon', 'swamp', 'sleepy', 'antpark'].map(id => ({ id, name: id })), portals: [
+    ['start', 'hall'], ['hall', 'dungeon'], ['start', 'swamp'], ['swamp', 'sleepy'], ['sleepy', 'antpark']
+  ].flatMap(([a, b], i) => [{ from: a, to: b, name: `p${i}` }, { from: b, to: a, name: `q${i}` }]), targets: [
+    { id: 's', name: 'Stirge', kind: 'mob', locations: [{ mapId: 'swamp', count: 20 }] },
+    { id: 'r', name: 'Raymond', kind: 'npc', locations: [{ mapId: 'hall' }] }, { id: 'm', name: '24 Hr Mobile Store', kind: 'npc', locations: [{ mapId: 'antpark' }] }
+  ] });
+  const goals = huntGoals(world, [{ name: 'Stirge', have: 0, need: 20 }, { name: 'Salad', have: 0, need: 1 }], { Salad: [] }, 'hunt Stirges and bring a Salad', ['Stirge', 'Salad'], null, shops).map(g => ({ ...g, quests: ['Luke'] }));
+  assert.deepEqual(goals.map(g => [g.name, g.kind]), [['Stirge', 'kill'], ['Salad', 'buy']]);
+  assert.deepEqual(goals[1].buy.sellers.map(s => [s.npc, s.price]), [['24 Hr Mobile Store', 220], ['Raymond', 220]]);
+  const trip = planMultiTrip(world, goals, 'start', [{ mapId: 'dungeon', quests: ['Luke'] }]);
+  assert.deepEqual(trip.order.map(o => `${o.type}:${o.mapId}`), ['hunt:swamp', 'buy:hall', 'handin:dungeon']); // Raymond is on the way to Luke
+  assert.equal(trip.order[1].npc, 'Raymond');
+});
+

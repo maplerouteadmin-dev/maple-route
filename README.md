@@ -39,14 +39,15 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - **Live GPS**: reads the map name and your dot on the in-game mini map and gives turn-by-turn portal
   directions ("Take the portal on the right, to Henesys Hunting Ground I"), including taxis, boats and
   (optional) return scrolls.
-- **Map view**: the map with your position, exits, NPCs and how many of each monster spawn where.
+- **Map view**: the map with your position, exits, NPCs and how many of each monster spawn where. Click it
+  for details: a monster (stats, drops, better maps), an NPC (quests, what they sell) or the map itself.
 - **Pop-out window**: a small always-on-top window laid out like the mini map, to sit over a corner of
   the game.
 - **Quests**: suggestions for your level, step-by-step guiding (talk to the NPC, the best maps to hunt or
   collect, hand-in), Quest Helper counts ticked off automatically, your in-game Available and Completed
   tabs read. **Do all quests together** plans every quest you're doing, and the ones your Available tab
-  offers, as one numbered checklist: pick up each quest, hunt (each map chosen for what's still needed),
-  hand in. Tick what's done and the trip plans again.
+  offers, or that you add by name, as one numbered checklist: pick up each quest, hunt (each map chosen for
+  what's still needed), buy what shops sell, hand in. Tick what's done and the trip plans again.
 - **Market**: buy and sell listings for any tradeable item, with real stats, slots left, filters, offers,
   a 🔔 for anything that needs you, and trade-chat prices. Trades happen in game, in mesos.
 - **Report a problem or a drop**: opens a pre-filled GitHub issue you check and submit yourself.

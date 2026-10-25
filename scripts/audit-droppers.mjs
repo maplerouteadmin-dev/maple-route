@@ -7,6 +7,7 @@ import { validateDataset, normalize } from '../src/core.js';
 import { fromOsmsQuests } from '../src/quests.js';
 import { huntGoals, textMonsters } from '../src/objective.js';
 import { fromOsmsCrafting, craftRecipe } from '../src/refine.js';
+import { fromWikiShops } from '../src/shops.js';
 import { writeFileSync } from 'node:fs';
 
 const get = async url => (await fetch(url)).json();
@@ -26,6 +27,10 @@ for (let offset = 0; offset < 20000; offset += 500) {
   if (page.length < 500) break;
 }
 
+// NPC shop stock (wiki).
+const cargo = async (table, fields) => { const out = []; for (let offset = 0; offset < 5000; offset += 500) { const u = new URL('https://mapleclassic.wiki/api.php'); Object.entries({ action: 'cargoquery', tables: table, fields, limit: '500', offset: String(offset), format: 'json' }).forEach(([k, v]) => u.searchParams.set(k, v)); const page = (await get(u)).cargoquery?.map(r => r.title) ?? []; out.push(...page); if (page.length < 500) break; } return out; };
+const shops = fromWikiShops(await cargo('shops', '_pageName=page,npc,map,town'), await cargo('shop_items', 'shop_id,item_id,price'));
+
 // Every ingredient down two levels (Screws for a Monkey Wrench), so their wiki droppers are known.
 const ingredientsOf = (name, depth) => depth > 3 ? [] : (craftRecipe(crafting, name)?.ingredients ?? []).flatMap(i => [i.name, ...ingredientsOf(i.name, depth + 1)]);
 const rows = [];
@@ -36,17 +41,17 @@ for (const q of quests) {
   // As the app sees it: wiki droppers where listed, nothing loaded yet = [] (so the text guess runs).
   // Crafted items look up their ingredients, as the app does.
   const sources = Object.fromEntries(items.flatMap(n => [[n.name, drops.get(n.name) ?? []], ...ingredientsOf(n.name, 1).map(i => [i, drops.get(i) ?? []])]));
-  const goals = huntGoals(data, items.map(n => ({ name: n.name, have: 0, need: n.count })), sources, q.text, q.needs.map(n => n.name), crafting);
+  const goals = huntGoals(data, items.map(n => ({ name: n.name, have: 0, need: n.count })), sources, q.text, q.needs.map(n => n.name), crafting, shops);
   for (const goal of goals) {
     const wiki = drops.get(goal.name) ?? [];
     const guessOnly = huntGoals(data, [{ name: goal.name, have: 0, need: 1 }], { [goal.name]: [] }, q.text, q.needs.map(n => n.name))[0];
     const guess = guessOnly?.guess ? guessOnly.monsters : [];
-    const status = goal.craft ? (goal.monsters.length ? 'craft' : 'craft-no-ingredient-source')
+    const status = goal.kind === 'buy' ? 'buy' : goal.craft ? (goal.monsters.length ? 'craft' : 'craft-no-ingredient-source')
       : wiki.length ? (guess.length && !guess.some(m => wiki.includes(m)) ? 'wiki-vs-text-disagree' : 'wiki')
       : goal.given ? 'given-by-npc'
       : !goal.monsters.length ? 'no-source'
       : goal.monsters.length > 1 ? 'guess-several' : 'guess';
-    rows.push({ quest: q.name, item: goal.craft ? `${goal.name} → ${goal.craft.item} (${goal.craft.discipline}, ${goal.craft.npc})` : goal.name, status, used: goal.monsters, wiki, guess, named });
+    rows.push({ quest: q.name, item: goal.kind === 'buy' ? `${goal.name} (${goal.buy.sellers.map(x => x.npc).join(', ')})` : goal.craft ? `${goal.name} → ${goal.craft.item} (${goal.craft.discipline}, ${goal.craft.npc})` : goal.name, status, used: goal.monsters, wiki, guess, named });
   }
 }
 const count = {};

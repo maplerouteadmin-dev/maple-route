@@ -9,7 +9,7 @@ export function spawnColors(mobSpots = []) {
   for (const spot of mobSpots) counts.set(spot.name, (counts.get(spot.name) ?? 0) + 1);
   return new Map([...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name], i) => [name, SPAWN_COLORS[i % SPAWN_COLORS.length]]));
 }
-const spawnDots = (spots, at, r, esc) => { const colors = spawnColors(spots); return spots.map(spot => { const p = at(spot); return `<circle class="mv-spawn" cx="${p.x}" cy="${p.y}" r="${r}" style="fill:${colors.get(spot.name)}"><title>${esc(spot.name)}</title></circle>`; }).join(''); };
+const spawnDots = (spots, at, r, esc) => { const colors = spawnColors(spots); return spots.map(spot => { const p = at(spot); return `<circle class="mv-spawn" data-mob="${esc(spot.name)}" cx="${p.x}" cy="${p.y}" r="${r}" style="fill:${colors.get(spot.name)}"><title>${esc(spot.name)}</title></circle>`; }).join(''); };
 
 export function mapViewModel(data, mapId, { route = null, position = null, goal = null } = {}) {
   const map = data.maps.find(m => m.id === mapId);
@@ -55,7 +55,7 @@ export function mapViewSvg(model, esc) {
   const parts = [`<svg class="mapview" viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="Schematic of ${esc(model.map.name)}">`];
   parts.push(`<rect class="mv-bg" x="0" y="0" width="${model.width}" height="${model.height}" rx="14"/>`);
   if (model.player && model.target) parts.push(pathLine(model.player.sx, model.player.sy, model.target.sx, model.target.sy, 10));
-  for (const npc of model.npcs) parts.push(`<circle class="mv-npc" cx="${npc.sx}" cy="${npc.sy}" r="4"><title>${esc(npc.name)}</title></circle>`);
+  for (const npc of model.npcs) parts.push(`<circle class="mv-npc" data-npc="${esc(npc.name)}" cx="${npc.sx}" cy="${npc.sy}" r="4"><title>${esc(npc.name)}</title></circle>`);
   for (const marker of model.markers) {
     const label = marker.kind === 'taxi' ? `${marker.npc} (${marker.targets.length})` : marker.targets.map(t => t.name).join(' / ');
     const short = label.length > 26 ? `${label.slice(0, 25)}…` : label;
@@ -125,7 +125,7 @@ export function pictureOverlaySvg(model, picture, esc) {
   const target = model.target ? at(model.target) : null, player = model.position ? at(model.position) : null;
   if (player && target) parts.push(pathLine(player.x, player.y, target.x, target.y, unit));
   if (model.mobSpots?.length) parts.push(spawnDots(model.mobSpots, at, r * .32, esc));
-  for (const npc of model.npcs) { const p = at(npc); parts.push(`<circle class="mv-npc" cx="${p.x}" cy="${p.y}" r="${r * .45}"><title>${esc(npc.name)}</title></circle>`); }
+  for (const npc of model.npcs) { const p = at(npc); parts.push(`<circle class="mv-npc" data-npc="${esc(npc.name)}" cx="${p.x}" cy="${p.y}" r="${r * .45}"><title>${esc(npc.name)}</title></circle>`); }
   const shortOf = marker => { const label = marker.kind === 'taxi' ? `${marker.npc}` : marker.targets.map(t => t.name).join(' / '); return label.length > 24 ? `${label.slice(0, 23)}…` : label; };
   const placed = placeLabels(model.markers.map(marker => { const p = at(marker); return { x: p.x, y: p.y, r, text: shortOf(marker), anchor: p.x < W * .12 ? 'start' : p.x > W * .88 ? 'end' : 'middle', priority: marker.next ? 1 : 0 }; }), unit);
   for (const [index, marker] of model.markers.entries()) {
@@ -159,7 +159,7 @@ export function renderOverlaySvg(model, render, esc) {
   const player = model.position, target = model.target;
   if (player && target) parts.push(pathLine(player.x, player.y, target.x, target.y, unit));
   if (model.mobSpots?.length) parts.push(spawnDots(model.mobSpots, p => p, r * .32, esc));
-  for (const npc of model.npcs) parts.push(`<circle class="mv-npc" cx="${npc.x}" cy="${npc.y}" r="${r * .45}"><title>${esc(npc.name)}</title></circle>`);
+  for (const npc of model.npcs) parts.push(`<circle class="mv-npc" data-npc="${esc(npc.name)}" cx="${npc.x}" cy="${npc.y}" r="${r * .45}"><title>${esc(npc.name)}</title></circle>`);
   const shortOf = marker => { const text = marker.kind === 'taxi' ? marker.npc : marker.targets.map(t => t.name).join(' / '); return text.length > 24 ? `${text.slice(0, 23)}…` : text; };
   const placed = placeLabels(model.markers.map(marker => ({ x: marker.x, y: marker.y, r, text: shortOf(marker), anchor: marker.x < W * .12 ? 'start' : marker.x > W * .88 ? 'end' : 'middle', priority: marker.next ? 1 : 0 })), unit);
   for (const [index, marker] of model.markers.entries()) {

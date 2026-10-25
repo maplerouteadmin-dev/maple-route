@@ -146,4 +146,10 @@ body.gps-page #mapview-note{line-height:1.3}
 .all-steps li{line-height:1.45}.all-steps li small{color:#698074}
 .trip-setup{display:flex;flex-direction:column;gap:2px;margin:4px 0 8px;padding:8px 10px;border-radius:10px;background:#fff6e0;border:1px solid #f0c674;font-size:.82rem;color:#5a4300}
 .objective.offer .button{min-height:30px;padding:4px 10px;font-size:.82rem}
+.plan-chips{list-style:none;padding:0;margin:6px 0;display:flex;flex-wrap:wrap;gap:6px}.plan-chips li{display:flex;align-items:center;gap:4px;padding:4px 6px 4px 10px;border-radius:999px;background:#e3f1dc;font-size:.84rem}.plan-chips .link-button{font-size:1rem;line-height:1;padding:0 4px}
+#mapview{position:relative}
+.mv-tip{position:absolute;z-index:15;max-width:300px;padding:8px 26px 8px 10px;border-radius:10px;background:#fffefa;color:#18382f;border:1px solid #cfdcd3;box-shadow:0 8px 24px rgba(13,34,28,.22);font-size:.8rem;line-height:1.4}
+.mv-tip strong{font-size:.9rem}.mv-tip small{color:#698074}.mv-tip b{color:#18573f;margin-right:2px}.mv-tip div{margin-top:3px}
+.mv-tip-close{position:absolute;top:2px;right:4px;border:0;background:none;font-size:1.1rem;line-height:1;cursor:pointer;color:#698074;padding:2px 4px}
+.mv-spawn,.mv-npc{cursor:pointer}
 

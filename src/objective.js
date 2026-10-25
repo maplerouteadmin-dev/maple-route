@@ -1,5 +1,6 @@
 import { editDistance, normalize, shortestRoute } from './core.js';
 import { craftRecipe, craftNeeds } from './refine.js';
+import { sellersOf } from './shops.js';
 
 // What the player should be doing right now for one quest, from the live Quest Helper counts (or the
 // wiki steps when the quest is not on screen): hunt/collect on the best map, or hand the quest in.
@@ -37,7 +38,7 @@ export const helperComplete = (quest, expectedNeeds = null) => Boolean(quest?.pr
 
 // When the wiki has no drop record for an item, the quest's own text often names the monsters
 // ("I can get them by defeating Stump, Orange Mushroom, and Octopus"); those become `guess` goals.
-export function huntGoals(data, progress, itemSources = {}, questText = '', allNeeds = [], crafting = null) {
+export function huntGoals(data, progress, itemSources = {}, questText = '', allNeeds = [], crafting = null, shops = null) {
   const goals = progress.filter(p => !p.done).flatMap(p => {
     const mob = mobByName(data, p.name);
     if (mob) return { ...p, kind: 'kill', monsters: [mob.name], pending: false };
@@ -52,10 +53,16 @@ export function huntGoals(data, progress, itemSources = {}, questText = '', allN
       return plan.ingredients.flatMap(i => {
         const mob = mobByName(data, i.name), droppers = itemSources[i.name];
         if (mob) return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'kill', monsters: [mob.name], pending: false, craft }];
+        // An ingredient a shop sells (dyes, thread…): buy it.
+        const sellers = droppers?.length ? [] : sellersOf(shops, i.name);
+        if (sellers.length) return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'buy', monsters: [], pending: false, craft, buy: { sellers: sellers.map(x => ({ ...x, mapId: npcMap(data, x.npc) })).filter(x => x.mapId) } }];
         if (!droppers?.length) { const deeper = expand(i.name, i.count, depth + 1); if (deeper) return deeper; }
         return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'collect', lookup: i.name, craft, monsters: (droppers ?? []).filter(mobName => mobByName(data, mobName)), pending: droppers === undefined }];
       });
     };
+    // Sold by an NPC shop (a Salad at Raymond's): buy it, it is the sure way to get it.
+    const sellers = sellersOf(shops, p.name);
+    if (sellers.length) return [{ ...p, kind: 'buy', monsters: [], pending: false, buy: { sellers: sellers.map(s => ({ ...s, mapId: npcMap(data, s.npc) })).filter(s => s.mapId) } }];
     const crafted = expand(p.name, Math.max(1, (p.need ?? 1) - (p.have ?? 0)), 1);
     if (crafted) return crafted;
     const droppers = itemSources[p.name];
@@ -180,7 +187,7 @@ export function minSpawns(goal) {
 // cap is below its total spawn points (East Domain of Perion: 71 points, 40 alive at once, so its 12
 // Green Mushroom points give about 7). Without a cap in the data, the listed points.
 const totalPoints = new WeakMap();
-function aliveAtOnce(data, mapId, count) {
+export function aliveAtOnce(data, mapId, count) {
   const map = (data.maps ?? []).find(m => m.id === mapId);
   if (!map?.capacity) return count;
   let totals = totalPoints.get(data);
@@ -239,7 +246,7 @@ export function rankObjectiveMaps(data, goals, currentMapId = null) {
 // Returns { order: [{ type: 'hunt'|'craft'|'handin', mapId, … }], stops, via, ends, hops, missing }.
 export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { via = [], starts = [] } = {}) {
   const active = goals.filter(g => g.monsters?.length);
-  if (!active.length && !starts.length && !handIns.length) return null;
+  if (!active.length && !starts.length && !handIns.length && !goals.some(g => g.kind === 'buy')) return null;
   const ends = handIns.map(h => typeof h === 'string' ? { mapId: h, quests: [] } : h).filter(h => h.mapId);
   const cap = goal => Math.min(20, 8 + Math.ceil(Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)) / 5));
   const spawnsOn = (goal, mapId) => goalSpawns(data, goal).get(mapId) ?? 0;
@@ -303,6 +310,19 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
     }
     order.splice(bestAt, 0, { mapId: end.mapId, type: 'handin', quests: end.quests });
   }
+  // Things to buy: at whichever seller adds the fewest maps, after the quest is picked up and before
+  // it is handed in (so a seller on the way to the hand-in NPC wins).
+  for (const goal of goals.filter(g => g.kind === 'buy' && g.buy?.sellers?.length && !g.done)) {
+    const startAt = order.findIndex(o => o.type === 'start' && o.quests.some(q => goal.quests?.includes(q))) + 1;
+    const handIn = order.findIndex(o => o.type === 'handin' && o.quests.some(q => goal.quests?.includes(q)));
+    let best = null;
+    for (const seller of goal.buy.sellers) for (let i = startAt; i <= (handIn === -1 ? order.length : handIn); i++) {
+      const before = i === 0 ? currentMapId : order[i - 1].mapId, after = order[i]?.mapId ?? null;
+      const cost = dist(before, seller.mapId) + (after ? dist(seller.mapId, after) - dist(before, after) : 0);
+      if (!best || cost < best.cost) best = { cost, i, seller };
+    }
+    if (best) order.splice(best.i, 0, { mapId: best.seller.mapId, type: 'buy', quests: goal.quests ?? [], item: goal.name, count: Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)), npc: best.seller.npc, price: best.seller.price });
+  }
   at = order.at(-1)?.mapId ?? currentMapId;
   const unnamedLeft = [...unnamed];
   while (unnamedLeft.length) { unnamedLeft.sort((a, b) => dist(at, a.mapId) - dist(at, b.mapId)); const next = unnamedLeft.shift(); order.push({ mapId: next.mapId, type: 'handin', quests: [] }); at = next.mapId; }
@@ -314,7 +334,7 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
   return { order, stops, via: order.filter(o => o.type === 'craft').map(o => o.mapId), ends: order.filter(o => o.type === 'handin').map(o => o.mapId), hops: total, missing: [...left].map(g => g.name) };
 }
 
-export function questObjective(data, { quest, helperQuest = null, catalogQuest = null, itemSources = {}, currentMapId = null, handIn = false, crafting = null }) {
+export function questObjective(data, { quest, helperQuest = null, catalogQuest = null, itemSources = {}, currentMapId = null, handIn = false, crafting = null, shops = null }) {
   const turnInNpc = catalogQuest?.turnIn || catalogQuest?.giver || null;
   const turnIn = () => { const mapId = turnInNpc ? npcMap(data, turnInNpc) : null; return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId }; };
   if (handIn) return turnIn();
@@ -323,7 +343,7 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
       const mapId = turnInNpc ? npcMap(data, turnInNpc) : null;
       return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId };
     }
-    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name), crafting);
+    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name), crafting, shops);
     const maps = rankObjectiveMaps(data, goals, currentMapId);
     const trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: craftStops(data, goals) });
     const best = trip?.stops[0] ?? maps[0] ?? null;
@@ -340,7 +360,7 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
   const needs = catalogQuest?.needs ?? null;
   if (Array.isArray(needs)) {
     if (!needs.length) return turnIn();
-    const goals = huntGoals(data, needs.map(n => ({ name: n.name, have: 0, need: n.count, done: false })), itemSources, catalogQuest?.text, needs.map(n => n.name), crafting);
+    const goals = huntGoals(data, needs.map(n => ({ name: n.name, have: 0, need: n.count, done: false })), itemSources, catalogQuest?.text, needs.map(n => n.name), crafting, shops);
     const maps = rankObjectiveMaps(data, goals, currentMapId), trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: craftStops(data, goals) });
     const hereEntry = maps.find(m => m.mapId === currentMapId) ?? null, target = hereEntry ?? trip?.stops[0] ?? maps[0] ?? null;
     return { quest, stage: 'hunt', goals, maps: maps.slice(0, 4), trip, mapId: target?.mapId ?? null, here: Boolean(hereEntry), done: [], pending: goals.some(g => g.pending), countsUnknown: true };

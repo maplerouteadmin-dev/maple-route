@@ -16,6 +16,8 @@ import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMa
 import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
+import { fetchShops } from './shops.js';
+import { mapInfo, mobInfo, npcInfo } from './mapinfo.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
 import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, suggestPrice, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
@@ -48,7 +50,7 @@ import './goals.css';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], questDetails: {}, questItemsReady: {} };
+const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], questDetails: {}, questItemsReady: {} };
 
 const LIVE_KEY = 'maple-route-live';
 // In-memory test log of what Live GPS read on each tick (window.__mapleRouteLog), for diagnosing
@@ -84,6 +86,8 @@ $('#app').innerHTML = `
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
     <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div><p class="fine">To show only quests the game is offering you, read your in-game Available tab (below, or on the <b>Quests</b> page).</p></section>
+    <section class="card" aria-labelledby="questplan-title"><h2 id="questplan-title">My quest plan</h2><p class="muted">Quests to do together, picked by hand (no screen reading needed). <b>Do all quests together</b> on the Live GPS card plans them with the ones you are doing: pick each up, hunt, buy, hand in.</p>
+      <label class="field">Add a quest<input id="plan-search" type="search" autocomplete="off" placeholder="Type a quest name, e.g. Luke, fossils, omok"></label><div id="plan-suggest" class="start-results"></div><div id="plan-list"></div></section>
     <section class="card" aria-labelledby="questlog-title"><h2 id="questlog-title">Read your in-game quest list</h2><p class="muted">While Live GPS runs, an open quest window (<b>Q</b>) is read by itself. These buttons read it on demand.</p>
       <p class="fine">For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-available" data-read-quests="available">Read my Available tab</button></div><div id="available-read" aria-live="polite"></div>
@@ -188,7 +192,7 @@ const VIEWS = {
   navigate: ['live-title', 'mapview-title'],
   goto: ['plan-title', 'recs-title', 'targets-title', 'quest-title', 'item-title', 'guide-title', 'journey-title', 'route-title'],
   world: ['world-title', 'atlas-title'],
-  quests: ['quest-helper-title', 'questlog-title', 'next-title', 'trip-title', 'goals-title', 'party-title'],
+  quests: ['quest-helper-title', 'questplan-title', 'questlog-title', 'next-title', 'trip-title', 'goals-title', 'party-title'],
   hunt: ['live-exp-title', 'session-title', 'sell-title', 'prices-title', 'gear-title'],
   market: ['market-title', 'market-post-title'],
   settings: ['voice-title', 'autostart-title', 'characters-title', 'settings-title', 'feedback-title', 'data-title', 'privacy-title']
@@ -463,9 +467,23 @@ async function loadCrafting() {
   finally { state.craftingLoading = false; }
 }
 
+// NPC shop stock from the wiki (what quest items can simply be bought, where, for how much), saved for a day.
+async function loadShops() {
+  if (state.shops || state.shopsLoading) return;
+  state.shopsLoading = true;
+  const KEY = 'maple-route-shops-v2'; // v2: item names keep their capitals
+  let cached = null; try { cached = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { cached = null; }
+  try {
+    if (cached?.shops && Date.now() - cached.savedAt < 24 * 60 * 60 * 1000) state.shops = cached.shops;
+    else { state.shops = await fetchShops(); try { localStorage.setItem(KEY, JSON.stringify({ savedAt: Date.now(), shops: state.shops })); } catch { /* storage full */ } }
+    state.tripCache = null; state.allTripCache = null; applyObjective(); renderLive();
+  } catch { state.shops = cached?.shops ?? null; }
+  finally { state.shopsLoading = false; }
+}
+
 async function loadQuestCatalog() {
   if (state.questCatalogStatus !== 'idle') return;
-  loadCrafting();
+  loadCrafting(); loadShops();
   state.questCatalogStatus = 'loading'; renderQuestResults();
   try {
     const QUESTS_KEY = 'maple-route-quests-v2'; // v2: quest text kept (names the monsters when the wiki has no drops)
@@ -1625,7 +1643,7 @@ function destinationHtml() {
   const map = mapById(state.destination);
   if (!map) return '';
   const first = state.tripAll && state.guide.quest ? allQuestsTrip().trip?.order[0] : null;
-  const goal = goalSpot(), why = first ? `${first.type === 'start' ? 'to start' : first.type === 'handin' ? 'to hand in' : 'for'} ${first.quests.join(', ')}` : state.startingQuest ? `to start ${state.startingQuest}` : state.guide.quest ? `for ${state.guide.quest}` : '';
+  const goal = goalSpot(), why = first ? (first.type === 'buy' ? `to buy ${first.item} for ${first.quests.join(', ')}` : `${first.type === 'start' ? 'to start' : first.type === 'handin' ? 'to hand in' : 'for'} ${first.quests.join(', ')}`) : state.startingQuest ? `to start ${state.startingQuest}` : state.guide.quest ? `for ${state.guide.quest}` : '';
   return `<div class="dest-bar"><span class="dest-label">Destination</span><span class="dest-name">${goal ? `<strong>${esc(goal.name)}</strong> · ` : ''}<strong>${esc(map.name)}</strong>${why ? ` <small>${esc(why)}</small>` : ''}</span><button type="button" class="link-button" data-cancel-destination>Cancel</button></div>`;
 }
 function cancelDestination() {
@@ -1849,6 +1867,7 @@ function renderMapView() {
   const map = state.current ? mapById(state.current) : null;
   if (!map) { target.innerHTML = '<div class="empty">Pick your current map or start Live GPS to see it here.</div>'; $('#mapview-note').textContent = ''; return; }
   const goal = goalSpot();
+  state.mapViewId = map.id;
   const model = mapViewModel(state.data, map.id, { route: state.route, position: livePosition(), goal: goal?.mapId === map.id ? goal : null });
   const picture = loadPicture(map), render = loadRender(map);
   const art = picture?.status === 'ready' && picture.calibration ? { ...picture, calibration: artCalibration(picture.calibration) } : null;
@@ -1888,9 +1907,54 @@ function renderMapView() {
 
 $('#map-detailed').checked = state.mapStyle === 'render';
 $('#map-detailed').addEventListener('change', event => { state.mapStyle = event.target.checked ? 'render' : 'art'; saveLive(); renderMapView(); });
+// Click the map for a little card: a monster spawn dot (its stats, how many here, best other maps,
+// drops), an NPC (quests they give or take, what they sell) or anywhere else (the map's monsters,
+// NPCs, exits). Exits keep setting the destination.
+function mapTipHtml(target) {
+  const mapId = state.mapViewId, list = (label, items) => items.length ? `<div><b>${label}</b> ${items.join(' · ')}</div>` : '';
+  const mobEl = target.closest('[data-mob]'), npcEl = target.closest('[data-npc]');
+  if (mobEl) {
+    const info = mobInfo(state.data, mobEl.dataset.mob, mapId); if (!info) return null;
+    const drops = state.dropCache?.[info.title];
+    if (!drops) { state.dropCache ??= {}; state.dropCache[info.title] = { status: 'loading' }; fetchMonsterDrops(info.title).then(items => { state.dropCache[info.title] = { status: 'loaded', items }; refreshMapTip(); }).catch(() => { state.dropCache[info.title] = { status: 'error', items: [] }; }); }
+    const dropText = drops?.status === 'loaded' ? (drops.items.length ? drops.items.slice(0, 10).map(esc).join(', ') : 'none recorded') : 'looking up…';
+    return `<strong>${esc(info.title)}</strong>${info.level ? ` <small>Lv ${info.level}</small>` : ''}
+      <div><small>${info.hp ? `${info.hp.toLocaleString()} HP` : ''}${info.exp ? ` · ${info.exp} EXP` : ''}</small></div>
+      ${info.here ? `<div><b>Here</b> ${info.here.count} spawn points${info.here.alive && info.here.alive !== info.here.count ? `, about ${info.here.alive} alive at once` : ''}</div>` : ''}
+      ${list('Also', info.best.map(b => `${esc(b.map)} <small>(~${b.alive})</small>`))}<div><b>Drops</b> <small>${dropText}</small></div>`;
+  }
+  if (npcEl) {
+    const info = npcInfo(npcEl.dataset.npc, { quests: state.quests, shops: state.shops });
+    return `<strong>${esc(info.title)}</strong>${list('Gives', info.gives.slice(0, 6).map(esc))}${list('Takes', info.takes.slice(0, 6).map(esc))}${list('Sells', info.sells.slice(0, 8).map(x => `${esc(x.item)}${x.price ? ` <small>${x.price.toLocaleString()}</small>` : ''}`))}${!info.gives.length && !info.takes.length && !info.sells.length ? '<div><small>No quests or shop recorded for this NPC.</small></div>' : ''}`;
+  }
+  const info = mapInfo(state.data, mapId); if (!info) return null;
+  return `<strong>${esc(info.title)}</strong>${info.area ? ` <small>${esc(info.area)}</small>` : ''}
+    ${list('Monsters', info.monsters.map(m => `${esc(m.name)}${m.level ? ` <small>Lv ${m.level}</small>` : ''} <small>×${m.count}${m.alive && m.alive !== m.count ? ` (~${m.alive} at once)` : ''}</small>`)) || '<div><small>No monsters spawn here.</small></div>'}
+    ${list('NPCs', info.npcs.map(esc))}${list('Exits', info.exits.map(esc))}`;
+}
+let mapTip = null;
+function refreshMapTip() { if (mapTip?.el.isConnected) { const html = mapTipHtml(mapTip.target); if (html) mapTip.el.querySelector('.mv-tip-body').innerHTML = html; } }
+function closeMapTip() { mapTip?.el.remove(); mapTip = null; }
+function showMapTip(event) {
+  closeMapTip();
+  const html = mapTipHtml(event.target); if (!html) return;
+  // On the map's card, not inside the map (Live GPS redraws the map several times a second).
+  const box = $('#mapview').closest('section'), rect = box.getBoundingClientRect(), el = document.createElement('div');
+  box.style.position = 'relative';
+  el.className = 'mv-tip'; el.setAttribute('role', 'dialog');
+  el.innerHTML = `<button type="button" class="mv-tip-close" aria-label="Close">×</button><div class="mv-tip-body">${html}</div>`;
+  box.append(el);
+  const x = Math.min(Math.max(8, event.clientX - rect.left + 12), Math.max(8, rect.width - el.offsetWidth - 8)), y = Math.min(event.clientY - rect.top + 12, Math.max(8, rect.height - el.offsetHeight - 8));
+  el.style.left = `${x}px`; el.style.top = `${Math.max(8, y)}px`;
+  mapTip = { el, target: event.target };
+}
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMapTip(); });
+document.addEventListener('click', event => { if (event.target.closest('.mv-tip-close')) closeMapTip(); });
+document.addEventListener('pointerdown', event => { if (mapTip && !event.target.closest('#mapview') && !event.target.closest('.mv-tip')) closeMapTip(); });
 $('#mapview').addEventListener('click', event => {
-  const exit = event.target.closest('.mv-exit'); if (!exit?.dataset.to || !mapById(exit.dataset.to)) return;
-  releaseGuide(); state.destination = exit.dataset.to; state.targetId = null; destinationSelect.value = exit.dataset.to; persist(); renderRoute(); renderTargets();
+  const exit = event.target.closest('.mv-exit');
+  if (!exit?.dataset.to || !mapById(exit.dataset.to)) { if (event.target.closest('svg')) showMapTip(event); return; }
+  closeMapTip(); releaseGuide(); state.destination = exit.dataset.to; state.targetId = null; destinationSelect.value = exit.dataset.to; persist(); renderRoute(); renderTargets();
 });
 $('#mapview').addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && event.target.closest('.mv-exit')) { event.preventDefault(); event.target.closest('.mv-exit').dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 
@@ -2624,6 +2688,27 @@ document.addEventListener('click', async event => {
   if (event.target.closest('[data-market-refresh]')) loadMarket(true);
 });
 
+// ---------- My quest plan (quests picked by hand for Do all quests together) ----------
+function renderPlanList() {
+  const box = $('#plan-list'); if (!box) return;
+  box.innerHTML = state.planQuests.length ? `<ul class="plan-chips">${state.planQuests.map(name => { const q = state.quests.find(x => x.name === name); return `<li><span>${esc(q?.arc && normalize(q.arc) !== normalize(name) ? `${q.arc} · ${name}` : name)}${q?.level ? ` <small>Lv ${q.level}</small>` : ''}${state.questsFinished.includes(name) ? ' <small>(finished)</small>' : ''}</span><button type="button" class="link-button" data-plan-remove="${esc(name)}" aria-label="Remove ${esc(name)}">×</button></li>`; }).join('')}</ul>`
+    : '<p class="fine">Nothing added yet.</p>';
+}
+$('#plan-search').addEventListener('input', async () => {
+  if (state.questCatalogStatus !== 'loaded') await loadQuestCatalog();
+  const words = normalize($('#plan-search').value).split(' ').filter(Boolean);
+  const found = words.length ? state.quests.filter(q => words.every(w => normalize(`${q.name} ${q.arc ?? ''} ${q.giver ?? ''}`).includes(w)) && !state.planQuests.includes(q.name)).slice(0, 8) : [];
+  $('#plan-suggest').innerHTML = found.map(q => `<button type="button" class="start-result" data-plan-add="${esc(q.name)}">${esc(q.arc && normalize(q.arc) !== normalize(q.name) ? `${q.arc} · ${q.name}` : q.name)} <small>Lv ${q.level ?? '?'}${q.giver ? ` · ${esc(q.giver)}` : ''}${state.questsFinished.includes(q.name) ? ' · finished' : ''}</small></button>`).join('');
+});
+document.addEventListener('click', event => {
+  const add = event.target.closest('[data-plan-add]');
+  if (add) { if (!state.planQuests.includes(add.dataset.planAdd)) state.planQuests.push(add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); applyObjective(); renderLive(); return; }
+  const remove = event.target.closest('[data-plan-remove]');
+  if (remove) { state.planQuests = state.planQuests.filter(name => name !== remove.dataset.planRemove); state.allTripCache = null; persist(); renderPlanList(); applyObjective(); renderLive(); return; }
+  if (event.target.closest('[data-reveal-plan]')) { event.preventDefault(); reveal('#questplan-title'); $('#plan-search').focus(); }
+});
+renderPlanList();
+
 $('#live-start').addEventListener('click', startLive);
 function renderCharacters() {
   const panel = $('#characters'); if (!panel) return;
@@ -2920,7 +3005,7 @@ function currentObjective() {
   if (!quest) return null;
   const helperQuest = (state.hud.quests ?? []).find(q => q.name === quest) ?? null;
   const catalogQuest = state.quests.find(q => q.name === quest) ?? null;
-  const objective = questObjective(travel(), { quest, helperQuest, catalogQuest, itemSources: state.itemSources, crafting: state.crafting, currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
+  const objective = questObjective(travel(), { quest, helperQuest, catalogQuest, itemSources: state.itemSources, crafting: state.crafting, shops: state.shops, currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
   if (objective.stage === 'hunt') loadItemSources(objective.goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
   return objective;
 }
@@ -2950,7 +3035,7 @@ function stepTarget(step, guide) {
   if (all?.trip?.order.length) {
     const first = all.trip.order[0];
     if (first.type === 'handin') return { mapId: first.mapId, npc: [...new Set(all.ends.get(first.mapId) ?? [])][0] ?? null };
-    if (first.type === 'start') return { mapId: first.mapId, npc: first.npc ?? null };
+    if (first.type === 'start' || first.type === 'buy') return { mapId: first.mapId, npc: first.npc ?? null };
     // Hunting: stay on a map of this step if you are already on one.
     const here = first.type === 'hunt' && all.trip.order.find(s => s.type === 'hunt' && s.mapId === state.current);
     return { mapId: (here || first).mapId, npc: null };
@@ -2977,7 +3062,9 @@ function huntOptions(g) {
     // Wiki steps often give no count: the game data's count for that need, not 1 (which let a map with
     // 3 Jr. Neckis pass for 20 kills).
     const gameCount = g.quest?.needs?.find(n => normalize(n.name) === normalize(name))?.count;
-    return { name, have: seen?.have ?? 0, need: step.count ?? gameCount ?? seen?.need ?? 1, done: false };
+    const need = step.count ?? gameCount ?? seen?.need ?? 1;
+    // Done when the Quest Helper says so ("16 / 10 Jr. Necki Skin"), so it leaves the trip.
+    return { name, have: seen?.have ?? 0, need, done: Boolean(seen && believableDone({ ...seen, need, done: (seen.have ?? 0) >= need })) };
   });
   // Wiki steps name the monster but not always the item: add the quest's game-data list, minus
   // anything already listed or whose step is ticked.
@@ -2986,10 +3073,11 @@ function huntOptions(g) {
     const key = normalize(need.name).replace(/s$/, '');
     if (progress.some(p => normalize(p.name).replace(/s$/, '') === key) || doneTitles.some(title => title.includes(key))) continue;
     const seen = matchCount(helper?.progress, need.name);
-    progress.push({ name: need.name, have: seen?.have ?? 0, need: need.count ?? seen?.need, done: false });
+    const count = need.count ?? seen?.need;
+    progress.push({ name: need.name, have: seen?.have ?? 0, need: count, done: Boolean(seen && believableDone({ ...seen, need: count, done: (seen.have ?? 0) >= count })) });
   }
   if (!progress.length) return null;
-  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting);
+  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting, state.shops);
   loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.lookup ?? goal.name));
   // The trip ends where the quest is handed in, so stops on the way there are preferred.
   const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(endNpc))?.locations[0]?.mapId ?? null : null;
@@ -3005,7 +3093,8 @@ function allQuestsTrip() {
   // tab offers that you have not started, up to 10 in all.
   const doing = [...new Set([state.guide.quest, ...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests].filter(Boolean))].filter(q => !state.questsFinished.includes(q));
   const offered = state.tripAvailable !== false ? state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)) : [];
-  const names = [...doing, ...offered].slice(0, 10);
+  const planned = state.planQuests.filter(q => !doing.includes(q) && !state.questsFinished.includes(q));
+  const names = [...doing, ...planned, ...offered.filter(q => !planned.includes(q))].slice(0, 12);
   const started = name => (state.hud.quests ?? []).some(q => q.name === name) || state.activeQuests.includes(name);
   const byName = new Map(), ends = new Map(), endQuests = new Map(), starts = [];
   const npcMapOf = npc => npc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(npc))?.locations[0]?.mapId ?? null : null;
@@ -3021,7 +3110,7 @@ function allQuestsTrip() {
     if (name === state.guide.quest && !notStarted) goals = (huntOptions(guideSteps())?.goals ?? []).filter(goal => !isTicked(goal));
     else {
       const progress = quest.needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: seen?.have ?? 0, need: n.count ?? seen?.need, done: Boolean(seen && believableDone(seen)) || ticked.has(normalize(n.name)) }; });
-      goals = huntGoals(state.data, progress, state.itemSources, quest.text, quest.needs.map(n => n.name), state.crafting);
+      goals = huntGoals(state.data, progress, state.itemSources, quest.text, quest.needs.map(n => n.name), state.crafting, state.shops);
       loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
     }
     for (const goal of goals) {
@@ -3078,6 +3167,7 @@ function allStepsHtml(all) {
       }));
       return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hunt on ${mapName}</strong>${now} <small>(${esc(step.quests.join(', '))})</small><ul class="need-list">${needs.join('')}</ul></li>`;
     }
+    if (step.type === 'buy') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Buy at ${mapName}</strong>${now}<ul class="need-list">${(step.quests.length ? step.quests : ['']).map(q => `<li><label><input type="checkbox" data-need-tick="${esc(q)}" data-need="${esc(step.item)}"> ${esc(step.item)} ×${step.count} <small>${esc(needCount(q, step.item))} · from ${esc(step.npc)}${step.price ? `, ${step.price.toLocaleString()} mesos each` : ''}</small></label></li>`).join('')}</ul></li>`;
     if (step.type === 'start') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Start at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', '))} <small>from ${esc(step.npc ?? 'the quest NPC')} (ticks itself once it is in your Quest Helper)</small></label></li></ul></li>`;
     if (step.type === 'craft') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Craft at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> Made it</label></li></ul></li>`;
     return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hand in at ${mapName}</strong>${now}${step.noRoute ? ' <small>(no walking route there)</small>' : ''}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', ') || 'your quest')} <small>to ${esc(npcsAt(step.mapId) || 'the quest NPC')}</small></label></li></ul></li>`;
@@ -3092,7 +3182,7 @@ function allStepsHtml(all) {
   });
   const doneHtml = done.length ? `<details class="all-checklist"><summary>Done (${done.length})</summary><ul class="need-list">${done.join('')}</ul></details>` : '';
   const head = steps.length ? `<p class="fine">${trip.hops} map${trip.hops === 1 ? '' : 's'} in all · tick what you have done</p>` : `<p class="fine">${all?.goals.some(g => g.pending) ? 'Looking up which monsters drop what you need…' : 'Nothing left to hunt.'}</p>`;
-  const setup = `<div class="trip-setup"><strong>For the best plan:</strong> <span>1. In game, add all your quests to the Quest Helper so their counts are read.</span> <span>2. Open your quest window on the Available tab (towns expanded) and <button type="button" class="link-button" data-trip-read>read it</button>${state.questsAvailable.length ? ` <small>(${state.questsAvailable.length} read)</small>` : ''}.</span>
+  const setup = `<div class="trip-setup"><strong>For the best plan:</strong> <span>Add quests by name in <a href="#quests" data-reveal-plan>My quest plan</a>${state.planQuests.length ? ` <small>(${state.planQuests.length} added)</small>` : ''}, or:</span> <span>1. In game, add all your quests to the Quest Helper so their counts are read.</span> <span>2. Open your quest window on the Available tab (towns expanded) and <button type="button" class="link-button" data-trip-read>read it</button>${state.questsAvailable.length ? ` <small>(${state.questsAvailable.length} read)</small>` : ''}.</span>
     <label class="toggle"><input type="checkbox" data-trip-available${state.tripAvailable !== false ? ' checked' : ''}> Include quests I haven't started${all.waiting ? ` (${all.waiting})` : ''}</label></div>`;
   return `<div class="all-checklist">${setup}<ul class="live-steps all-steps">${steps.join('')}</ul>${head}${missing}${doneHtml}</div>`;
 }
@@ -3134,7 +3224,7 @@ function huntOptionsHtml(options) {
   const tripHtml = trip ? `<div class="fine hunt-trip"><strong>Best trip:</strong> ${trip.stops.map(stop => `${esc(mapById(stop.mapId)?.name ?? '?')} <small>(${esc(stop.monsters.join(', '))})</small>`).join(' → ')}${[...new Set(options.goals.filter(goal => goal.craft?.npc).map(goal => goal.craft.npc))].map(npc => ` → ${esc(npc)} <small>(make ${esc([...new Set(options.goals.filter(goal => goal.craft?.npc === npc).map(goal => goal.craft.item))].join(', '))})</small>`).join('')}${options.endNpc ? ` → ${esc(options.endNpc)}` : ''} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${trip.stops[0].mapId !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(trip.stops[0].mapId)}">Go</button>` : ''}</div>` : '';
   const toggle = `<label class="toggle trip-all"><input type="checkbox" data-trip-all${state.tripAll ? ' checked' : ''}> Plan all my quests together</label>`;
   if (state.tripAll) return `<div class="hunt-options">${toggle}</div>`;
-  return `<div class="hunt-options">${toggle}${tripHtml}<div class="fine"><strong>Where to hunt:</strong> ${options.goals.map(goal => `${esc(goal.name)}${goal.craft ? ` <small>(${goal.need} for ${goal.craft.makes} ${esc(goal.craft.item)}: ${esc(goal.craft.discipline)} at ${esc(goal.craft.npc ?? goal.craft.town)}${goal.craft.town ? `, ${esc(goal.craft.town)}` : ''}${goal.craft.meso ? `, ${goal.craft.meso.toLocaleString()} mesos` : ''}; needs ${esc(goal.craft.discipline)} Lv ${goal.craft.level ?? 1}${goal.craft.master ? ` (profession master: ${esc(goal.craft.master)})` : ''}${marketNote(goal.name)})</small>` : ''}${goal.given ? ' <small>(no monster is known to drop it: probably handed to you during the quest)</small>' : ''}${goal.craft && goal.kind === 'collect' && !goal.pending && !goal.monsters.length ? ' <small>(no monster is known to drop it: try the shops or the market)</small>' : ''}${goal.kind === 'collect' && goal.monsters.length ? ` <small>(from ${esc(goal.monsters.slice(0, 2).join(', '))}${goal.guess ? ', best guess from the quest text' : ''})</small>` : ''}`).join(' · ')}</div>
+  return `<div class="hunt-options">${toggle}${tripHtml}<div class="fine"><strong>Where to hunt:</strong> ${options.goals.map(goal => `${esc(goal.name)}${goal.craft ? ` <small>(${goal.need} for ${goal.craft.makes} ${esc(goal.craft.item)}: ${esc(goal.craft.discipline)} at ${esc(goal.craft.npc ?? goal.craft.town)}${goal.craft.town ? `, ${esc(goal.craft.town)}` : ''}${goal.craft.meso ? `, ${goal.craft.meso.toLocaleString()} mesos` : ''}; needs ${esc(goal.craft.discipline)} Lv ${goal.craft.level ?? 1}${goal.craft.master ? ` (profession master: ${esc(goal.craft.master)})` : ''}${marketNote(goal.name)})</small>` : ''}${goal.given ? ' <small>(no monster is known to drop it: probably handed to you during the quest)</small>' : ''}${goal.kind === 'buy' && goal.buy?.sellers?.length ? ` <small>(buy: ${esc(goal.buy.sellers.slice(0, 3).map(s => `${s.npc}${s.map ? `, ${s.map}` : ''}`).join(' · '))}${goal.buy.sellers[0].price ? `, ${goal.buy.sellers[0].price.toLocaleString()} mesos` : ''})</small>` : ''}${goal.craft && goal.kind === 'collect' && !goal.pending && !goal.monsters.length ? ' <small>(no monster is known to drop it: try the shops or the market)</small>' : ''}${goal.kind === 'collect' && goal.monsters.length ? ` <small>(from ${esc(goal.monsters.slice(0, 2).join(', '))}${goal.guess ? ', best guess from the quest text' : ''})</small>` : ''}`).join(' · ')}</div>
     <ul>${options.maps.map(m => { const map = mapById(m.mapId), chosen = m.mapId === state.destination;
       return `<li class="${chosen ? 'chosen' : ''}"><span><strong>${esc(map?.name ?? '?')}</strong><small>${esc(m.goals.join(', '))} · ${m.spawns} spawns · ${m.hops === 0 ? 'you are here' : `${m.hops} map${m.hops === 1 ? '' : 's'} away`}</small></span>${chosen ? '<span class="pill">heading here</span>' : `<button type="button" class="button secondary wm-go" data-hunt-map="${esc(m.mapId)}">Go</button>`}</li>`; }).join('')}</ul></div>`;
 }
@@ -3212,7 +3302,7 @@ function objectiveHtml() {
   const objective = currentObjective();
   if (!objective) {
     const offer = (state.hud.quests ?? []).filter(q => q.name).slice(0, 3);
-    const any = offer.length || state.activeQuests.length || state.questsAvailable.length;
+    const any = offer.length || state.activeQuests.length || state.questsAvailable.length || state.planQuests.length;
     return `<div class="objective offer">${offer.length ? `Guide a quest: ${offer.map(q => `<button type="button" class="link-button" data-guide="${esc(q.name)}">${esc(q.name)}</button>`).join(' · ')} · ` : ''}<button type="button" class="button secondary" data-all-together>Do all quests together</button>${any ? '' : ' <small>(add your quests to the Quest Helper in game first)</small>'}</div>`;
   }
   // A quest in a line shows as the game names it: "Winston's Fossil Dig-up · Searching for Fossils".
@@ -3480,8 +3570,8 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
   // "Do all quests together": plan every quest at once, guiding the first one as the anchor.
   if (event.target.closest('[data-all-together]')) {
     state.tripAll = true; state.allTripCache = null; saveLive();
-    const first = [...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests, ...(state.tripAvailable !== false ? state.questsAvailable : [])].find(q => q && !state.questsFinished.includes(q));
-    if (first) setGuide(first); else { $('#live-note').textContent = 'Add your quests to the Quest Helper in game, or read your Available tab (Quests page), then press Do all quests together again.'; $('#live-note').classList.remove('hidden'); }
+    const first = [...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests, ...state.planQuests, ...(state.tripAvailable !== false ? state.questsAvailable : [])].find(q => q && !state.questsFinished.includes(q));
+    if (first) setGuide(first); else { $('#live-note').textContent = 'Add quests on the Quests page (My quest plan), add them to the Quest Helper in game, or read your Available tab, then press Do all quests together again.'; $('#live-note').classList.remove('hidden'); }
     applyObjective(); renderLive(); return;
   }
   const needTick = event.target.closest('[data-need-tick]');
@@ -3567,6 +3657,7 @@ try {
   state.activeQuests = Array.isArray(saved?.activeQuests) ? [...new Set(saved.activeQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 8) : [];
   state.questItemsReady = saved?.questItemsReady && typeof saved.questItemsReady === 'object' && !Array.isArray(saved.questItemsReady) ? saved.questItemsReady : {};
   state.questsAvailable = Array.isArray(saved?.questsAvailable) ? [...new Set(saved.questsAvailable.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
+  state.planQuests = Array.isArray(saved?.planQuests) ? [...new Set(saved.planQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 20) : [];
   state.questsHidden = Array.isArray(saved?.questsHidden) ? [...new Set(saved.questsHidden.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   state.questsFinished = Array.isArray(saved?.questsFinished) ? [...new Set(saved.questsFinished.filter(name => typeof name === 'string' && name.length <= 180))].slice(-2000) : [];
   state.gearOwned = saved?.gearOwned && typeof saved.gearOwned === 'object' && !Array.isArray(saved.gearOwned) ? saved.gearOwned : {};
