@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.16
+
+- The quest window is found on stretched game windows (its red tab line is thicker there), so reading the In Progress and Available tabs works at 2000 px wide and up; cut-off, slightly misread rows in the list still match ("Dr. Betty's Research on Pl...").
+- Read quests: Available · In Progress buttons on the Live GPS toolbar; what was found shows in the Live card.
+
 ## 1.0.15
 
 - Read my In Progress / Available / Completed tab now always reads the tab whose button you pressed, instead of guessing the open tab from its highlight (an In Progress read could be taken for Available and find nothing).

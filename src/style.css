@@ -205,3 +205,4 @@ body.gps-page .view-navigate>.card{padding:8px 14px}
 @media (max-width:820px){.top-nav{flex-wrap:wrap}}
 body.gps-page .live-card .action-row .button{padding:6px 10px}
 .exp-chip{float:right;margin:2px 0 0 12px;font-size:.78rem;color:#3d5d4c;background:#eef6e8;border-radius:999px;padding:2px 10px}.exp-chip b{color:#1c4d39}.exp-chip .link-button{font-size:.76rem;margin-left:4px}
+.quick-read{font-size:.8rem;color:#3d5d4c;white-space:nowrap}.quick-read .link-button{font-size:.8rem}

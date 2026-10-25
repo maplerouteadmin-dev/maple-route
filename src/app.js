@@ -91,7 +91,7 @@ $('#app').innerHTML = `
     <section class="card live-card" aria-labelledby="live-title"><div class="live-head"><div><div class="eyebrow">Live GPS</div><h2 id="live-title">Next move</h2></div><span class="pill" id="live-state">Off</span></div>
       <div id="live-step" class="live-step" aria-live="polite"></div>
       <div class="choose-row"><div id="guide-offer"></div></div>
-      <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label></div>
+      <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><span class="quick-read" title="Open the quest window (Q) on that tab, towns expanded, then press">Read quests: <button type="button" class="link-button" data-quick-read="available">Available</button> · <button type="button" class="link-button" data-quick-read="progress">In Progress</button></span></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
@@ -867,6 +867,16 @@ document.addEventListener('click', event => {
   }
 });
 document.querySelectorAll('[data-read-quests]').forEach(button => button.addEventListener('click', () => readQuestWindow(button.dataset.readQuests)));
+// The same reads from the Live GPS toolbar; what was found shows in the Live card's note line.
+document.addEventListener('click', async event => {
+  const quick = event.target.closest('[data-quick-read]'); if (!quick) return;
+  const tab = quick.dataset.quickRead, note = $('#live-note');
+  note.textContent = `Reading your ${tab === 'progress' ? 'In Progress' : 'Available'} tab… (open the quest window on it, towns expanded)`; note.classList.remove('hidden');
+  quick.disabled = true;
+  try { await readQuestWindow(tab); } finally { quick.disabled = false; }
+  note.textContent = $(tab === 'progress' ? '#progress-read' : '#available-read')?.textContent.trim() || 'Nothing read.';
+  state.allTripCache = null; applyObjective(); renderLive();
+});
 // Names read off the quest window -> state. Available: quests you can start (added to what was
 // read before). Completed: quests you have finished (marked straight away when read automatically,
 // confirmed by you when read by the button).
@@ -877,9 +887,9 @@ function quickSignature(image) {
   return cells.join('');
 }
 
-function applyQuestWindow(tab, text, { auto = false } = {}) {
+function applyQuestWindow(tab, text, { auto = false, list = false } = {}) {
   const available = tab === 'available', out = $(available ? '#available-read' : tab === 'progress' ? '#progress-read' : '#completed-read');
-  const seen = questsInText(text, gameQuestNames(state.quests));
+  const seen = questsInText(text, gameQuestNames(state.quests), { min: list ? .74 : .82 });
   logTest('quest-window', { tab, auto, seen, text: text.slice(0, 3000) });
   if (auto && !seen.length) return 0;
   // In Progress: every quest you have accepted, Quest Helper or not; they join your quests (and Do all
@@ -943,7 +953,7 @@ async function readQuestWindow(tab) {
     const win = findQuestWindow(regionImage(grabbed.source, { x: 0, y: 0, w: grabbed.width, h: grabbed.height }));
     const text = win ? await readRegion(worker, grabbed.source, win.list, { scale: 2, ink: inkQuestList }) : await readWholeFrame(worker, grabbed.source, grabbed.width, grabbed.height);
     // You pressed the button for this tab: that beats our guess from the tab highlight.
-    applyQuestWindow(tab, text);
+    applyQuestWindow(tab, text, { list: Boolean(win) });
   } catch (error) { out.innerHTML = `<p class="fine">Could not read the screen: ${esc(error?.message ?? String(error))}</p>`; }
   finally { grabbed?.release(); worker?.terminate?.(); button.disabled = false; }
 }
@@ -3240,7 +3250,7 @@ async function hudTick(live, grabbed, ocrUsed) {
       // Read again only when the list really changed (scrolled, a town opened, another tab).
       if (win.tab !== live.questWinTab || listChange(sig, live.questWinSig) > .06) {
         live.questWinSig = sig; live.questWinTab = win.tab;
-        const found = applyQuestWindow(win.tab, await readRegion(live.hudWorker, source, win.list, { scale: 2, ink: inkQuestList }), { auto: true });
+        const found = applyQuestWindow(win.tab, await readRegion(live.hudWorker, source, win.list, { scale: 2, ink: inkQuestList }), { auto: true, list: true });
         // Nothing that looks like a quest: another window with a red tab line (Character Stat…).
         if (!found) live.questWinQuietUntil = now + 30_000;
         return;

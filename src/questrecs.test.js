@@ -108,3 +108,11 @@ test('quest lines with extra text after the name still match', async () => {
   assert.deepEqual(questsInText('Searching for Mushrooms', names), []);
 });
 
+test('quest window list rows match a little more loosely (a truncated, misread row)', async () => {
+  const { questsInText } = await import('./questrecs.js');
+  const names = ["Dr. Betty's Research on Plants", "Winston's Fossil Dig-up", 'Research on Plant Fossils'];
+  const row = "| - Perion (1) ed\nOr Betty's Fezearch on PI [";
+  assert.deepEqual(questsInText(row, names), []);
+  assert.deepEqual(questsInText(row, names, { min: .74 }), ["Dr. Betty's Research on Plants"]);
+});
+

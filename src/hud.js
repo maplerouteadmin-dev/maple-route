@@ -366,8 +366,12 @@ export function findQuestWindow(image) {
     }
   }
   if (!best) return null;
-  // A thin line (the window's is 2-3 px), not a red bar like HP: few red rows around it.
-  const redRows = [-4, -3, 3, 4].filter(dy => { const y = best.y + dy; if (y < 0 || y >= height) return false; let n = 0; for (let dx = 0; dx < best.w; dx += 2) if (red((y * width + best.x + dx) * 4)) n++; return n > best.w / 4; }).length;
+  // A thin line (2-3 px, thicker on a stretched window: 4 px at 2000 wide), not a red bar like HP:
+  // measure how many rows it spans, then no red rows just above or below it.
+  const redRow = y => { if (y < 0 || y >= height) return false; let n = 0; for (let dx = 0; dx < best.w; dx += 2) if (red((y * width + best.x + dx) * 4)) n++; return n > best.w / 4; };
+  let thick = 1; while (thick < 8 && redRow(best.y + thick)) thick++;
+  if (thick > 6) return null;
+  const redRows = [-4, -3, thick + 2, thick + 3].filter(dy => redRow(best.y + dy)).length;
   if (redRows > 0) return null;
   // Open tab: the third of the tab row above the line that is mostly red/pink.
   const tabH = Math.max(6, Math.round(best.w * .07)), names = ['available', 'progress', 'completed'];
@@ -378,7 +382,7 @@ export function findQuestWindow(image) {
   };
   const shares = names.map((_, i) => share(i)), top = shares.indexOf(Math.max(...shares));
   const tab = shares[top] > .25 ? names[top] : null;
-  const list = { x: best.x, y: best.y + 2, w: best.w, h: Math.min(height - best.y - 2, Math.round(best.w * 1.7)) };
+  const list = { x: best.x, y: best.y + thick + 1, w: best.w, h: Math.min(height - best.y - thick - 1, Math.round(best.w * 1.7)) };
   return { line: best, tab, list };
 }
 

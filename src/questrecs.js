@@ -51,7 +51,9 @@ export function recommendQuests(catalog, { level, job = 'Any', finished = [], ac
 
 // Lines read off the in-game quest window ("Completed" tab) → catalog quest names found on it.
 // Each line is matched whole against every name; only confident matches count.
-export function questsInText(text, names) {
+// `min`: how close a line must be. Inside the quest window's own list every row is a quest name (or a
+// town heading), so it can be looser there (.74) than on a whole-screen read (.82).
+export function questsInText(text, names, { min = .82 } = {}) {
   const byNorm = names.map(name => [normalize(name), name]).filter(([n]) => n.length >= 4);
   const found = new Set();
   for (const raw of String(text).split('\n')) {
@@ -70,7 +72,7 @@ export function questsInText(text, names) {
       const score = Math.max(whole, start, end, lead);
       if (score > bestScore || (score === bestScore && best && name.length < best.length)) { best = name; bestScore = score; }
     }
-    if (bestScore >= .82) found.add(best);
+    if (bestScore >= min) found.add(best);
   }
   return [...found];
 }
