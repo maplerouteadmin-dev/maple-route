@@ -7,9 +7,10 @@
 .map .mv-picture{overflow:hidden;width:100%;height:100%;padding:0;margin:0;max-height:none}
 .map svg{display:block;max-width:none}
 .note{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d8eadb}
-.pair{position:absolute;inset:0;z-index:2;background:#102c24;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center}.pair[hidden]{display:none}
-.pair #qr{width:140px;height:140px;background:#fff;padding:4px;border-radius:6px}.pair #qr svg{width:100%;height:100%}.pair small{font-size:11px;color:#d8eadb}
-</style></head><body><div id="box"><div class="shell"><div class="next" id="next">Maple Route</div><div class="map" id="map"></div><div class="note" id="note"></div></div><div class="pair" id="pair" hidden><b>Scan with your phone</b><div id="qr"></div><small>then press Start reading</small></div></div><script>
+.pair{position:absolute;inset:0;z-index:2;background:#102c24;display:flex;flex-direction:row;align-items:center;gap:8px;padding:6px}.pair[hidden]{display:none}
+.pair #qr{height:100%;aspect-ratio:1;flex-shrink:0;background:#fff;padding:3px;border-radius:6px}.pair #qr svg{width:100%;height:100%;display:block}
+.pair .pair-text{display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:1.25}.pair small{font-size:11px;color:#d8eadb}
+</style></head><body><div id="box"><div class="shell"><div class="next" id="next">Maple Route</div><div class="map" id="map"></div><div class="note" id="note"></div></div><div class="pair" id="pair" hidden><div id="qr"></div><div class="pair-text"><b>Scan with your phone</b><small>Same Wi-Fi as the Deck, then press Start reading</small></div></div></div><script>
 window.placeMapleBox=b=>{const box=document.querySelector('#box');Object.assign(box.style,{left:b.x+'px',top:b.y+'px',width:b.width+'px',height:b.height+'px'});const map=document.querySelector('#map');if(map.firstChild)place(map);};
 window.setMaplePairing=svg=>{const pair=document.querySelector('#pair');if(svg){document.querySelector('#qr').innerHTML=svg;pair.hidden=false;}else pair.hidden=true;};
 // Zoom so map labels stay readable in a small box: map height fills the box (not shrunk below 0.55x

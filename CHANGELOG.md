@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.4
+
+- Steam Deck: the phone QR code fits the pop-up (code on the left, instructions beside it).
+
 ## 1.1.0-beta.3
 
 - Steam Deck: the downloaded AppImage can start its screen reader and pop-up (the Python helpers are kept outside the app archive). Betas 1 and 2 could not read the game when installed from the release.
