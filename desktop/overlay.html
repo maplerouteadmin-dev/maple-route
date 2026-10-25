@@ -17,7 +17,10 @@ window.setMaplePairing=svg=>{const pair=document.querySelector('#pair');if(svg){
 // of the app's own drawing), then keep you, else the next exit, in the middle.
 function place(box){
   const svg=box.querySelector('svg');if(!svg)return;
-  const w=parseFloat(svg.style.width)||svg.viewBox.baseVal.width,h=parseFloat(svg.style.height)||svg.viewBox.baseVal.height;
+  // The map's own size, remembered the first time: zooming always starts from it (re-fitting after the
+  // box changes size must not compound the last zoom).
+  if(!svg.dataset.nw){svg.dataset.nw=parseFloat(svg.style.width)||svg.viewBox.baseVal.width;svg.dataset.nh=parseFloat(svg.style.height)||svg.viewBox.baseVal.height;}
+  const w=Number(svg.dataset.nw),h=Number(svg.dataset.nh);
   const zoom=Math.min(1.4,Math.max(.75,box.clientHeight/h*1.6));
   svg.style.width=Math.round(w*zoom)+'px';svg.style.height=Math.round(h*zoom)+'px';
   const scroller=svg.parentElement===box?box:svg.parentElement;
