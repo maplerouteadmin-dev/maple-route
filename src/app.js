@@ -23,6 +23,7 @@ import { mapInfo, mobInfo, npcInfo } from './mapinfo.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
 import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, suggestPrice, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
+import { spoken } from './speech.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -454,7 +455,7 @@ function sayPart(part, words) { if (words && voiceOn(part)) say(words); }
 
 function say(words) {
   if (!('speechSynthesis' in window)) return;
-  const line = new SpeechSynthesisUtterance(words), voice = chosenVoice();
+  const line = new SpeechSynthesisUtterance(spoken(words)), voice = chosenVoice();
   if (voice) { line.voice = voice; line.lang = voice.lang; }
   line.rate = state.voiceRate ?? 1;
   speechSynthesis.cancel(); speechSynthesis.speak(line);

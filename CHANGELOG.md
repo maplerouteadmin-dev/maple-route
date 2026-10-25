@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.11
+
+- The voice says map numbers as numbers: "Ant Tunnel 1", not "Ant Tunnel eye" (every map name ending in a Roman numeral).
+
 ## 1.0.10
 
 - More room for the quest checklist on the Live GPS page: Choose destination sits at the end of the directions, the card title, map legend and extra spacing are gone, the top menu stays on one line, and the map gives up a little more height.
