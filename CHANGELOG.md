@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.10
+
+- More room for the quest checklist on the Live GPS page: Choose destination sits at the end of the directions, the card title, map legend and extra spacing are gone, the top menu stays on one line, and the map gives up a little more height.
+
 ## 1.0.9
 
 - The Report button moved to the top menu, right of Settings.

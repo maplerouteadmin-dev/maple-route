@@ -89,8 +89,8 @@ $('#app').innerHTML = `
     <section class="hero"><div><div class="eyebrow">Classic World companion</div><h1>Your next map, clearly.</h1><p>Turn-by-turn portal directions. Share your game window once and Live GPS follows you from map to map.</p></div><span class="safety">Never touches the game</span></section>
     <section class="card live-card" aria-labelledby="live-title"><div class="live-head"><div><div class="eyebrow">Live GPS</div><h2 id="live-title">Next move</h2></div><span class="pill" id="live-state">Off</span></div>
       <div id="live-step" class="live-step" aria-live="polite"></div>
-      <div class="choose-row"><div id="guide-offer"></div><button type="button" class="link-button choose-dest" id="choose-destination">Choose destination</button></div>
-      <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest town scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label></div>
+      <div class="choose-row"><div id="guide-offer"></div></div>
+      <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
@@ -275,7 +275,7 @@ function fitLivePage() {
   let room = measure();
   if (room < 180 && step) { root.style.setProperty('--step-h', `${Math.max(90, step.offsetHeight - (180 - room))}px`); room = measure(); }
   const planShown = Boolean($('#live-plan')?.innerHTML.trim());
-  root.style.setProperty('--map-h', `${Math.max(planShown ? 200 : 120, Math.round(planShown ? Math.min(room * .6, window.innerHeight * .5) : room))}px`);
+  root.style.setProperty('--map-h', `${Math.max(planShown ? 200 : 120, Math.round(planShown ? Math.min(room * .55, window.innerHeight * .45) : room))}px`);
   // The quest card takes the rest of the window and scrolls inside itself.
   const plan = $('#live-plan');
   if (plan && planShown) root.style.setProperty('--plan-h', `${Math.max(120, Math.round(window.innerHeight - plan.getBoundingClientRect().top - 14))}px`);
@@ -1774,9 +1774,10 @@ function cancelDestination() {
   destinationSelect.value = ''; saveLive(); persist(); renderRoute(); renderTargets(); renderWorldMap(); renderLive();
 }
 
+const CHOOSE_DEST = '<button type="button" class="link-button choose-dest" data-choose-dest>Choose destination</button>';
 function renderLive() {
   // Directions above the map (the map's header); quests, checklist and EXP in the card below it.
-  const html = destinationHtml() + liveHtml(liveModel()), planHtml = hudHtml();
+  const html = destinationHtml() + liveHtml(liveModel()) + CHOOSE_DEST, planHtml = hudHtml();
   const card = $('#live-step'), plan = $('#live-plan');
   if (card && card.dataset.html !== html) { card.innerHTML = html; card.dataset.html = html; }
   const offer = $('#guide-offer'), offerHtml = guideOfferHtml();
@@ -2031,7 +2032,7 @@ function renderMapView() {
   const spawnColor = spawnColors(map.mobSpots ?? []);
   const tally = mobTally(state.data, map.id), spawns = tally.kinds.length ? `<div class="mv-spawns"><strong>Spawns here:</strong> ${tally.kinds.map(k => `${spawnColor.has(k.name) ? `<i class="spawn-dot" style="background:${spawnColor.get(k.name)}"></i>` : ''}${k.count || '?'} × ${esc(k.name)}${k.level ? ` <small>Lv ${k.level}</small>` : ''}`).join(' · ')}</div>` : '<div class="mv-spawns">No monsters spawn here.</div>';
   const busy = Date.now() < (state.osmsBusyUntil ?? 0) ? '<div class="mv-busy">OSMS is busy right now; map pictures will keep loading in the background.</div>' : '';
-  $('#mapview-note').innerHTML = `${busy}${lost}${spawns}${MAPVIEW_LEGEND}<br>${credit}Click an exit to set its map as your destination.`;
+  $('#mapview-note').innerHTML = `${busy}${lost}${spawns}<span class="mv-legend">${MAPVIEW_LEGEND}<br></span><span class="mv-credit">${credit}</span><span class="mv-legend">Click an exit to set its map as your destination.</span>`;
 }
 
 $('#map-detailed').checked = state.mapStyle === 'render';
@@ -3081,7 +3082,7 @@ $('#characters').addEventListener('click', event => {
   const pick = event.target.closest('[data-character]'); if (pick) { switchCharacter(pick.dataset.character); return; }
   if (event.target.closest('[data-character-new]')) { const name = $('#character-name').value.trim(); if (name) switchCharacter(name); }
 });
-$('#choose-destination').addEventListener('click', () => reveal('#plan-title'));
+document.addEventListener('click', event => { if (event.target.closest('[data-choose-dest]')) reveal('#plan-title'); });
 
 function lastShareText() {
   try {
