@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- Maps with no in-game mini map (the subway, shops, houses): the pop-out no longer keeps the last map's size with a tiny picture in it; it sizes to the map and small maps fill it.
+- On those maps the Live card says plainly that your spot cannot be seen there (the game shows no mini map), and the directions still work.
+
 ## 1.0.0
 
 The first full release of Maple Route, a free, unofficial second-screen companion for MapleStory
