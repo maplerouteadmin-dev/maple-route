@@ -77,7 +77,7 @@ const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ u
 // Parts not yet checked in real play carry this label, so players know to double-check them.
 const UNTESTED = '<span class="untested" title="Not checked in real play yet: it may misread or miss things. Please report what you see.">Untested</span>';
 $('#app').innerHTML = `
-  <header class="top"><div class="top-inner"><div class="brand"><span class="brand-mark">✦</span> Maple Route</div><nav class="top-nav" aria-label="Sections" role="tablist"><a class="top-link" role="tab" href="#navigate">Live GPS</a><a class="top-link" role="tab" href="#goto">Go to</a><a class="top-link" role="tab" href="#world">World map</a><a class="top-link" role="tab" href="#quests">Quests</a><a class="top-link" role="tab" href="#hunt">Hunt &amp; trade</a><a class="top-link" role="tab" href="#market">Market</a><a class="top-link" role="tab" href="#settings">Settings</a></nav></div></header>
+  <header class="top"><div class="top-inner"><div class="brand"><span class="brand-mark">✦</span> Maple Route</div><nav class="top-nav" aria-label="Sections" role="tablist"><a class="top-link" role="tab" href="#navigate">Live GPS</a><a class="top-link" role="tab" href="#goto">Go to</a><a class="top-link" role="tab" href="#world">World map</a><a class="top-link" role="tab" href="#quests">Quests</a><a class="top-link" role="tab" href="#market">Market</a><a class="top-link" role="tab" href="#hunt">Hunt &amp; trade</a><a class="top-link" role="tab" href="#settings">Settings</a></nav></div></header>
   <main class="shell">
     <section class="hero"><div><div class="eyebrow">Classic World companion</div><h1>Your next map, clearly.</h1><p>Turn-by-turn portal directions. Share your game window once and Live GPS follows you from map to map.</p></div><span class="safety">Never touches the game</span></section>
     <section class="card live-card" aria-labelledby="live-title"><div class="live-head"><div><div class="eyebrow">Live GPS</div><h2 id="live-title">Next move</h2></div><span class="pill" id="live-state">Off</span></div>
@@ -181,7 +181,6 @@ $('#app').innerHTML = `
       <section class="card" aria-labelledby="quest-title"><h2 id="quest-title">Quest guide & directions</h2><p class="muted">Find a Classic World quest, then route to each known NPC or hunting map. Tick steps yourself as you finish them in game.</p><label class="field">Quest name<input id="quest-query" type="search" autocomplete="off" placeholder="Try Chrishrama or Mai's Training"></label><div id="quest-results" class="quest-results" aria-live="polite"></div><div id="quest-guide" class="quest-guide" aria-live="polite"></div><p class="fine">Quest steps: <a href="https://mapleclassic.wiki/wiki/Quests" target="_blank" rel="noopener">MapleClassic Wiki contributors</a> (<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>). Route maps and spawns: OSMS Data Explorer. Community information may be incomplete or differ from your game. Progress is only saved in this browser; no quest log is read.</p></section>
       <section class="card" aria-labelledby="item-title"><h2 id="item-title">Find an item to farm</h2><p class="muted">Pick an item to see documented dropping monsters and maps where they spawn. Choose the spot you prefer and get a route.</p><label class="field">Item name<input id="item-query" type="search" autocomplete="off" placeholder="Try Blue Snail Shell"></label><div id="item-results" class="item-results" aria-live="polite"></div><div id="item-farm" class="item-farm" aria-live="polite"></div><p class="fine">Item names and map spawns: <a href="https://osmsdataexplorer.com/" target="_blank" rel="noopener">OSMS Data Explorer</a>. Community drop listings: <a href="https://mapleclassic.wiki/" target="_blank" rel="noopener">MapleClassic Wiki contributors</a>, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>. We join those listings to map routes; neither source endorses this app. Missing records do not prove an item is exclusive.</p></section>
       <section class="card" aria-labelledby="gear-title"><h2 id="gear-title">Gear & crafting planner</h2><p class="muted">Choose an item in the finder above. Compare its documented drop and shop paths, or plan a listed recipe. Enter material counts yourself; nothing reads your inventory.</p><div id="gear-plan" aria-live="polite"></div><p class="fine">Starter recipes: <a href="https://mapleclassic.wiki/wiki/Smithing" target="_blank" rel="noopener">Smithing</a>, <a href="https://mapleclassic.wiki/wiki/Weaponcrafting" target="_blank" rel="noopener">Weaponcrafting</a>, and <a href="https://mapleclassic.wiki/wiki/Tailoring" target="_blank" rel="noopener">Tailoring</a> by MapleClassic Wiki contributors (<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>). The wiki marks these recipes pre-launch. Check the actual crafting window before spending materials. This is a starter selection, not a complete recipe database.</p></section>
-      <section class="card" aria-labelledby="party-title"><h2 id="party-title">Party-quest checklist</h2><p class="muted">Plan Kerning’s First Time Together, then tick preparation and stages yourself. The app routes you to the entrance; it cannot see party status or instance progress.</p><div id="party-plan" aria-live="polite"></div><p class="fine">Adapted from the <a href="https://mapleclassic.wiki/wiki/First_Time_Together" target="_blank" rel="noopener">MapleClassic Wiki walkthrough</a> by its contributors (<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>). Marked pre-launch by the wiki; verify level limits, channels, and stage rules in game. This is the only launch party quest the source currently identifies.</p></section>
       <section class="card" aria-labelledby="session-title"><h2 id="session-title">My training sessions</h2><p class="muted">Record your own EXP, mesos, time, and map to compare actual results. Nothing is measured or read automatically.</p><div class="session-fields"><label class="field">Map<select id="session-map"></select></label><label class="field">Minutes<input id="session-minutes" type="number" min="1" max="1440" placeholder="30"></label><label class="field">Start level<input id="session-start-level" type="number" min="1" max="200"></label><label class="field">End level<input id="session-end-level" type="number" min="1" max="200"></label><label class="field">Start EXP<input id="session-start-exp" type="number" min="0"></label><label class="field">End EXP<input id="session-end-exp" type="number" min="0"></label><label class="field">Start mesos<input id="session-start-mesos" type="number" min="0"></label><label class="field">End mesos<input id="session-end-mesos" type="number" min="0"></label></div><label class="field">If you leveled up: total EXP gained<input id="session-exp-gained" type="number" min="0" placeholder="Needed only when level changes"></label><div class="action-row"><button class="button secondary" id="save-session">Save session</button></div><div id="session-status" role="status" class="fine"></div><div id="session-list" aria-live="polite"></div><p class="fine">Rates are your recorded change divided by time, not a prediction. Meso change includes spending during the session. EXP shown by the game may reset on level-up, so supply total gained when your level changes. Saved only in this browser.</p></section>
       <section class="card" aria-labelledby="guide-title"><h2 id="guide-title">Level guide</h2><p class="muted">Explore possible training or loot-heavy maps for your level. These are data-based suggestions, not measured XP or mesos per hour.</p><label class="field">Your level<input id="player-level" type="number" min="1" max="200" value="15"></label><div class="action-row"><button class="button secondary" id="guide-xp">Training spots</button><button class="button light" id="guide-money">Money candidates</button></div><p class="fine" id="guide-explainer"></p><div id="guide-results" class="guide-results"></div></section>
       <section class="card" aria-labelledby="journey-title"><h2 id="journey-title">Classic leveling journey</h2><p class="muted">A simple path through Victoria Island, with alternatives at each stage. Pick a spot to route there.</p><div id="journey-bands" class="journey-bands" aria-label="Level ranges"></div><div id="journey-detail" class="journey-detail"></div><p class="fine">Adapted as short route suggestions from the <a href="https://mapleclassic.wiki/wiki/Training_guide" target="_blank" rel="noopener">MapleClassic Wiki training guide</a> (community content, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>). Its rankings are a starting point, not guaranteed best XP for your class or gear. Map names are checked against the current route feed.</p></section>
@@ -206,16 +205,21 @@ const VIEWS = {
   navigate: ['live-title', 'mapview-title'],
   goto: ['plan-title', 'recs-title', 'targets-title', 'quest-title', 'item-title', 'guide-title', 'journey-title', 'route-title'],
   world: ['world-title', 'atlas-title'],
-  quests: ['quest-helper-title', 'questplan-title', 'notes-title', 'questlog-title', 'next-title', 'trip-title', 'goals-title', 'party-title'],
-  hunt: ['live-exp-title', 'session-title', 'sell-title', 'prices-title', 'gear-title'],
+  quests: ['quest-helper-title', 'questplan-title', 'notes-title', 'questlog-title', 'next-title', 'trip-title', 'goals-title'],
   market: ['market-title', 'market-post-title'],
+  // Two set columns (left, right) instead of flowing: gear & crafting stays bottom right.
+  hunt: [['live-exp-title', 'session-title'], ['sell-title', 'prices-title', 'gear-title']],
   settings: ['voice-title', 'autostart-title', 'characters-title', 'citizen-title', 'settings-title', 'feedback-title', 'data-title', 'privacy-title']
 };
 {
   const container = document.createElement('div'); container.className = 'views';
   for (const [view, ids] of Object.entries(VIEWS)) {
     const panel = document.createElement('div'); panel.className = `view view-${view}`; panel.dataset.view = view; panel.setAttribute('role', 'tabpanel');
-    for (const id of ids) { const section = document.getElementById(id)?.closest('section'); if (section) panel.append(section); }
+    const place = (into, id) => { const section = document.getElementById(id)?.closest('section'); if (section) into.append(section); };
+    if (Array.isArray(ids[0])) {
+      panel.classList.add('view-split');
+      for (const group of ids) { const col = document.createElement('div'); col.className = 'view-col'; for (const id of group) place(col, id); panel.append(col); }
+    } else for (const id of ids) place(panel, id);
     container.append(panel);
   }
   document.querySelectorAll('.shell > .card, .shell > .grid').forEach(leftover => leftover.remove());
@@ -806,7 +810,10 @@ function applyQuestWindow(tab, text, { auto = false } = {}) {
     const doing = questsForGameNames(state.quests, seen, { tab: 'available', finished: state.questsFinished }).filter(name => !state.questsFinished.includes(name));
     const added = doing.filter(name => !state.activeQuests.includes(name));
     for (const name of added) { if (state.activeQuests.length < 25) { state.activeQuests.push(name); ensureQuestDetails(name); } }
-    if (added.length) { state.allTripCache = null; persist(); applyObjective(); renderLive(); }
+    // Accepted, so no longer waiting to be started: the plan skips talking to the giver.
+    const wasOffered = state.questsAvailable.filter(name => doing.includes(name));
+    if (wasOffered.length) state.questsAvailable = state.questsAvailable.filter(name => !doing.includes(name));
+    if (added.length || wasOffered.length) { state.allTripCache = null; persist(); applyObjective(); renderLive(); }
     if (auto && !added.length) return seen.length;
     out.innerHTML = !doing.length ? '<p class="fine">No quest names found. Open the quest window (Q) on the <b>In Progress</b> tab with the towns expanded, then try again.</p>'
       : `<p class="fine">${auto ? 'Read from your quest window' : 'Read from your In Progress tab'}: ${doing.map(esc).join(', ')}.${added.length ? ` Added ${added.length} to your quests; Do all quests together now includes them.` : ' All already on your list.'}</p>`;
@@ -818,7 +825,12 @@ function applyQuestWindow(tab, text, { auto = false } = {}) {
     const inProgress = new Set((state.hud.quests ?? []).map(q => q.name).filter(Boolean));
     const offered = found.filter(name => !state.questsFinished.includes(name) && !inProgress.has(name) && !state.activeQuests.includes(name));
     const added = offered.filter(name => !state.questsAvailable.includes(name));
-    state.questsAvailable = [...new Set([...state.questsAvailable, ...offered])]; persist(); renderQuestRecs();
+    state.questsAvailable = [...new Set([...state.questsAvailable, ...offered])];
+    // On the Available tab means not accepted yet (Quest Helper lines aside): the plan starts it with the giver.
+    const notYet = found.filter(name => state.activeQuests.includes(name) && !inProgress.has(name));
+    if (notYet.length) { state.activeQuests = state.activeQuests.filter(name => !notYet.includes(name)); state.questsAvailable = [...new Set([...state.questsAvailable, ...notYet])]; }
+    if (added.length || notYet.length) { state.allTripCache = null; applyObjective(); renderLive(); }
+    persist(); renderQuestRecs();
     if (auto && !added.length) return seen.length;
     // One row per name read off the window (a quest line title like "Winston's Fossil Dig-up", or a
     // single quest), its next quest, and Start: guide there and through it with Live GPS.
@@ -1130,7 +1142,7 @@ function renderGearPlan() {
 }
 
 function renderPartyPlan() {
-  const panel = $('#party-plan'); panel.replaceChildren();
+  const panel = $('#party-plan'); if (!panel) return; panel.replaceChildren();
   const done = new Set(state.partyDone);
   const heading = document.createElement('h3'); heading.textContent = PARTY_QUEST.name;
   const level = document.createElement('p'); level.className = 'fine'; level.textContent = partyLevelMessage(state.level);
@@ -3551,11 +3563,17 @@ function renderPrices() {
   const rows = summarizePrices(state.prices, $('#price-query')?.value ?? '', priceNamer()).slice(0, 60);
   $('#price-count').textContent = `${state.prices.length} adverts logged`;
   if (!rows.length) { panel.innerHTML = `<p class="fine">${state.prices.length ? 'No item matches that search.' : 'Nothing logged yet. Keep Live GPS running with trade chat logging on and the chat visible.'}</p>`; return; }
-  // The most recent players advertising this item, to contact in game.
-  const who = item => { const key = normalize(item), seen = new Set(); return state.prices.filter(p => p.key === key && p.seller && !seen.has(p.seller) && seen.add(p.seller)).slice(0, 3).map(p => `${esc(p.seller)} <small>(${p.kind === 'buy' ? 'buying' : 'selling'} ${formatMesos(p.price)})</small>`).join('<br>') || '<span class="muted-cell">—</span>'; };
+  // The most recent players advertising this item, each with Copy /find to reach them in game.
+  const namer = priceNamer(), adsOf = item => { const key = normalize(item); return state.prices.filter(p => p.seller && normalize((namer && namer(p.item)) || p.item) === key).sort((a, b) => b.at - a.at); };
+  const findButton = name => `<button type="button" class="button light" data-market-find="${esc(name)}">Copy /find</button>`;
+  const who = item => { const seen = new Set(); return adsOf(item).filter(p => !seen.has(p.seller) && seen.add(p.seller)).slice(0, 3).map(p => `${esc(p.seller)} <small>(${p.kind === 'buy' ? 'buying' : 'selling'} ${formatMesos(p.price)})</small>${findButton(p.seller)}`).join('<br>') || '<span class="muted-cell">—</span>'; };
   const cell = stats => stats ? `${formatMesos(stats.median)}<small>${stats.count > 1 ? `${formatMesos(stats.low)}–${formatMesos(stats.high)} · ` : ''}${stats.count}×</small>` : '<span class="muted-cell">—</span>';
-  panel.innerHTML = `<table class="price-grid"><thead><tr><th>Item</th><th>Selling for</th><th>Buying at</th><th>Who</th><th>Last seen</th></tr></thead><tbody>${rows.map(row => `<tr><td>${esc(row.item)}</td><td>${cell(row.sell)}</td><td>${cell(row.buy)}</td><td class="price-who">${who(row.item)}</td><td>${new Date(row.lastSeen).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td></tr>`).join('')}</tbody></table>`;
+  // Opened item: every advert logged for it (newest first) and its Market listings.
+  const when = at => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const ads = item => `<tr class="price-ads"><td colspan="5"><ul>${adsOf(item).slice(0, 30).map(p => `<li><b>${esc(p.seller)}</b> ${p.kind === 'buy' ? 'buying' : 'selling'} for <b>${formatMesos(p.price)}</b> <small>· ${when(p.at)}</small> ${findButton(p.seller)}</li>`).join('') || '<li>No player names were read for this item.</li>'}</ul><p class="fine">Whisper them in game after <b>/find</b>. <a href="#market" data-market-search="${esc(item)}">See ${esc(item)} in the Market</a> (listings there take offers).</p></td></tr>`;
+  panel.innerHTML = `<table class="price-grid"><thead><tr><th>Item</th><th>Selling for</th><th>Buying at</th><th>Who</th><th>Last seen</th></tr></thead><tbody>${rows.map(row => `<tr><td><button type="button" class="link-button" data-price-open="${esc(row.item)}" aria-expanded="${state.priceOpen === row.item}">${esc(row.item)} ${state.priceOpen === row.item ? '▾' : '▸'}</button></td><td>${cell(row.sell)}</td><td>${cell(row.buy)}</td><td class="price-who">${who(row.item)}</td><td>${when(row.lastSeen)}</td></tr>${state.priceOpen === row.item ? ads(row.item) : ''}`).join('')}</tbody></table><p class="fine">Press an item for all its adverts and the players to contact.</p>`;
 }
+document.addEventListener('click', event => { const open = event.target.closest('[data-price-open]'); if (open) { state.priceOpen = state.priceOpen === open.dataset.priceOpen ? null : open.dataset.priceOpen; renderPrices(); } });
 
 $('#price-query').addEventListener('input', renderPrices);
 $('#price-clear').addEventListener('click', () => { if (!confirm('Delete the whole price log in this browser?')) return; state.prices = []; savePrices(); renderPrices(); });
