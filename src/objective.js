@@ -233,10 +233,13 @@ export function rankObjectiveMaps(data, goals, currentMapId = null) {
 // put where it adds the fewest maps, but never before its quest's hunting (and crafting) is done, so
 // a quest whose NPC is near its hunting map is handed in on the way. Hand-ins without quest names
 // go at the end, nearest first. `handIns`: [{ mapId, quests: [names] }] (or plain map ids).
+// `starts`: quests not accepted yet, [{ mapId, quests: [name], npc }]: each is picked up where it adds
+// the fewest maps but before any hunting for it (kills only count once a quest is accepted), and its
+// hand-in comes after it.
 // Returns { order: [{ type: 'hunt'|'craft'|'handin', mapId, … }], stops, via, ends, hops, missing }.
-export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { via = [] } = {}) {
+export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { via = [], starts = [] } = {}) {
   const active = goals.filter(g => g.monsters?.length);
-  if (!active.length) return null;
+  if (!active.length && !starts.length && !handIns.length) return null;
   const ends = handIns.map(h => typeof h === 'string' ? { mapId: h, quests: [] } : h).filter(h => h.mapId);
   const cap = goal => Math.min(20, 8 + Math.ceil(Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)) / 5));
   const spawnsOn = (goal, mapId) => goalSpawns(data, goal).get(mapId) ?? 0;
@@ -266,15 +269,29 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
   // Crafters after the hunting, nearest first.
   const viaLeft = [...new Set(via.filter(Boolean))];
   while (viaLeft.length) { viaLeft.sort((a, b) => (hops(data, at, a) ?? 99) - (hops(data, at, b) ?? 99)); at = viaLeft.shift(); order.push({ mapId: at, type: 'craft' }); }
+  // Quests not accepted yet: picked up where it adds the fewest maps, before their first hunting stop.
+  const dist = (a, b) => !a ? 0 : (hops(data, a, b) ?? 99);
+  const cheapest = (stop, from, to) => {
+    let bestAt = from, bestCost = Infinity;
+    for (let i = from; i <= to; i++) {
+      const before = i === 0 ? currentMapId : order[i - 1].mapId, after = order[i]?.mapId ?? null;
+      const cost = dist(before, stop.mapId) + (after ? dist(stop.mapId, after) - dist(before, after) : 0);
+      if (cost < bestCost) { bestCost = cost; bestAt = i; }
+    }
+    order.splice(bestAt, 0, stop);
+  };
+  for (const start of starts.filter(s => s.mapId)) {
+    const firstHunt = order.findIndex(o => o.type === 'hunt' && o.quests.some(q => start.quests.includes(q)));
+    cheapest({ mapId: start.mapId, type: 'start', quests: start.quests, npc: start.npc ?? null }, 0, firstHunt === -1 ? order.length : firstHunt);
+  }
   // Each hand-in where it adds the fewest maps, after the last stop its quest needs.
   const crafting = new Set(goals.filter(g => g.craft).flatMap(g => g.quests ?? []));
   const lastCraft = order.findLastIndex(o => o.type === 'craft');
-  const dist = (a, b) => !a ? 0 : (hops(data, a, b) ?? 99);
   const named = ends.filter(end => end.quests.length), unnamed = ends.filter(end => !end.quests.length);
   for (const end of named) {
     let earliest = 0;
     for (const quest of end.quests) {
-      earliest = Math.max(earliest, order.findLastIndex(o => o.type === 'hunt' && o.quests.includes(quest)) + 1);
+      earliest = Math.max(earliest, order.findLastIndex(o => (o.type === 'hunt' || o.type === 'start') && o.quests.includes(quest)) + 1);
       if (crafting.has(quest)) earliest = Math.max(earliest, lastCraft + 1);
       if ([...left].some(g => g.quests?.includes(quest))) earliest = order.length; // something has no spot: hand in last
     }

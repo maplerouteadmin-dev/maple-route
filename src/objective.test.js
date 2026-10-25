@@ -157,3 +157,22 @@ test('spawns count what can be alive at once (the map mob cap)', async () => {
   assert.equal(world.maps[0].capacity, 40);
 });
 
+test('quests not started yet: picked up at the giver before hunting for them, handed in after', async () => {
+  const { planMultiTrip } = await import('./objective.js');
+  // town(giver Mrs. Ming Ming) - field(Pigs) ; town - shop(delivery NPC)
+  const world = validateDataset({ schemaVersion: 1, maps: ['start', 'town', 'field', 'shop'].map(id => ({ id, name: id })), portals: [
+    ['start', 'town'], ['town', 'field'], ['town', 'shop']
+  ].flatMap(([a, b], i) => [{ from: a, to: b, name: `p${i}` }, { from: b, to: a, name: `q${i}` }]), targets: [
+    { id: 'p', name: 'Pig', kind: 'mob', locations: [{ mapId: 'field', count: 16 }] }
+  ] });
+  const goals = [{ name: 'Pig', need: 10, monsters: ['Pig'], quests: ['Ribbons'] }];
+  const trip = planMultiTrip(world, goals, 'start', [{ mapId: 'town', quests: ['Ribbons'] }, { mapId: 'shop', quests: ['Delivery'] }],
+    { starts: [{ mapId: 'town', quests: ['Ribbons'], npc: 'Mrs. Ming Ming' }, { mapId: 'town', quests: ['Delivery'], npc: 'Sera' }] });
+  const types = trip.order.map(o => `${o.type}:${o.mapId}:${o.quests.join('+')}`);
+  assert.ok(types.indexOf('start:town:Ribbons') < types.indexOf('hunt:field:Ribbons'));
+  assert.ok(types.indexOf('hunt:field:Ribbons') < types.indexOf('handin:town:Ribbons'));
+  assert.ok(types.indexOf('start:town:Delivery') < types.indexOf('handin:shop:Delivery'));
+  // A talk-only plan (nothing to hunt) still makes a trip.
+  assert.deepEqual(planMultiTrip(world, [], 'start', [{ mapId: 'shop', quests: ['Delivery'] }], { starts: [{ mapId: 'town', quests: ['Delivery'] }] }).order.map(o => o.type), ['start', 'handin']);
+});
+
