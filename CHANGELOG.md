@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4
+
+- Your ticks always win over screen reading: Quest Helper counts are shown as hints but never tick a step, finish a quest or bring back a hand-in you ticked. Ticking a hand-in (e.g. Donating to Kerning City) now always takes the quest off your plan, with Undo.
+- Quests list every item they need, joining the game files with the wiki's required-item list (Luke the Security Guy's Salad, the job qualification tests' Dark Marble), and the steps include any need the wiki guide left out.
+- Guiding one quest uses the same buy / hunt / hand-in plan as Do all quests together, just for that quest.
+- The plan shows each quest's remaining steps in order under Quest progress, with Route to NPC links.
+
 ## 1.0.3
 
 - Untick anything you ticked by mistake: an **Undo** link appears at the top of the plan right after a tick, the plan's Done list says "untick to undo", and the new **Ticked by hand** card on the Quests page lists every hand tick for any quest (planned, started or still to start) with an untick.

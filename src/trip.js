@@ -1,12 +1,16 @@
 import { shortestRoute } from './core.js';
 import { questStepMaps } from './quests.js';
+import { completeQuestNeeds } from './questneeds.js';
+import { buildSteps, currentStep } from './queststeps.js';
 
-export function pendingQuestTasks(data, names, catalog, details, done, currentMapId) {
+export function pendingQuestTasks(data, names, catalog, details, done, currentMapId, itemsReady = {}, acceptedQuests = names) {
   return names.map(name => {
     const quest = catalog.find(item => item.name === name) ?? { name };
     const record = details[name];
     const completed = new Set(Array.isArray(done[name]) ? done[name] : []);
-    const step = record?.steps?.find(item => !completed.has(item.number));
+    const needs = completeQuestNeeds(quest, record?.items);
+    const steps = record?.status === 'loaded' ? buildSteps({ ...quest, needs }, record.steps) : [];
+    const { step } = currentStep(steps, [...completed], { accepted: acceptedQuests.includes(name), giver: quest.giver, completedNeeds: itemsReady[name] ?? [] });
     return { quest, step, status: record?.status ?? 'loading', items: record?.items ?? [], maps: step ? questStepMaps(data, step, currentMapId, 12) : [] };
   });
 }

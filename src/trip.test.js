@@ -36,6 +36,15 @@ test('checking a quest step reveals its next stage without advancing other quest
   assert.equal(tasks[1].step.title, 'Blue Snails');
 });
 
+test('adding a quest to a trip does not skip its first conversation until accepted', () => {
+  const catalog = [{ name: 'One', giver: 'Mai' }];
+  const details = { One: { status: 'loaded', steps: [{ number: 1, title: 'Talk to Mai', npc: 'Mai' }, { number: 2, title: 'Hunt Shrooms', monster: 'Shroom' }] } };
+  const planned = pendingQuestTasks(data, ['One'], catalog, details, {}, 'a', {}, []);
+  const inProgress = pendingQuestTasks(data, ['One'], catalog, details, {}, 'a', {}, ['One']);
+  assert.equal(planned[0].step.title, 'Talk to Mai');
+  assert.equal(inProgress[0].step.title, 'Hunt Shrooms');
+});
+
 test('unreachable and unmapped steps are disclosed, not given a fake route', () => {
   const tasks = [
     { quest: { name: 'Return' }, step: { title: 'Talk' }, status: 'loaded', maps: [{ map: data.maps[0], spawns: 0 }] },

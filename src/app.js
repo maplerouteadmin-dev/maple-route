@@ -12,7 +12,9 @@ import { locateMinimap, readTitle, titleSignature, signatureChanged, locatePlaye
 import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { arrivalDetails } from './arrival.js';
-import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMaps, craftStops, matchCount, believableDone, helperComplete, hops } from './objective.js';
+import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMaps, craftStops, matchCount, helperComplete, hops } from './objective.js';
+import { completeQuestNeeds } from './questneeds.js';
+import { questVisible } from './questvisibility.js';
 import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
@@ -30,7 +32,7 @@ import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOU
 // server already saves them.
 if (!isLocalHost() && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn } from './questrecs.js';
-import { buildSteps, currentStep } from './queststeps.js';
+import { buildSteps, currentStep, stepCoversNeed } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
 import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines, fixCounts } from './hud.js';
 import { parseTradeChat, addTrades, summarizePrices, itemNamer, formatMesos } from './prices.js';
@@ -51,7 +53,12 @@ import './goals.css';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], tripTicks: [], questDetails: {}, questItemsReady: {} };
+const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], acceptedQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], tripTicks: [], questDetails: {}, questItemsReady: {} };
+function questByName(name) {
+  const matches = state.quests.filter(quest => quest.name === name);
+  return matches.find(quest => state.job !== 'Any' && quest.job === state.job) ?? matches.find(quest => !quest.job) ?? matches[0] ?? null;
+}
+const questInProgress = name => questVisible(name, state.questsFinished);
 
 const LIVE_KEY = 'maple-route-live';
 // In-memory test log of what Live GPS read on each tick (window.__mapleRouteLog), for diagnosing
@@ -89,7 +96,7 @@ $('#app').innerHTML = `
     <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div><p class="fine">To show only quests the game is offering you, read your in-game Available tab (below, or on the <b>Quests</b> page).</p></section>
     <section class="card" aria-labelledby="questplan-title"><h2 id="questplan-title">My quest plan</h2><p class="muted">Quests to do together, picked by hand (no screen reading needed). <b>Do all quests together</b> on the Live GPS card plans them with the ones you are doing: pick each up, hunt, buy, hand in.</p>
       <label class="field">Add a quest<input id="plan-search" type="search" autocomplete="off" placeholder="Type a quest name, e.g. Luke, fossils, omok"></label><div id="plan-suggest" class="start-results"></div><div id="plan-list"></div></section>
-    <section class="card" aria-labelledby="ticks-title"><h2 id="ticks-title">Ticked by hand</h2><p class="muted">Everything you ticked off yourself, for any quest (in your plan, started or still to start). Untick one if it was a slip; the plan and Live GPS pick it up again.</p><div id="tick-list" aria-live="polite"></div></section>
+    <section class="card" aria-labelledby="ticks-title"><h2 id="ticks-title">Ticked by hand</h2><p class="muted">Open a quest to see its completed steps in order. Untick a slip and the plan and Live GPS will pick it up again.</p><div id="tick-list" aria-live="polite"></div></section>
     <section class="card" aria-labelledby="notes-title"><h2 id="notes-title">Fill in a quest</h2><p class="muted">When the game data leaves something out (this week's donation item, what a quest needs and how many, who drops or hands over an item, who takes the hand-in), tell us here. Your note counts for you at once; once two players agree it helps everyone's plans. Notes are shared anonymously: only the quest, item, monster or NPC name and count, never your character name.</p>
       <div class="sell-fields"><label class="field">Quest<input id="note-quest" list="note-quests" autocomplete="off" placeholder="e.g. Donating to Kerning City"></label>
         <label class="field">What<select id="note-kind"><option value="week">This week's item (rotating quest)</option><option value="need">It needs an item / monster</option><option value="drop">This monster drops the item</option><option value="given">This NPC hands over the item</option><option value="turnin">Hand it in to this NPC</option></select></label>
@@ -101,12 +108,13 @@ $('#app').innerHTML = `
     <section class="card" aria-labelledby="questlog-title"><h2 id="questlog-title">Read your in-game quest list</h2><p class="muted">While Live GPS runs, an open quest window (<b>Q</b>) is read by itself. These buttons read it on demand.</p>
       <p class="fine">For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-available" data-read-quests="available">Read my Available tab</button></div><div id="available-read" aria-live="polite"></div>
-      <div class="divider"></div><h3 class="sub-title">What have I finished?</h3><p class="fine">Quests are marked finished automatically when Live GPS sees one leave the Quest Helper after it was ready to hand in. To catch up on older ones: in game press <b>Q</b>, open the <b>Completed</b> tab, then press the button below (once per page of the list). Only your shared screen is read.</p>
+      <div class="divider"></div><h3 class="sub-title">What have I finished?</h3><p class="fine">Only your own ticks and confirmations mark quests finished. To catch up on older ones: in game press <b>Q</b>, open the <b>Completed</b> tab, then press the button below and confirm the names. Only your shared screen is read.</p>
+      <div class="action-row"><button type="button" class="button secondary" id="read-completed" data-read-quests="completed">Read my Completed tab</button></div><div id="completed-read" aria-live="polite"></div><div id="finished-list"></div>
+      <div class="divider"></div>
       <h3 class="sub-title">What am I doing?</h3><p class="fine">Open the quest window (<b>Q</b>) on the <b>In Progress</b> tab with the towns expanded, then press below: every quest you have accepted is added, in the Quest Helper or not.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-progress" data-read-quests="progress">Read my In Progress tab</button></div><div id="progress-read" aria-live="polite"></div>
-      <div class="divider"></div>
-      <div class="action-row"><button type="button" class="button secondary" id="read-completed" data-read-quests="completed">Read my Completed tab</button></div><div id="completed-read" aria-live="polite"></div><div id="finished-list"></div></section>
-    <section class="card" aria-labelledby="quest-helper-title"><h2 id="quest-helper-title">Quest Helper sync</h2><p class="muted">While Live GPS runs, the app reads the in-game Quest Helper, ticks finished counts and tells you when a quest is ready to hand in.</p><div id="quest-helper" aria-live="polite"></div></section>
+      </section>
+    <section class="card" aria-labelledby="quest-helper-title"><h2 id="quest-helper-title">Quest Helper sync</h2><p class="muted">While Live GPS runs, the app reads the in-game Quest Helper and shows counts and possible hand-ins. It does not tick objectives or finish quests for you.</p><div id="quest-helper" aria-live="polite"></div></section>
     <section class="card" aria-labelledby="live-exp-title"><h2 id="live-exp-title">Live EXP tracker</h2><p class="muted">Reads EXP from the status bar while Live GPS runs and checks it against the bar's fill, so misreads are ignored.</p><div id="live-exp" aria-live="polite"></div></section>
     <section class="card" aria-labelledby="prices-title"><div class="data-row"><div><h2 id="prices-title">Market prices</h2><p class="muted">Asking and buying prices collected from trade chat (S&gt; / B&gt; adverts) while Live GPS runs. These are adverts, not completed sales.</p></div><span class="pill" id="price-count">0 adverts logged</span></div>
       <div class="price-tools"><label class="field">Search items<input id="price-query" type="search" autocomplete="off" placeholder="e.g. earring, scroll"></label><button type="button" class="button light" id="price-clear">Clear log</button></div><div id="price-table"></div></section>
@@ -515,7 +523,7 @@ async function loadQuestCatalog() {
   loadCrafting(); loadShops();
   state.questCatalogStatus = 'loading'; renderQuestResults();
   try {
-    const QUESTS_KEY = 'maple-route-quests-v4'; // v2: quest text kept (names the monsters when the wiki has no drops); v3/v4: same-named weekly versions as one quest
+    const QUESTS_KEY = 'maple-route-quests-v5'; // v5: full wiki required-item catalog joined to game objectives
     let cached = null; try { cached = JSON.parse(localStorage.getItem(QUESTS_KEY) || 'null'); } catch { cached = null; }
     const fresh = cached?.quests?.length && Date.now() - cached.savedAt < 24 * 60 * 60 * 1000;
     try {
@@ -529,7 +537,7 @@ async function loadQuestCatalog() {
     for (const quest of state.quests) if (!quest.turnIn) { quest.turnIn = guessTurnIn(quest.doneText, npcNames, quest.giver); quest.turnInGuessed = true; }
     applyNotes(state.quests, state.notes); resolveWeekly();
     if (state.selectedQuest?.name) {
-      const match = state.quests.find(quest => quest.name === state.selectedQuest.name);
+      const match = questByName(state.selectedQuest.name);
       if (match) selectQuest(match);
     }
   } catch (error) { state.questCatalogStatus = 'error'; state.questCatalogError = error.message; }
@@ -564,8 +572,8 @@ async function ensureQuestDetails(name) {
   state.questDetails[name] = {
     status: steps.status === 'fulfilled' ? 'loaded' : 'error',
     steps: steps.status === 'fulfilled' ? steps.value : [],
-    items: items.status === 'fulfilled' ? items.value : [],
-    itemsStatus: items.status === 'fulfilled' ? 'loaded' : 'error',
+    items: items.status === 'fulfilled' && items.value.length ? items.value : questByName(name)?.requiredItems ?? [],
+    itemsStatus: items.status === 'fulfilled' || questByName(name)?.requiredItems?.length ? 'loaded' : 'error',
     error: steps.status === 'rejected' ? steps.reason?.message ?? 'Quest steps unavailable.' : null
   };
   if (state.selectedQuest?.name === name) {
@@ -584,6 +592,10 @@ function selectQuest(quest) {
   state.questStepError = cached?.error;
   $('#quest-query').value = quest.name; $('#quest-results').replaceChildren(); persist(); renderQuestGuide();
   ensureQuestDetails(quest.name);
+}
+
+function completedNeedsFor(name) {
+  return state.questItemsReady[name] ?? [];
 }
 
 function renderQuestGuide() {
@@ -615,22 +627,37 @@ function renderQuestGuide() {
     reveal('#trip-title');
   }); panel.append(add);
   if (state.questStepStatus === 'loading') { const p = document.createElement('p'); p.textContent = 'Loading quest steps…'; panel.append(p); return; }
-  if (state.questStepStatus === 'error') { const p = document.createElement('p'); p.textContent = state.questStepError; panel.append(p); return; }
-  if (!state.questSteps.length) { const p = document.createElement('p'); p.textContent = 'No structured steps are listed for this quest yet. The full community guide may have more detail.'; panel.append(p); return; }
+  const needs = completeQuestNeeds(quest, state.questDetails[quest.name]?.items);
+  const steps = buildSteps({ ...quest, needs }, state.questSteps);
+  if (state.questStepStatus === 'error') { const p = document.createElement('p'); p.textContent = 'Community steps are unavailable; showing the game objectives we know.'; panel.append(p); }
+  if (!steps.length) { const p = document.createElement('p'); p.textContent = 'No structured steps or game objectives are listed for this quest yet. Check the full community guide.'; panel.append(p); return; }
+  const omitted = needs.filter(need => state.questSteps.length && !state.questSteps.some(step => stepCoversNeed(step, need)));
+  if (omitted.length) { const p = document.createElement('p'); p.className = 'fine'; p.textContent = `The community step list omits ${omitted.map(need => need.name).join(', ')}. The required objectives have been added below.`; panel.append(p); }
   const done = new Set(state.questDone[quest.name] ?? []);
-  const nextStep = state.questSteps.find(step => !done.has(step.number));
+  const accepted = state.acceptedQuests.includes(quest.name) || (state.hud.quests ?? []).some(q => q.name === quest.name);
+  const { step: nextStep, done: effectiveDone } = currentStep(steps, [...done], { accepted, giver: quest.giver, completedNeeds: completedNeedsFor(quest.name) });
   const list = document.createElement('ol'); list.className = 'quest-steps';
-  for (const step of state.questSteps) {
-    const row = document.createElement('li'); row.className = `quest-step${done.has(step.number) ? ' done' : ''}${nextStep?.number === step.number ? ' next' : ''}`;
+  for (const [index, step] of steps.entries()) {
+    const row = document.createElement('li'); row.className = `quest-step${effectiveDone.has(step.number) ? ' done' : ''}${nextStep?.number === step.number ? ' next' : ''}`;
     const top = document.createElement('div'); top.className = 'quest-step-top';
-    const label = document.createElement('label'); const check = document.createElement('input'); check.type = 'checkbox'; check.checked = done.has(step.number);
-    check.setAttribute('aria-label', `Mark step ${step.number} ${step.title} complete`);
+    const label = document.createElement('label'); const check = document.createElement('input'); check.type = 'checkbox'; check.checked = effectiveDone.has(step.number); check.disabled = index === 0 && accepted && effectiveDone.has(step.number) && !done.has(step.number) && Boolean(step.npc);
+    check.setAttribute('aria-label', `Mark step ${index + 1} ${step.title} complete`);
     check.addEventListener('change', () => {
       const completed = new Set(state.questDone[quest.name] ?? []);
       if (check.checked) completed.add(step.number); else completed.delete(step.number);
-      state.questDone[quest.name] = [...completed]; persist(); renderQuestGuide(); renderTripPlanner(); renderDashboard();
+      if (step.item || step.monster) {
+        const need = step.item || step.monster, key = `need:${need}`;
+        if (check.checked) completed.add(key); else completed.delete(key);
+        if (step.item) {
+          const ready = new Set(state.questItemsReady[quest.name] ?? []);
+          if (check.checked) ready.add(step.item); else ready.delete(step.item);
+          state.questItemsReady[quest.name] = [...ready];
+        }
+      }
+      state.questDone[quest.name] = [...completed]; state.allTripCache = null;
+      persist(); applyObjective(); renderQuestGuide(); renderTripPlanner(); renderDashboard(); renderLive();
     });
-    const title = document.createElement('strong'); title.textContent = `${step.number}. ${step.title}${nextStep?.number === step.number ? ' · NEXT' : ''}`; label.append(check, title); top.append(label); row.append(top);
+    const title = document.createElement('strong'); title.textContent = `${index + 1}. ${step.title}${nextStep?.number === step.number ? ' · NEXT' : ''}`; label.append(check, title); top.append(label); row.append(top);
     const target = document.createElement('p'); target.className = 'fine';
     target.textContent = [step.npc && `NPC: ${step.npc}`, step.monster && `Mob: ${step.monster}`, step.map && `Map: ${step.map}`, step.notes].filter(Boolean).join(' · ');
     if (target.textContent) row.append(target);
@@ -645,8 +672,13 @@ function renderQuestGuide() {
         button.append(name, detail); button.addEventListener('click', () => routeToMap(option.map.id, step.npc || null)); choices.append(button);
       }
       row.append(choices);
-    } else if (/^collect\s+\d+\s+/i.test(step.title)) {
-      const itemName = step.title.replace(/^collect\s+\d+\s+/i, '').trim();
+    } else if (step.item || /^collect\s+\d+\s+/i.test(step.title)) {
+      const itemName = step.item || step.title.replace(/^collect\s+\d+\s+/i, '').trim();
+      const shop = allQuestsTrip(quest.name).trip?.order.find(stop => stop.type === 'buy' && normalize(stop.item) === normalize(itemName));
+      if (shop) {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'button light'; button.textContent = `Route to ${shop.npc} for ${itemName}`;
+        button.addEventListener('click', () => routeToMap(shop.mapId, shop.npc)); row.append(button);
+      } else {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'button light'; button.textContent = `Find ${itemName} farming maps`;
       button.addEventListener('click', async () => {
         $('#item-query').value = itemName; await ensureItemCatalog();
@@ -654,6 +686,7 @@ function renderQuestGuide() {
         if (item) selectItem(item); else renderItemResults();
         reveal('#item-title');
       }); row.append(button);
+      }
     } else {
       const note = document.createElement('p'); note.className = 'fine'; note.textContent = 'No routeable map is confirmed for this step. Check the full guide or use the map finder.'; row.append(note);
     }
@@ -664,14 +697,27 @@ function renderQuestGuide() {
 $('#quest-query').addEventListener('input', () => { renderQuestResults(); if (normalize($('#quest-query').value).length >= 2) loadQuestCatalog(); });
 
 function currentQuestPlan() {
-  const tasks = pendingQuestTasks(state.data, state.activeQuests, state.quests, state.questDetails, state.questDone, state.current);
-  return { tasks, ...planQuestTrip(state.data, tasks, state.current) };
+  const tasks = pendingQuestTasks(state.data, state.activeQuests, state.quests, state.questDetails, state.questDone, state.current, state.questItemsReady);
+  for (const task of tasks) {
+    const ready = new Set(state.questItemsReady[task.quest.name] ?? []);
+    task.pendingItems = task.items.filter(item => !ready.has(item.name));
+    // A sparse wiki guide can say only "Talk to Luke" while the quest still needs Salad.
+    // Do not suggest that hand-in as the next trip stop until the required items are ready.
+    task.waitingForItems = Boolean(task.step?.npc && /talk|hand|bring|deliver/i.test(task.step.title) && task.pendingItems.length);
+    if (task.step?.item || task.waitingForItems) task.shopStop = allQuestsTrip(task.quest.name).trip?.order.find(step => step.type === 'buy' && (task.step?.item ? normalize(step.item) === normalize(task.step.item) : task.pendingItems.some(item => normalize(item.name) === normalize(step.item))));
+  }
+  return { tasks, ...planQuestTrip(state.data, tasks.filter(task => !task.waitingForItems), state.current) };
 }
 
 function finishQuestStep(name, number) {
   const completed = new Set(state.questDone[name] ?? []);
-  completed.add(number); state.questDone[name] = [...completed]; persist();
-  renderQuestGuide(); renderTripPlanner(); renderDashboard();
+  const quest = questByName(name), details = state.questDetails[name];
+  const step = buildSteps(quest ? { ...quest, needs: completeQuestNeeds(quest, details?.items) } : null, details?.steps ?? []).find(item => item.number === number);
+  completed.add(number);
+  if (step?.item || step?.monster) completed.add(`need:${step.item || step.monster}`);
+  if (step?.item) state.questItemsReady[name] = [...new Set([...(state.questItemsReady[name] ?? []), step.item])];
+  state.questDone[name] = [...completed]; state.allTripCache = null; persist();
+  applyObjective(); renderQuestGuide(); renderTripPlanner(); renderDashboard(); renderLive();
 }
 
 function renderTripPlanner() {
@@ -688,11 +734,13 @@ function renderTripPlanner() {
     const row = document.createElement('div'); row.className = 'trip-quest';
     const open = document.createElement('button'); open.type = 'button'; open.className = 'trip-quest-open';
     const name = document.createElement('strong'); name.textContent = task.quest.name;
-    const detail = document.createElement('span'); detail.textContent = task.status === 'loading' ? 'Loading steps…' : task.status === 'error' ? 'Guide unavailable' : task.step ? task.step.title : 'All listed steps complete';
+    const detail = document.createElement('span'); detail.textContent = task.status === 'loading' ? 'Loading steps…' : task.status === 'error' ? 'Guide unavailable' : task.waitingForItems ? `Get ${task.pendingItems.map(item => `${item.quantity} × ${item.name}`).join(', ')} before ${task.step.title}` : task.step ? task.step.title : 'All listed steps complete';
     open.append(name, detail); open.addEventListener('click', () => { selectQuest(task.quest); reveal('#quest-title'); });
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'trip-remove'; remove.textContent = 'Remove'; remove.setAttribute('aria-label', `Remove ${task.quest.name} from trip`);
     remove.addEventListener('click', () => { state.activeQuests = state.activeQuests.filter(item => item !== task.quest.name); persist(); renderTripPlanner(); renderDashboard(); renderQuestGuide(); });
-    row.append(open, remove); active.append(row);
+    const guide = document.createElement('button'); guide.type = 'button'; guide.className = 'trip-remove'; guide.textContent = 'Guide only'; guide.setAttribute('aria-label', `Guide only ${task.quest.name}`);
+    guide.addEventListener('click', () => { setGuide(task.quest.name); reveal('#live-title'); });
+    row.append(open, guide, remove); active.append(row);
   }
   for (const task of plan.tasks) {
     const quest = task.quest;
@@ -702,19 +750,33 @@ function renderTripPlanner() {
     if (quest.job && normalize(quest.job) !== 'any' && state.job !== 'Any' && normalize(quest.job) !== normalize(state.job)) alerts.push(`Wiki lists job ${quest.job}; check eligibility for your ${state.job}.`);
     if (task.status === 'error') alerts.push('Could not load its steps; use the full guide.');
     if (task.status === 'loaded' && !task.step) alerts.push(record?.steps?.length ? 'All listed steps are checked.' : 'No structured steps are listed; use the full guide.');
-    if (task.status === 'loaded' && task.step && !task.maps.length) alerts.push(`No mapped route for “${task.step.title}”; use the full guide or item finder.`);
+    if (task.status === 'loaded' && task.step && !task.maps.length && !task.shopStop) alerts.push(`No mapped route for “${task.step.title}”; use the full guide or item finder.`);
+    if (task.waitingForItems) alerts.push(`Get the unchecked items below before ${task.step.title}. Use Guide only for the full item and shop route.`);
     if (record?.itemsStatus === 'error') alerts.push('Required-item list unavailable; check the full guide.');
     if (!alerts.length && !task.items.length) continue;
     const box = document.createElement('div'); box.className = 'trip-warning';
     const title = document.createElement('strong'); title.textContent = quest.name; box.append(title);
     for (const message of alerts) { const p = document.createElement('p'); p.textContent = message; box.append(p); }
+    if (task.shopStop) {
+      const stop = task.shopStop;
+      if (stop) {
+        const place = mapById(stop.mapId)?.name ?? 'the shop';
+        const p = document.createElement('p'); p.textContent = `Next item stop: buy ${stop.count} × ${stop.item} from ${stop.npc} in ${place}.`; box.append(p);
+        const route = document.createElement('button'); route.type = 'button'; route.className = 'button secondary'; route.textContent = `Route to ${place}`;
+        route.addEventListener('click', () => routeToMap(stop.mapId, stop.npc)); box.append(route);
+      }
+    }
     for (const item of task.items) {
       const label = document.createElement('label'); label.className = 'trip-item-check';
       const input = document.createElement('input'); input.type = 'checkbox'; input.checked = (state.questItemsReady[quest.name] ?? []).includes(item.name);
       input.addEventListener('change', () => {
         const ready = new Set(state.questItemsReady[quest.name] ?? []);
         if (input.checked) ready.add(item.name); else ready.delete(item.name);
-        state.questItemsReady[quest.name] = [...ready]; persist(); renderTripPlanner(); renderDashboard();
+        state.questItemsReady[quest.name] = [...ready];
+        const done = new Set(state.questDone[quest.name] ?? []), key = `need:${item.name}`;
+        if (input.checked) done.add(key); else done.delete(key);
+        state.questDone[quest.name] = [...done]; state.allTripCache = null;
+        persist(); applyObjective(); renderTripPlanner(); renderDashboard(); renderLive();
       });
       const text = document.createElement('span'); text.textContent = `Needed: ${item.quantity} × ${item.name} · tick when in your bag`;
       label.append(input, text); box.append(label);
@@ -752,7 +814,10 @@ function markFinished(names) {
   if (!add.length) return;
   state.questsFinished = [...state.questsFinished, ...add].slice(-2000);
   state.activeQuests = state.activeQuests.filter(name => !add.includes(name));
+  state.acceptedQuests = state.acceptedQuests.filter(name => !add.includes(name));
+  state.planQuests = state.planQuests.filter(name => !add.includes(name));
   state.questsAvailable = state.questsAvailable.filter(name => !add.includes(name));
+  if (add.includes(state.hud?.turnIn?.quest)) state.hud.turnIn = null;
   persist(); renderQuestRecs(); renderQuestGuide();
 }
 function renderQuestRecs() {
@@ -812,10 +877,12 @@ function applyQuestWindow(tab, text, { auto = false } = {}) {
     const doing = questsForGameNames(state.quests, seen, { tab: 'available', finished: state.questsFinished }).filter(name => !state.questsFinished.includes(name));
     const added = doing.filter(name => !state.activeQuests.includes(name));
     for (const name of added) { if (state.activeQuests.length < 25) { state.activeQuests.push(name); ensureQuestDetails(name); } }
+    const newlyAccepted = doing.filter(name => !state.acceptedQuests.includes(name));
+    state.acceptedQuests = [...new Set([...state.acceptedQuests, ...doing])].slice(0, 500);
     // Accepted, so no longer waiting to be started: the plan skips talking to the giver.
     const wasOffered = state.questsAvailable.filter(name => doing.includes(name));
     if (wasOffered.length) state.questsAvailable = state.questsAvailable.filter(name => !doing.includes(name));
-    if (added.length || wasOffered.length) { state.allTripCache = null; persist(); applyObjective(); renderLive(); }
+    if (added.length || wasOffered.length || newlyAccepted.length) { state.allTripCache = null; persist(); applyObjective(); renderLive(); }
     if (auto && !added.length) return seen.length;
     out.innerHTML = !doing.length ? '<p class="fine">No quest names found. Open the quest window (Q) on the <b>In Progress</b> tab with the towns expanded, then try again.</p>'
       : `<p class="fine">${auto ? 'Read from your quest window' : 'Read from your In Progress tab'}: ${doing.map(esc).join(', ')}.${added.length ? ` Added ${added.length} to your quests; Do all quests together now includes them.` : ' All already on your list.'}</p>`;
@@ -830,7 +897,7 @@ function applyQuestWindow(tab, text, { auto = false } = {}) {
     state.questsAvailable = [...new Set([...state.questsAvailable, ...offered])];
     // On the Available tab means not accepted yet (Quest Helper lines aside): the plan starts it with the giver.
     const notYet = found.filter(name => state.activeQuests.includes(name) && !inProgress.has(name));
-    if (notYet.length) { state.activeQuests = state.activeQuests.filter(name => !notYet.includes(name)); state.questsAvailable = [...new Set([...state.questsAvailable, ...notYet])]; }
+    if (notYet.length) { state.activeQuests = state.activeQuests.filter(name => !notYet.includes(name)); state.acceptedQuests = state.acceptedQuests.filter(name => !notYet.includes(name)); state.questsAvailable = [...new Set([...state.questsAvailable, ...notYet])]; }
     if (added.length || notYet.length) { state.allTripCache = null; applyObjective(); renderLive(); }
     persist(); renderQuestRecs();
     if (auto && !added.length) return seen.length;
@@ -846,12 +913,7 @@ function applyQuestWindow(tab, text, { auto = false } = {}) {
       : `<p class="fine">${auto ? 'Read from your quest window' : 'Read from your Available tab'}. Press <b>Start</b> and Live GPS takes you to the quest giver, then through the quest.</p><ul class="qr-list">${rows.map(startRow).join('')}</ul><p class="fine">Expand another town or scroll the list and read again to add more.</p>`;
     return seen.length;
   }
-  if (auto) {
-    if (!fresh.length) return seen.length;
-    markFinished(fresh);
-    out.innerHTML = `<p class="fine">Marked finished from your quest window: ${fresh.map(esc).join(', ')}. (Undo any under Finished quests.)</p>`;
-    return seen.length;
-  }
+  if (auto && !fresh.length) return seen.length;
   out.innerHTML = !found.length ? '<p class="fine">No quest names found. Open the quest window (Q) on the <b>Completed</b> tab so the names are visible, then try again.</p>'
     : !fresh.length ? `<p class="fine">Found ${found.length} quest${found.length === 1 ? '' : 's'}, all already marked finished. Scroll the list and read again.</p>`
     : `<p class="fine">Found these on screen. Untick any that are wrong:</p><ul class="qr-found">${fresh.map(name => `<li><label><input type="checkbox" value="${esc(name)}" checked> ${esc(name)}</label></li>`).join('')}</ul><button type="button" class="button" data-qr-add>Mark ${fresh.length} finished</button>`;
@@ -918,7 +980,7 @@ function renderDashboard() {
 }
 
 $('#profile-level').addEventListener('change', () => { state.level = Math.max(1, Math.min(200, Number.parseInt($('#profile-level').value, 10) || 1)); state.guideBandMin = null; persist(); renderDashboard(); renderPartyPlan(); renderRoute(); renderTripPlanner(); renderGuide(); renderJourney(); });
-$('#profile-job').addEventListener('change', () => { state.job = $('#profile-job').value; persist(); renderDashboard(); renderTripPlanner(); });
+$('#profile-job').addEventListener('change', () => { state.job = $('#profile-job').value; state.allTripCache = null; persist(); applyObjective(); renderDashboard(); renderTripPlanner(); renderLive(); });
 $('#focus-mode').addEventListener('change', () => { state.focus = $('#focus-mode').value; persist(); renderDashboard(); });
 
 function renderGoals() {
@@ -2757,7 +2819,7 @@ $('#plan-search').addEventListener('input', async () => {
 });
 document.addEventListener('click', event => {
   const add = event.target.closest('[data-plan-add]');
-  if (add) { if (!state.planQuests.includes(add.dataset.planAdd)) state.planQuests.push(add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); applyObjective(); renderLive(); return; }
+  if (add) { if (!state.planQuests.includes(add.dataset.planAdd)) state.planQuests.push(add.dataset.planAdd); state.questsFinished = state.questsFinished.filter(name => name !== add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); renderQuestRecs(); applyObjective(); renderLive(); return; }
   const remove = event.target.closest('[data-plan-remove]');
   if (remove) { state.planQuests = state.planQuests.filter(name => name !== remove.dataset.planRemove); state.allTripCache = null; persist(); renderPlanList(); applyObjective(); renderLive(); return; }
   if (event.target.closest('[data-reveal-plan]')) { event.preventDefault(); reveal('#questplan-title'); $('#plan-search').focus(); }
@@ -2767,19 +2829,49 @@ renderPlanList();
 // ---------- Ticked by hand: every tick, any quest, with untick ----------
 function renderTicks() {
   const box = $('#tick-list'); if (!box) return;
-  const stepName = (quest, n) => (state.questDetails?.[quest]?.steps ?? []).find?.(s => s.number === n)?.title;
-  const rows = Object.entries(state.questDone ?? {}).flatMap(([quest, list]) => (list ?? []).map(entry => ({ quest, entry })))
-    .filter(({ quest, entry }) => quest && (typeof entry === 'number' || (typeof entry === 'string' && entry.startsWith('need:'))))
-    .map(({ quest, entry }) => `<li><label><input type="checkbox" checked data-untick-quest="${esc(quest)}" data-untick-entry="${esc(String(entry))}"> ${esc(typeof entry === 'number' ? `Step ${entry}${stepName(quest, entry) ? `: ${stepName(quest, entry)}` : ''}` : entry.slice(5))} <small>${esc(quest)}</small></label></li>`);
-  const trips = state.tripTicks.map((t, i) => `<li><label><input type="checkbox" checked data-trip-untick="${i}"> ${esc({ start: 'Started', craft: 'Crafted at', handin: 'Handed in' }[t.type] ?? 'Done')} ${esc(t.type === 'craft' ? t.map : t.quests.join(', '))}</label></li>`);
-  box.innerHTML = rows.length || trips.length ? `<ul class="need-list tick-list">${[...trips, ...rows].join('')}</ul>` : '<p class="fine">Nothing ticked by hand.</p>';
+  const opened = new Set([...box.querySelectorAll('details[open][data-tick-group]')].map(node => node.dataset.tickGroup));
+  const groups = new Map();
+  const groupFor = name => { if (!groups.has(name)) groups.set(name, []); return groups.get(name); };
+  const questNames = new Set([...Object.keys(state.questDone ?? {}), ...Object.keys(state.questItemsReady ?? {})]);
+  for (const quest of questNames) {
+    if (!quest) continue;
+    const entries = [...new Set([...(state.questDone?.[quest] ?? []), ...(state.questItemsReady?.[quest] ?? []).map(name => `need:${name}`)])];
+    const detail = state.questDetails?.[quest];
+    const knownSteps = buildSteps(questByName(quest), detail?.steps ?? []);
+    const byNumber = new Map(knownSteps.map((step, index) => [step.number, { step, index }]));
+    const combined = new Map();
+    for (const entry of entries ?? []) {
+      if (typeof entry !== 'number' && !(typeof entry === 'string' && entry.startsWith('need:'))) continue;
+      const need = typeof entry === 'string' ? entry.slice(5) : null;
+      const found = need ? knownSteps.findIndex(step => normalize(step.item || step.monster || '') === normalize(need) || stepCoversNeed(step, { name: need })) : -1;
+      const match = need ? (found >= 0 ? { step: knownSteps[found], index: found } : null) : byNumber.get(entry);
+      const key = match ? `step:${match.step.number}` : `extra:${String(entry)}`;
+      if (!combined.has(key)) combined.set(key, { order: match?.index ?? 10000, title: match?.step.title ?? (need || `Step ${entry}`), entries: [], item: match?.step.item ?? (need && (state.questItemsReady?.[quest] ?? []).some(name => normalize(name) === normalize(need)) ? need : null) });
+      combined.get(key).entries.push(entry);
+    }
+    for (const row of combined.values()) groupFor(quest).push(row);
+  }
+  for (const [index, tick] of state.tripTicks.entries()) {
+    const names = tick.quests?.length ? tick.quests : ['Other trip actions'];
+    const title = `${{ start: 'Started', craft: 'Crafted at', handin: 'Handed in' }[tick.type] ?? 'Done'} ${tick.type === 'craft' ? tick.map : names.join(', ')}`;
+    for (const quest of names) groupFor(quest).push({ order: tick.type === 'start' ? -1 : 20000 + index, title, tripIndex: index });
+  }
+  if (!groups.size) { box.innerHTML = '<p class="fine">Nothing ticked by hand.</p>'; return; }
+  box.innerHTML = [...groups.entries()].map(([quest, rows]) => {
+    rows.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+    const items = rows.map(row => `<li><label><input type="checkbox" checked ${row.tripIndex !== undefined ? `data-trip-untick="${row.tripIndex}"` : `data-untick-quest="${esc(quest)}" data-untick-entries="${esc(JSON.stringify(row.entries))}" data-untick-item="${esc(row.item ?? '')}"`}> <span>${esc(row.title)}</span></label></li>`).join('');
+    return `<details class="tick-group" data-tick-group="${esc(quest)}"${opened.has(quest) ? ' open' : ''}><summary><span>${esc(quest)}</span><small>${rows.length} tick${rows.length === 1 ? '' : 's'}</small></summary><ol class="tick-steps">${items}</ol></details>`;
+  }).join('');
 }
 document.addEventListener('click', event => {
   const box = event.target.closest('[data-untick-quest]');
   if (box) {
-    const quest = box.dataset.untickQuest, raw = box.dataset.untickEntry, entry = /^\d+$/.test(raw) ? Number(raw) : raw;
-    state.questDone[quest] = (state.questDone[quest] ?? []).filter(x => x !== entry);
+    const quest = box.dataset.untickQuest;
+    const entries = new Set(JSON.parse(box.dataset.untickEntries ?? '[]'));
+    state.questDone[quest] = (state.questDone[quest] ?? []).filter(x => !entries.has(x));
     if (!state.questDone[quest].length) delete state.questDone[quest];
+    const item = box.dataset.untickItem || [...entries].find(x => typeof x === 'string' && x.startsWith('need:'))?.slice(5);
+    if (item) state.questItemsReady[quest] = (state.questItemsReady[quest] ?? []).filter(name => normalize(name) !== normalize(item));
     state.allTripCache = null; state.tripCache = null; persist(); applyObjective(); renderLive(); renderTicks(); return;
   }
   if (event.target.closest('[data-undo-last]') && state.lastTick) {
@@ -3143,7 +3235,7 @@ async function syncQuestHelper(parsed) {
   // Every tracked quest on screen; lines that match no quest and have no counts are OCR noise.
   // A wrapped line read as its own heading goes back into the quest above it (hud.js mergeWrappedLines).
   // Then the needed counts come from the game data (OCR read "0 / 12" as "0 / 712"); only "have" is read.
-  const needsOf = name => { const q = state.quests.find(x => x.name === name); return q?.variants?.length ? q.variants.flatMap(v => v.needs) : q?.needs ?? []; };
+  const needsOf = name => { const q = questByName(name); return q?.variants?.length ? q.variants.flatMap(v => v.needs) : q?.needs ?? []; };
   const quests = fixCounts(mergeWrappedLines((parsed.quests ?? [parsed]).map(q => ({ ...q, name: resolve(q.title, q.truncated) })), needsOf), needsOf).filter(q => q.name || q.progress.length);
   // An unreadable or briefly hidden Quest Helper must not wipe the list on the Quests page: keep the
   // last quests seen for two minutes.
@@ -3151,65 +3243,32 @@ async function syncQuestHelper(parsed) {
   if (quests.some(q => q.name)) state.hud.questsAt = Date.now();
   resolveWeekly(quests);
   // Complete only when every need the game lists was read (a wrapped line can hide an unfinished one).
-  for (const q of quests) if (q.name) q.complete = helperComplete(q, state.quests.find(x => x.name === q.name)?.needs?.length || null);
+  for (const q of quests) if (q.name) q.complete = helperComplete(q, questByName(q.name)?.needs?.length || null);
   state.hud.quests = quests;
   state.hud.quest = quests[0] ?? null;
-  // A quest seen ready to hand in that is gone on two reads in a row (others still shown) was turned in.
   const shown = new Set(quests.map(q => q.name).filter(Boolean));
-  state.hud.readyQuests ??= {};
-  for (const [name, misses] of Object.entries(state.hud.readyQuests)) {
-    if (shown.has(name)) { state.hud.readyQuests[name] = 0; continue; }
-    if (quests.length && misses + 1 >= 2) { delete state.hud.readyQuests[name]; markFinished(name); } else state.hud.readyQuests[name] = misses + 1;
-  }
   // The quest you were sent to start now shows in the Quest Helper: it was accepted, so guide it.
   if (state.startingQuest && shown.has(state.startingQuest)) {
     const started = state.startingQuest; state.startingQuest = null;
     sayPart('quests', `${started} started. Taking you to the next step.`);
-    setGuide(started);
+    setGuide(started, { all: state.tripAll });
   }
   for (const q of quests.filter(q => q.name)) {
-    if (!state.activeQuests.includes(q.name) && state.activeQuests.length < 25) { state.activeQuests.push(q.name); ensureQuestDetails(q.name); }
-    const details = state.questDetails[q.name];
-    const done = new Set(state.questDone[q.name] ?? []), ready = new Set(state.questItemsReady[q.name] ?? []);
-    // Singular/plural-insensitive: "Green Mushroom Caps" in a step matches "Green Mushroom Cap" on screen.
-    const stem = text => normalize(text).split(' ').map(word => word.replace(/(es|s)$/, '')).join(' ');
-    // A count only counts as done when two readings in a row say so, and it is believable (a
-    // misread "0 / 15" as "15 / 15", or "150 / 15", must not tick a step).
-    state.hud.doneSeen ??= {};
-    const confirmed = q.progress.filter(p => {
-      const key = `${q.name}|${normalize(p.name)}`, believable = believableDone(p);
-      state.hud.doneSeen[key] = believable ? (state.hud.doneSeen[key] ?? 0) + 1 : 0;
-      return state.hud.doneSeen[key] >= 2;
-    });
-    const words = text => ` ${stem(text)} `;
-    for (const line of confirmed) {
-      const key = stem(line.name);
-      if (key.length < 4) continue;
-      for (const step of details?.steps ?? []) if ([step.monster, step.title, step.notes].some(text => text && words(text).includes(` ${key} `))) done.add(step.number);
-      for (const item of details?.items ?? []) if (stem(item.name) === key) ready.add(item.name);
+    if (!state.questsFinished.includes(q.name)) {
+      if (!state.activeQuests.includes(q.name) && state.activeQuests.length < 25) { state.activeQuests.push(q.name); ensureQuestDetails(q.name); }
+      if (!state.acceptedQuests.includes(q.name)) state.acceptedQuests.push(q.name);
     }
-    // Every count done (and confirmed): all hunting/collecting steps are done too (only handing it in is left).
-    q.confirmedComplete = q.complete && q.progress.length > 0 && confirmed.length === q.progress.length;
-    if (q.confirmedComplete) for (const step of details?.steps ?? []) if (step.monster || /collect|hunt|defeat|gather|bring|obtain|get /i.test(step.title)) done.add(step.number);
-    state.questDone[q.name] = [...done]; state.questItemsReady[q.name] = [...ready];
+    // OCR counts are hints only. Never convert them into checked steps or collected items.
+    q.confirmedComplete = q.complete && q.progress.length > 0;
   }
-  for (const q of quests) if (q.confirmedComplete && q.name) state.hud.readyQuests[q.name] ??= 0;
   persist(); renderQuestGuide(); renderTripPlanner(); renderDashboard();
-  const ready = quests.find(q => q.confirmedComplete && q.name);
+  const ready = quests.find(q => q.confirmedComplete && q.name && questInProgress(q.name));
   state.hud.turnIn = null;
   if (ready) {
     const quest = state.quests.find(q => q.name === ready.name), npcName = quest?.turnIn || quest?.giver;
     const npc = npcName && state.data.targets.find(target => target.kind === 'npc' && normalize(target.name) === normalize(npcName));
     state.hud.turnIn = { quest: ready.name, npc: npcName || null, mapId: npc?.locations[0]?.mapId ?? null };
     if (state.voice && state.hud.spokenTurnIn !== ready.name && state.guide.quest !== ready.name) { state.hud.spokenTurnIn = ready.name; sayPart('quests', `${ready.name} is ready to turn in${npcName ? ` to ${npcName}` : ''}.`); }
-  }
-  // Guided quest no longer on screen after its hand-in stage: it was turned in.
-  if (state.guide.quest && !quests.some(q => q.name === state.guide.quest) && state.guide.stage === 'turn-in') {
-    const finished = state.guide.quest;
-    markFinished(finished);
-    // Done: stop guiding. The next quest is only guided when you pick it.
-    sayPart('quests', `${finished} done.`);
-    setGuide(null);
   }
   applyObjective();
   renderQuestHelper(); renderLive();
@@ -3229,23 +3288,26 @@ function currentObjective() {
   const quest = state.guide.quest;
   if (!quest) return null;
   const helperQuest = (state.hud.quests ?? []).find(q => q.name === quest) ?? null;
-  const catalogQuest = state.quests.find(q => q.name === quest) ?? null;
-  const objective = questObjective(travel(), { quest, helperQuest, catalogQuest, itemSources: planSources(), crafting: state.crafting, shops: myShops(), currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
+  const catalog = questByName(quest);
+  const catalogQuest = catalog ? { ...catalog, needs: completeQuestNeeds(catalog, state.questDetails[quest]?.items) } : null;
+  const countsOnly = helperQuest ? { ...helperQuest, complete: false, progress: helperQuest.progress.map(line => ({ ...line, done: false })) } : null;
+  const objective = questObjective(travel(), { quest, helperQuest: countsOnly, catalogQuest, itemSources: planSources(), crafting: state.crafting, shops: myShops(), currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
   if (objective.stage === 'hunt') loadItemSources(objective.goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
   return objective;
 }
 
 // ---------- Quest steps on the Live card ----------
 // The guided quest's steps (wiki list, else built from the game data) and which one is next. The
-// GPS always heads for the next step; ticking a step (or Quest Helper counts) moves it on.
+// GPS always heads for the next step; only the player's ticks move it on.
 function guideSteps() {
   const name = state.guide.quest;
   if (!name) return null;
   ensureQuestDetails(name);
-  const quest = state.quests.find(q => q.name === name) ?? null;
+  const catalog = questByName(name);
+  const quest = catalog ? { ...catalog, needs: completeQuestNeeds(catalog, state.questDetails[name]?.items) } : null;
   const steps = buildSteps(quest, state.questDetails[name]?.steps ?? []);
-  const accepted = state.activeQuests.includes(name) || (state.hud.quests ?? []).some(q => q.name === name);
-  const { step, done } = currentStep(steps, state.questDone[name] ?? [], { accepted, giver: quest?.giver });
+  const accepted = state.acceptedQuests.includes(name) || (state.hud.quests ?? []).some(q => q.name === name);
+  const { step, done } = currentStep(steps, state.questDone[name] ?? [], { accepted, giver: quest?.giver, completedNeeds: completedNeedsFor(name) });
   return { name, quest, steps, step, done };
 }
 // Where a step happens: its NPC, the best map for its monster, its named map, or (collecting an
@@ -3288,8 +3350,8 @@ function huntOptions(g) {
     // 3 Jr. Neckis pass for 20 kills).
     const gameCount = g.quest?.needs?.find(n => normalize(n.name) === normalize(name))?.count;
     const need = step.count ?? gameCount ?? seen?.need ?? 1;
-    // Done when the Quest Helper says so ("16 / 10 Jr. Necki Skin"), so it leaves the trip.
-    return { name, have: seen?.have ?? 0, need, done: Boolean(seen && believableDone({ ...seen, need, done: (seen.have ?? 0) >= need })) };
+    // Keep the OCR count informational; only the player's tick removes a goal.
+    return { name, have: 0, need, done: false };
   });
   // Wiki steps name the monster but not always the item: add the quest's game-data list, minus
   // anything already listed or whose step is ticked.
@@ -3299,7 +3361,7 @@ function huntOptions(g) {
     if (progress.some(p => normalize(p.name).replace(/s$/, '') === key) || doneTitles.some(title => title.includes(key))) continue;
     const seen = matchCount(helper?.progress, need.name);
     const count = need.count ?? seen?.need;
-    progress.push({ name: need.name, have: seen?.have ?? 0, need: count, done: Boolean(seen && believableDone({ ...seen, need: count, done: (seen.have ?? 0) >= count })) });
+    progress.push({ name: need.name, have: 0, need: count, done: false });
   }
   if (!progress.length) return null;
   const goals = huntGoals(state.data, progress, planSources(), g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting, myShops());
@@ -3312,17 +3374,17 @@ function huntOptions(g) {
 }
 // "Plan all my quests together": every quest you are doing (guided, in the Quest Helper, or on your
 // list) in one hunting trip, then each hand-in. The guided quest respects its ticked steps; others
-// use the Quest Helper counts when on screen, else what the game data says they need.
-function allQuestsTrip() {
+// show Quest Helper counts when on screen, but only the player's ticks complete needs.
+function allQuestsTrip(onlyQuest = null) {
   // Quests you are doing (guided, in the Quest Helper, on your list), then quests your in-game Available
   // tab offers that you have not started, up to 10 in all.
-  const doing = [...new Set([state.guide.quest, ...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests].filter(Boolean))].filter(q => !state.questsFinished.includes(q));
-  const offered = state.tripAvailable !== false ? state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)) : [];
-  const planned = state.planQuests.filter(q => !doing.includes(q) && !state.questsFinished.includes(q));
+  const doing = [...new Set((onlyQuest ? [onlyQuest] : [state.guide.quest, ...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests]).filter(Boolean))].filter(questInProgress);
+  const offered = !onlyQuest && state.tripAvailable !== false ? state.questsAvailable.filter(q => !doing.includes(q) && questInProgress(q)) : [];
+  const planned = onlyQuest ? [] : state.planQuests.filter(q => !doing.includes(q) && questInProgress(q));
   // Everything that could be planned; the quests you left out (×) are listed but not planned.
   const candidates = [...doing, ...planned, ...offered.filter(q => !planned.includes(q))];
-  const names = candidates.filter(q => !state.planSkip.includes(q)).slice(0, 12);
-  const started = name => (state.hud.quests ?? []).some(q => q.name === name) || state.activeQuests.includes(name);
+  const names = candidates.filter(q => onlyQuest || !state.planSkip.includes(q)).slice(0, 12);
+  const started = name => (state.hud.quests ?? []).some(q => q.name === name) || state.acceptedQuests.includes(name);
   const byName = new Map(), ends = new Map(), endQuests = new Map(), starts = [];
   // An NPC name on several maps (each town's Community Board): the one nearest `near` (the hand-in).
   const npcMapOf = (npc, near = null) => {
@@ -3331,20 +3393,17 @@ function allQuestsTrip() {
     return spots[0]?.mapId ?? null;
   };
   for (const name of names) {
-    const quest = state.quests.find(q => q.name === name);
-    if (!quest || state.questsFinished?.includes?.(name)) continue;
+    const quest = questByName(name);
+    if (!quest || !questInProgress(name)) continue;
+    const needs = completeQuestNeeds(quest, state.questDetails[name]?.items);
     const helper = (state.hud.quests ?? []).find(q => q.name === name);
     let goals;
-    const ticked = new Set((state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))));
-    const isTicked = goal => ticked.has(normalize(goal.name)) || (goal.craft && ticked.has(normalize(goal.craft.item)));
+    const ticked = new Set([...(state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))), ...(state.questItemsReady[name] ?? []).map(normalize)]);
     const notStarted = !started(name);
     if (notStarted && quest.giver) starts.push({ mapId: npcMapOf(quest.giver, npcMapOf(quest.turnIn)), quests: [name], npc: quest.giver });
-    if (name === state.guide.quest && !notStarted) goals = (huntOptions(guideSteps())?.goals ?? []).filter(goal => !isTicked(goal));
-    else {
-      const progress = quest.needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: seen?.have ?? 0, need: n.count ?? seen?.need, done: Boolean(seen && believableDone(seen)) || ticked.has(normalize(n.name)) }; });
-      goals = huntGoals(state.data, progress, planSources(), quest.text, quest.needs.map(n => n.name), state.crafting, myShops());
-      loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
-    }
+    const progress = needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: 0, need: n.count ?? seen?.need, done: ticked.has(normalize(n.name)) }; });
+    goals = huntGoals(state.data, progress, planSources(), quest.text, needs.map(n => n.name), state.crafting, myShops());
+    loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
     for (const goal of goals) {
       const key = normalize(goal.name), seen = byName.get(key);
       // The same need listed twice by one quest (a step and its need list) is one goal; another quest's adds up.
@@ -3353,30 +3412,48 @@ function allQuestsTrip() {
     }
     const npc = quest.turnIn || quest.giver, mapId = npc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(npc))?.locations[0]?.mapId : null;
     // Hand-ins: quests with hunting left, finished ones, talk-and-deliver ones and ones to pick up.
-    if (mapId && !(quest.variants?.length && !quest.week?.by) && (goals.length || helper?.complete || !quest.needs?.length || notStarted)) { ends.set(mapId, [...(ends.get(mapId) ?? []), npc]); endQuests.set(mapId, [...(endQuests.get(mapId) ?? []), name]); }
+    if (mapId && !(quest.variants?.length && !quest.week?.by)) { ends.set(mapId, [...(ends.get(mapId) ?? []), npc]); endQuests.set(mapId, [...(endQuests.get(mapId) ?? []), name]); }
   }
   const goals = [...byName.values()];
-  const key = JSON.stringify([goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], starts.map(st => st.quests[0]), state.current, state.useTaxis, state.useNearestScroll, state.useTownScrolls]);
+  const key = JSON.stringify([onlyQuest, goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], starts.map(st => st.quests[0]), state.current, state.useTaxis, state.useNearestScroll, state.useTownScrolls]);
   if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()].map(mapId => ({ mapId, quests: endQuests.get(mapId) ?? [] })), { via: craftStops(state.data, goals), starts }) };
-  return { goals, ends, quests: names, skipped: candidates.filter(q => state.planSkip.includes(q)), offered: offered.length, waiting: state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)).length, trip: state.allTripCache.trip };
+  return { goals, ends, quests: names, skipped: onlyQuest ? [] : candidates.filter(q => state.planSkip.includes(q)), offered: offered.length, waiting: state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)).length, trip: state.allTripCache.trip };
 }
-// Every hunting and collecting need of every quest in the trip, with Quest Helper counts; tick one
-// off by hand and it drops out of the trip (counts the Quest Helper shows as done are ticked for you).
-function allChecklistHtml(all) {
+let questStepsExpanded = false;
+document.addEventListener('click', event => {
+  const summary = event.target.closest?.('details[data-all-quest-steps] > summary');
+  if (summary) questStepsExpanded = !summary.parentElement.open;
+});
+// Every quest in the plan keeps its own ordered steps, even when an item has no mapped source and
+// therefore cannot appear as a travel stop. Route optimization must not hide quest instructions.
+function allChecklistHtml(all, doneHtml = '') {
   const rows = all.quests.map(name => {
-    const quest = state.quests.find(q => q.name === name); if (!quest?.needs?.length) return '';
+    const quest = questByName(name); if (!quest) return '';
+    const needs = completeQuestNeeds(quest, state.questDetails[name]?.items);
+    const steps = buildSteps({ ...quest, needs }, state.questDetails[name]?.steps ?? []);
     const helper = (state.hud.quests ?? []).find(q => q.name === name);
-    const ticked = new Set((state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))));
-    const items = quest.needs.map(need => {
-      const seen = matchCount(helper?.progress, need.name), auto = Boolean(seen && believableDone(seen)), done = auto || ticked.has(normalize(need.name));
-      const goal = all.goals.find(g => normalize(g.name) === normalize(need.name) || normalize(g.craft?.item ?? '') === normalize(need.name));
+    const ticked = new Set([...(state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))), ...(state.questItemsReady[name] ?? []).map(normalize)]);
+    const accepted = Boolean(helper || state.acceptedQuests.includes(name));
+    const progress = currentStep(steps, state.questDone[name] ?? [], { accepted, giver: quest.giver, completedNeeds: [...ticked] });
+    const items = steps.map((step, index) => {
+      const need = needs.find(candidate => normalize(step.item || step.monster || '') === normalize(candidate.name) || stepCoversNeed(step, candidate));
+      const seen = need ? matchCount(helper?.progress, need.name) : null;
+      const done = progress.done.has(step.number) || Boolean(need && ticked.has(normalize(need.name)));
+      if (done) return '';
+      const goal = need && all.goals.find(g => normalize(g.name) === normalize(need.name) || normalize(g.craft?.item ?? '') === normalize(need.name));
       const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.given ? givenBy(need.name) : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `from ${goal.monsters.slice(0, 2).join(', ')}${goal.guess ? ' (best guess)' : dropsSaid(need.name)}` : '';
-      const count = `${seen?.have ?? 0}/${need.count}`;
-      return `<li class="${done ? 'done' : ''}"><label><input type="checkbox" data-need-tick="${esc(name)}" data-need="${esc(need.name)}"${done ? ' checked' : ''}${auto ? ' disabled title="Done, says your Quest Helper"' : ''}> ${esc(need.name)} <small>${count}${where ? ` · ${esc(where)}` : ''}</small></label></li>`;
+      const count = need ? `${seen?.have ?? 0}/${need.count}` : '';
+      const map = step.npc ? questStepMaps(travel(), step, state.current, 1)[0]?.map : null;
+      const route = map && !done ? ` <button type="button" class="link-button" data-route="${esc(map.id)}" data-route-npc="${esc(step.npc)}">Route to ${esc(step.npc)}</button>` : '';
+      const check = need
+        ? `<input type="checkbox" data-need-tick="${esc(name)}" data-need="${esc(need.name)}"${done ? ' checked' : ''}>`
+        : `<input type="checkbox" data-all-step-tick="${esc(name)}" data-step-number="${step.number}"${done ? ' checked' : ''}>`;
+      return `<li class="${done ? 'done' : ''}"><label>${check} <span>${index + 1}. ${esc(step.title)}${count || where ? ` <small>${esc([count, where].filter(Boolean).join(' · '))}</small>` : ''}</span></label>${route}</li>`;
     }).join('');
-    return `<li><strong>${esc(quest.arc && normalize(quest.arc) !== normalize(name) ? `${quest.arc} · ${name}` : name)}</strong><ul class="need-list">${items}</ul></li>`;
-  }).join('');
-  return rows ? `<details class="all-checklist" open><summary>Checklist (tick what you've done)</summary><ul class="live-steps">${rows}</ul></details>` : '';
+    if (!items && steps.length) return '';
+    return `<li><strong>${esc(quest.arc && normalize(quest.arc) !== normalize(name) ? `${quest.arc} · ${name}` : name)}</strong><ol class="need-list">${items || '<li><small>No structured steps are listed for this quest yet.</small></li>'}</ol></li>`;
+  }).filter(Boolean);
+  return rows.length || doneHtml ? `<details class="all-checklist" data-all-quest-steps${questStepsExpanded ? ' open' : ''}><summary>Quest progress · ${rows.length} quest${rows.length === 1 ? '' : 's'} with steps left</summary>${rows.length ? `<p class="fine"><strong>Still to do</strong></p><ul class="live-steps">${rows.join('')}</ul>` : '<p class="fine">No listed quest steps left.</p>'}${doneHtml}</details>` : '';
 }
 // "Plan all my quests together": one step list for every quest, in the order you go, replacing the
 // guided quest's own steps. Hunt steps show each need with its count; ticking one marks its needs
@@ -3384,10 +3461,11 @@ function allChecklistHtml(all) {
 // step not ticked. What you ticked is listed under Done, to untick.
 function needCount(quest, needName) {
   const helper = (state.hud.quests ?? []).find(q => q.name === quest), seen = matchCount(helper?.progress, needName);
-  const total = state.quests.find(q => q.name === quest)?.needs?.find(n => normalize(n.name) === normalize(needName))?.count;
+  const catalogQuest = questByName(quest);
+  const total = completeQuestNeeds(catalogQuest, state.questDetails[quest]?.items).find(n => normalize(n.name) === normalize(needName))?.count;
   return total ? `${seen?.have ?? 0}/${total}` : '';
 }
-function allStepsHtml(all) {
+function allStepsHtml(all, { single = false } = {}) {
   const trip = all?.trip, npcsAt = mapId => [...new Set(all.ends.get(mapId) ?? [])].join(', ');
   const line = (quest, need, where, done = false) => `<li class="${done ? 'done' : ''}"><label><input type="checkbox" data-need-tick="${esc(quest)}" data-need="${esc(need)}"${done ? ' checked' : ''}> ${esc(need)} <small>${esc(needCount(quest, need))}${where ? ` · ${esc(where)}` : ''}</small></label></li>`;
   const steps = (trip?.order ?? []).map((step, i) => {
@@ -3400,17 +3478,20 @@ function allStepsHtml(all) {
       return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hunt on ${mapName}</strong>${now} <small>(${esc(step.quests.join(', '))})</small><ul class="need-list">${needs.join('')}</ul></li>`;
     }
     if (step.type === 'buy') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Buy at ${mapName}</strong>${now}<ul class="need-list">${(step.quests.length ? step.quests : ['']).map(q => `<li><label><input type="checkbox" data-need-tick="${esc(q)}" data-need="${esc(step.item)}"> ${esc(step.item)} ×${step.count} <small>${esc(needCount(q, step.item))} · from ${esc(step.npc)}${step.price ? `, ${step.price.toLocaleString()} mesos each` : ''}</small></label></li>`).join('')}${!state.citizenship ? (() => { const halls = (state.shops?.[step.item.toLowerCase()] ?? []).filter(x => x.grade); return halls.length ? `<li class="buy-note"><small>Citizen? ${esc(halls.map(x => `${x.npc} (${x.map}) sells it to ${x.town} residents of grade ${x.grade}`).join('; '))}. <a href="#settings" data-reveal-citizen>Set my citizenship</a> and the plan can use the nearer shop.</small></li>` : ''; })() : ''}</ul></li>`;
-    if (step.type === 'start') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Start at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', '))} <small>from ${esc(step.npc ?? 'the quest NPC')} (ticks itself once it is in your Quest Helper)</small></label></li></ul></li>`;
+    if (step.type === 'start') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Start at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', '))} <small>from ${esc(step.npc ?? 'the quest NPC')} (assumed started if listed In Progress)</small></label></li></ul></li>`;
     if (step.type === 'craft') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Craft at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> Made it</label></li></ul></li>`;
     return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hand in at ${mapName}</strong>${now}${step.noRoute ? ' <small>(no walking route there)</small>' : ''}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', ') || 'your quest')} <small>to ${esc(npcsAt(step.mapId) || 'the quest NPC')}</small></label></li></ul></li>`;
   });
   const missing = trip?.missing?.length ? `<p class="fine">No known spot for: ${esc(trip.missing.join(', '))}</p>` : '';
-  // Done: ticked by hand (untick to bring back) and what the Quest Helper shows as complete.
+  // Done contains only the user's own ticks, which can be undone.
   const done = all.quests.flatMap(quest => {
-    const helper = (state.hud.quests ?? []).find(q => q.name === quest);
-    const ticked = (state.questDone[quest] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => x.slice(5));
-    const helperDone = (state.quests.find(q => q.name === quest)?.needs ?? []).filter(n => { const seen = matchCount(helper?.progress, n.name); return seen && believableDone(seen) && !ticked.some(t => normalize(t) === normalize(n.name)); }).map(n => n.name);
-    return [...ticked.map(need => line(quest, need, '', true)), ...helperDone.map(need => `<li class="done"><label><input type="checkbox" checked disabled title="Done, says your Quest Helper"> ${esc(need)} <small>${esc(needCount(quest, need))} · ${esc(quest)}</small></label></li>`)];
+    const ticked = [...new Set([...(state.questDone[quest] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => x.slice(5)), ...(state.questItemsReady[quest] ?? [])])];
+    const catalog = questByName(quest);
+    const needs = completeQuestNeeds(catalog, state.questDetails[quest]?.items);
+    const steps = buildSteps(catalog ? { ...catalog, needs } : null, state.questDetails[quest]?.steps ?? []);
+    const completedSteps = steps.filter(step => state.questDone[quest]?.includes(step.number) && !needs.some(need => ticked.some(t => normalize(t) === normalize(need.name)) && (normalize(step.item || step.monster || '') === normalize(need.name) || stepCoversNeed(step, need))))
+      .map(step => `<li class="done"><label><input type="checkbox" checked data-all-step-tick="${esc(quest)}" data-step-number="${step.number}"> ${esc(step.title)} <small>· ${esc(quest)}</small></label></li>`);
+    return [...ticked.map(need => line(quest, need, '', true)), ...completedSteps];
   });
   // Steps ticked in the plan (started, crafted, handed in), each with an undo for a slip of the mouse.
   const stepText = { start: 'Started', craft: 'Crafted at', handin: 'Handed in' };
@@ -3424,7 +3505,7 @@ function allStepsHtml(all) {
     ${all.skipped?.length ? `<details class="plan-out"><summary>Left out (${all.skipped.length})</summary>${all.skipped.map(name => `<span class="plan-chip off">${esc(label(name))}<button type="button" class="link-button" data-plan-unskip="${esc(name)}" title="Plan it again" aria-label="Plan ${esc(name)} again">↺</button></span>`).join('')}</details>` : ''}</div>`;
   const last = state.lastTick && Date.now() - state.lastTick.at < 120_000 ? state.lastTick : null;
   const undoLast = last ? `<p class="fine tick-undo">Ticked <b>${esc(last.trip ? `${{ start: 'started', craft: 'crafted', handin: 'handed in' }[last.trip.type] ?? 'step'}: ${last.trip.quests.join(', ')}` : last.key.slice(5))}</b> · <button type="button" class="link-button" data-undo-last>Undo</button></p>` : '';
-  return `<div class="all-checklist">${setup}${chips}${unknownHtml(all.quests)}${undoLast}<ul class="live-steps all-steps">${steps.join('')}</ul>${head}${missing}${doneHtml}</div>`;
+  return `<div class="all-checklist">${single ? '' : setup + chips}${unknownHtml(all.quests)}${allChecklistHtml(all, doneHtml)}${undoLast}<ul class="live-steps all-steps">${steps.join('')}</ul>${head}${missing}</div>`;
 }
 function allTripHtml(all) {
   const trip = all?.trip;
@@ -3490,7 +3571,8 @@ function releaseGuide() {
   state.guide = { quest: null, stage: null, spoken: null }; state.startingQuest = null; saveLive();
 }
 
-function setGuide(quest) {
+function setGuide(quest, { all = false } = {}) {
+  state.tripAll = all && Boolean(quest);
   state.guide = { quest, stage: null, spoken: null }; saveLive();
   if (quest) { state.goalNpc = null; state.startingQuest = null; saveLive(); }
   applyObjective(); renderQuestHelper(); renderLive();
@@ -3500,11 +3582,33 @@ function setGuide(quest) {
 // then the hand-in NPC. Spoken once per stage change.
 function applyObjective() {
   const g = guideSteps();
+  // A named quest uses the same complete need/shop/hand-in plan as the combined guide,
+  // but scoped to this quest. Wiki step lists can omit required items such as Luke's Salad.
+  if (g && !state.tripAll) {
+    const single = allQuestsTrip(g.name), first = single.trip?.order[0];
+    if (first) {
+      const npc = first.type === 'buy' || first.type === 'start' ? first.npc : first.type === 'handin' ? single.ends.get(first.mapId)?.[0] : null;
+      state.guide.stage = first.type;
+      if (first.mapId !== state.destination || (npc ?? null) !== (state.goalNpc ?? null)) {
+        state.destination = first.mapId; state.targetId = null; state.goalNpc = npc ?? null;
+        destinationSelect.value = first.mapId; saveLive(); persist(); renderRoute(); renderTargets();
+      }
+      const key = `${g.name}|${first.type}|${first.mapId}|${first.item ?? ''}`;
+      if (state.voice && state.guide.spoken !== key) {
+        state.guide.spoken = key;
+        const place = mapById(first.mapId)?.name ?? 'the next stop';
+        sayPart('quests', first.type === 'buy' ? `For ${g.name}, buy ${first.item} from ${npc} in ${place}.`
+          : first.type === 'hunt' ? `For ${g.name}, head to ${place} to hunt for ${first.goals.join(' and ')}.`
+            : first.type === 'handin' ? `For ${g.name}, head to ${place} and talk to ${npc ?? 'the quest NPC'}.`
+              : `For ${g.name}, head to ${place} for the next step.`);
+      }
+      return;
+    }
+  }
   if (g?.steps.length) {
     if (!g.step) {
-      // Every step ticked: the quest is done.
-      const finished = g.name; sayPart('quests', `${finished} complete.`);
-      markFinished(finished); setGuide(null); return;
+      // Keep the quest visible until the player explicitly confirms its hand-in.
+      state.guide.stage = 'ready'; return;
     }
     // A new step forgets the hunting map picked for the last one (its monsters may be done); the
     // map you pick for this step is kept until the step is done.
@@ -3541,9 +3645,9 @@ function applyObjective() {
 function objectiveHtml() {
   const objective = currentObjective();
   if (!objective) {
-    const offer = (state.hud.quests ?? []).filter(q => q.name).slice(0, 3);
+    const offer = [...new Set([...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests, ...state.planQuests].filter(name => name && questInProgress(name)))];
     const any = offer.length || state.activeQuests.length || state.questsAvailable.length || state.planQuests.length;
-    return `<div class="objective offer">${offer.length ? `Guide a quest: ${offer.map(q => `<button type="button" class="link-button" data-guide="${esc(q.name)}">${esc(q.name)}</button>`).join(' · ')} · ` : ''}<button type="button" class="button secondary" data-all-together>Do all quests together</button>${any ? '' : ' <small>(add your quests to the Quest Helper in game first)</small>'}</div>`;
+    return `<div class="objective offer">${offer.length ? `Guide a quest: ${offer.map(name => `<button type="button" class="link-button" data-guide="${esc(name)}">${esc(name)}</button>`).join(' · ')} · ` : ''}<button type="button" class="button secondary" data-all-together>Do all quests together</button>${any ? '' : ' <small>(add your quests to the Quest Helper in game first)</small>'}</div>`;
   }
   // A quest in a line shows as the game names it: "Winston's Fossil Dig-up · Searching for Fossils".
   const arc = state.quests.find(q => q.name === objective.quest)?.arc, title = arc && normalize(arc) !== normalize(objective.quest) ? `${esc(arc)} <small>· ${esc(objective.quest)}</small>` : esc(objective.quest);
@@ -3552,7 +3656,11 @@ function objectiveHtml() {
   if (state.tripAll && g) {
     const all = allQuestsTrip();
     const together = `<div class="objective-head"><span class="objective-tag">Quests</span> ${all.quests.map(esc).join(' · ')} <button type="button" class="link-button" data-guide="">stop guiding</button></div>`;
-    return `<div class="objective">${together}${allStepsHtml(all)}${huntOptionsHtml(huntOptions(g))}</div>`;
+    return `<div class="objective">${together}${allStepsHtml(all)}</div>`;
+  }
+  if (g) {
+    const single = allQuestsTrip(g.name);
+    if (single.trip?.order.length) return `<div class="objective">${head}<p class="fine">Guiding this quest only. Tick each need when it is complete; the GPS will move to the next stop.</p>${allStepsHtml(single, { single: true })}</div>`;
   }
   if (g?.steps.length) {
     const counts = objective.stage === 'hunt' && !objective.countsUnknown && (g.step?.monster || g.step?.item) ? `<ul class="objective-goals">${[...objective.done, ...objective.goals].map(goal => `<li class="${goal.done ? 'done' : ''}"><span>${esc(goal.name)}</span><span class="objective-count">${goal.have} / ${goal.need}</span><span class="objective-bar"><span style="width:${Math.min(100, Math.round(goal.have / goal.need * 100))}%"></span></span></li>`).join('')}</ul>` : '';
@@ -3575,10 +3683,10 @@ function objectiveHtml() {
 
 function renderQuestHelper() {
   const panel = $('#quest-helper'); if (!panel) return;
-  const quests = state.hud.quests ?? (state.hud.quest ? [state.hud.quest] : []);
+  const quests = (state.hud.quests ?? (state.hud.quest ? [state.hud.quest] : [])).filter(q => !q.name || questInProgress(q.name));
   if (!quests.length) {
     // Not on screen right now: still list the quests you are doing so Guide me is always here.
-    const known = state.activeQuests.filter(name => !state.questsFinished.includes(name));
+    const known = state.activeQuests.filter(questInProgress);
     panel.innerHTML = `<p class="fine">${state.live ? 'Quest Helper not in view right now. Open it in game to read live counts.' : 'Start Live GPS with Quest Helper sync on to read live counts.'}</p>`
       + (known.length ? `<p class="fine"><strong>Your quests</strong> (last seen in your Quest Helper):</p>${known.map(name => `<div class="qh-quest${state.guide.quest === name ? ' guiding' : ''}"><div class="qh-title">${esc(name)}</div><button type="button" class="button ${state.guide.quest === name ? 'light' : 'secondary'}" data-guide="${state.guide.quest === name ? '' : esc(name)}">${state.guide.quest === name ? 'Stop guiding' : 'Guide me'}</button></div>`).join('')}` : '');
     return;
@@ -3588,7 +3696,7 @@ function renderQuestHelper() {
     return `<div class="qh-quest${guiding ? ' guiding' : ''}"><div class="qh-title">${esc(q.name ?? q.title)}${q.name ? '' : ' <span class="pill">not matched to the wiki catalog</span>'}${q.complete ? ' <span class="pill">ready to hand in</span>' : ''}</div>
       <ul class="qh-progress">${q.progress.map(p => `<li class="${p.done ? 'done' : ''}">${p.done ? '✓' : '○'} ${p.have} / ${p.need} ${esc(p.name)}</li>`).join('')}</ul>
       ${q.name ? `<button type="button" class="button ${guiding ? 'light' : 'secondary'}" data-guide="${guiding ? '' : esc(q.name)}">${guiding ? 'Stop guiding' : 'Guide me'}</button>` : ''}</div>`;
-  }).join('') + '<p class="fine"><strong>Guide me</strong> routes you to the best map for what is left, tells you to hunt there with live counts, then sends you to hand the quest in once every count is done.</p>';
+  }).join('') + '<p class="fine"><strong>Guide me</strong> shows live counts, but only your ticks move the route forward or finish a quest.</p>';
 }
 
 document.addEventListener('click', event => {
@@ -3738,7 +3846,7 @@ function loadDrops(names) {
 }
 
 function arrivalModel() {
-  const questTasks = state.activeQuests.length ? pendingQuestTasks(state.data, state.activeQuests, state.quests, state.questDetails, state.questDone, state.current) : [];
+  const questTasks = state.activeQuests.length ? pendingQuestTasks(state.data, state.activeQuests, state.quests, state.questDetails, state.questDone, state.current, state.questItemsReady, state.acceptedQuests) : [];
   const details = arrivalDetails(state.data, state.current, { playerLevel: state.level, position: livePosition(), sessions: state.sessions, quests: state.quests, questTasks });
   if (details) loadDrops(details.mobs.slice(0, 5).map(mob => mob.name));
   if (state.questCatalogStatus === 'idle') loadQuestCatalog();
@@ -3800,8 +3908,14 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
   const untick = event.target.closest('[data-trip-untick]');
   if (untick) {
     const tick = state.tripTicks[Number(untick.dataset.tripUntick)]; if (!tick) return;
-    if (tick.type === 'start') state.activeQuests = state.activeQuests.filter(q => !(tick.added ?? []).includes(q));
-    else if (tick.type === 'handin') { state.questsFinished = state.questsFinished.filter(q => !(tick.added ?? []).includes(q)); for (const q of tick.wasActive ?? []) if (!state.activeQuests.includes(q)) state.activeQuests.push(q); }
+    if (tick.type === 'start') { state.activeQuests = state.activeQuests.filter(q => !(tick.added ?? []).includes(q)); state.acceptedQuests = state.acceptedQuests.filter(q => !(tick.accepted ?? []).includes(q)); }
+    else if (tick.type === 'handin') {
+      state.questsFinished = state.questsFinished.filter(q => !(tick.added ?? []).includes(q));
+      for (const q of tick.wasActive ?? []) if (!state.activeQuests.includes(q)) state.activeQuests.push(q);
+      for (const q of tick.wasAccepted ?? []) if (!state.acceptedQuests.includes(q)) state.acceptedQuests.push(q);
+      for (const q of tick.wasPlanned ?? []) if (!state.planQuests.includes(q)) state.planQuests.push(q);
+      for (const q of tick.wasAvailable ?? []) if (!state.questsAvailable.includes(q)) state.questsAvailable.push(q);
+    }
     else for (const [quest, key] of tick.needs ?? []) state.questDone[quest] = (state.questDone[quest] ?? []).filter(x => x !== key);
     state.tripTicks = state.tripTicks.filter(t => t !== tick);
     if (state.lastTick?.trip === tick) state.lastTick = null;
@@ -3809,12 +3923,21 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
   }
   const tripStep = event.target.closest('[data-trip-step]');
   if (tripStep) {
-    const all = allQuestsTrip(), step = all.trip?.order[Number(tripStep.dataset.tripStep)];
+    questStepsExpanded = false;
+    const all = state.tripAll ? allQuestsTrip() : allQuestsTrip(state.guide.quest), step = all.trip?.order[Number(tripStep.dataset.tripStep)];
     if (!step) return;
     // Every step ticked here is remembered (newest first) so it can be undone from the Done list.
     const tick = { type: step.type, quests: [...step.quests], map: mapById(step.mapId)?.name ?? '', at: Date.now() };
-    if (step.type === 'start') { tick.added = step.quests.filter(q => !state.activeQuests.includes(q)); for (const q of tick.added) state.activeQuests.push(q); }
-    else if (step.type === 'handin') { tick.wasActive = step.quests.filter(q => state.activeQuests.includes(q)); tick.added = step.quests.filter(q => !state.questsFinished.includes(q)); markFinished(step.quests); if (step.quests.includes(state.guide.quest)) setGuide(all.quests.find(q => !step.quests.includes(q) && !state.questsFinished.includes(q)) ?? null); }
+    if (step.type === 'start') { tick.added = step.quests.filter(q => !state.activeQuests.includes(q)); tick.accepted = step.quests.filter(q => !state.acceptedQuests.includes(q)); for (const q of tick.added) state.activeQuests.push(q); state.acceptedQuests.push(...tick.accepted); }
+    else if (step.type === 'handin') {
+      tick.wasActive = step.quests.filter(q => state.activeQuests.includes(q));
+      tick.wasAccepted = step.quests.filter(q => state.acceptedQuests.includes(q));
+      tick.wasPlanned = step.quests.filter(q => state.planQuests.includes(q));
+      tick.wasAvailable = step.quests.filter(q => state.questsAvailable.includes(q));
+      tick.added = step.quests.filter(q => !state.questsFinished.includes(q));
+      markFinished(step.quests);
+      if (step.quests.includes(state.guide.quest)) setGuide(state.tripAll ? all.quests.find(q => !step.quests.includes(q) && !state.questsFinished.includes(q)) ?? null : null, { all: state.tripAll });
+    }
     else {
       // A craft step: everything made there is done.
       tick.needs = [];
@@ -3831,8 +3954,8 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
   // "Do all quests together": plan every quest at once, guiding the first one as the anchor.
   if (event.target.closest('[data-all-together]')) {
     state.tripAll = true; state.allTripCache = null; saveLive();
-    const first = [...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests, ...state.planQuests, ...(state.tripAvailable !== false ? state.questsAvailable : [])].find(q => q && !state.questsFinished.includes(q));
-    if (first) setGuide(first); else { $('#live-note').textContent = 'Add quests on the Quests page (My quest plan), add them to the Quest Helper in game, or read your Available tab, then press Do all quests together again.'; $('#live-note').classList.remove('hidden'); }
+    const first = [...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests, ...state.planQuests, ...(state.tripAvailable !== false ? state.questsAvailable : [])].find(q => q && questInProgress(q));
+    if (first) setGuide(first, { all: true }); else { $('#live-note').textContent = 'Add quests on the Quests page (My quest plan), add them to the Quest Helper in game, or read your Available tab, then press Do all quests together again.'; $('#live-note').classList.remove('hidden'); }
     applyObjective(); renderLive(); return;
   }
   const skip = event.target.closest('[data-plan-skip]');
@@ -3844,12 +3967,33 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
   }
   const unskip = event.target.closest('[data-plan-unskip]');
   if (unskip) { state.planSkip = state.planSkip.filter(name => name !== unskip.dataset.planUnskip); state.allTripCache = null; persist(); applyObjective(); renderLive(); return; }
+  const allStepTick = event.target.closest('[data-all-step-tick]');
+  if (allStepTick) {
+    questStepsExpanded = false;
+    const quest = allStepTick.dataset.allStepTick, number = Number(allStepTick.dataset.stepNumber);
+    const done = new Set(state.questDone[quest] ?? []);
+    if (allStepTick.checked) done.add(number); else done.delete(number);
+    state.questDone[quest] = [...done]; state.allTripCache = null;
+    persist(); applyObjective(); renderTripPlanner(); renderLive(); renderTicks(); return;
+  }
   const needTick = event.target.closest('[data-need-tick]');
   if (needTick) {
+    questStepsExpanded = false;
     const quest = needTick.dataset.needTick, key = `need:${needTick.dataset.need}`, done = new Set(state.questDone[quest] ?? []);
-    if (needTick.checked) done.add(key); else done.delete(key);
+    if (needTick.checked) done.add(key);
+    else {
+      done.delete(key);
+      const catalog = questByName(quest);
+      const steps = buildSteps(catalog ? { ...catalog, needs: completeQuestNeeds(catalog, state.questDetails[quest]?.items) } : null, state.questDetails[quest]?.steps ?? []);
+      for (const step of steps) if (normalize(step.item || step.monster || '') === normalize(needTick.dataset.need) || stepCoversNeed(step, { name: needTick.dataset.need })) done.delete(step.number);
+    }
+    if ((state.questDetails[quest]?.items ?? []).some(item => normalize(item.name) === normalize(needTick.dataset.need))) {
+      const ready = new Set(state.questItemsReady[quest] ?? []);
+      if (needTick.checked) ready.add(needTick.dataset.need); else ready.delete(needTick.dataset.need);
+      state.questItemsReady[quest] = [...ready];
+    }
     state.lastTick = needTick.checked ? { quest, key, at: Date.now() } : null;
-    state.questDone[quest] = [...done]; state.allTripCache = null; persist(); applyObjective(); renderLive(); renderTicks(); return;
+    state.questDone[quest] = [...done]; state.allTripCache = null; persist(); applyObjective(); renderTripPlanner(); renderLive(); renderTicks(); return;
   }
   const tripAll = event.target.closest('[data-trip-all]'); if (tripAll) { state.tripAll = tripAll.checked; state.allTripCache = null; saveLive(); applyObjective(); renderLive(); return; }
   const stepBox = event.target.closest('[data-step]'); if (stepBox) { toggleStep(Number(stepBox.dataset.step)); return; }
@@ -3927,6 +4071,7 @@ try {
   state.questDone = saved?.questDone && typeof saved.questDone === 'object' && !Array.isArray(saved.questDone) ? saved.questDone : {};
   state.tripTicks = Array.isArray(saved?.tripTicks) ? saved.tripTicks.filter(t => t && typeof t.type === 'string' && Array.isArray(t.quests)).slice(0, 20) : [];
   state.activeQuests = Array.isArray(saved?.activeQuests) ? [...new Set(saved.activeQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 25) : [];
+  state.acceptedQuests = Array.isArray(saved?.acceptedQuests) ? [...new Set(saved.acceptedQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   state.questItemsReady = saved?.questItemsReady && typeof saved.questItemsReady === 'object' && !Array.isArray(saved.questItemsReady) ? saved.questItemsReady : {};
   state.questsAvailable = Array.isArray(saved?.questsAvailable) ? [...new Set(saved.questsAvailable.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   // My citizenship: { Henesys: 0-10, 'Kerning City': 0-10 }, or null when not set.
@@ -3935,6 +4080,9 @@ try {
   state.planQuests = Array.isArray(saved?.planQuests) ? [...new Set(saved.planQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 20) : [];
   state.questsHidden = Array.isArray(saved?.questsHidden) ? [...new Set(saved.questsHidden.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   state.questsFinished = Array.isArray(saved?.questsFinished) ? [...new Set(saved.questsFinished.filter(name => typeof name === 'string' && name.length <= 180))].slice(-2000) : [];
+  // Older versions could mark a planned quest finished from a partial Quest Helper read.
+  // Keep the user's explicit plan as the source of truth and restore those quests.
+  state.questsFinished = state.questsFinished.filter(name => !state.planQuests.includes(name));
   state.gearOwned = saved?.gearOwned && typeof saved.gearOwned === 'object' && !Array.isArray(saved.gearOwned) ? saved.gearOwned : {};
   const partyKeys = new Set([...PARTY_QUEST.preparation.map(row => `prep:${row[0]}`), ...PARTY_QUEST.stages.map(row => `stage:${row[0]}`)]);
   state.partyDone = Array.isArray(saved?.partyDone) ? [...new Set(saved.partyDone.filter(key => partyKeys.has(key)))] : [];

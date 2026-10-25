@@ -10,9 +10,16 @@ test('steps come from the game data when the wiki has none', () => {
   assert.equal(steps[1].monster, 'Blue Mushroom'); assert.equal(steps[3].npc, 'Pia');
 });
 
-test('the wiki step list wins when it exists', () => {
+test('the wiki steps are kept, with game objectives they omit added before hand-in', () => {
   const steps = buildSteps(pia, [{ number: 1, title: 'Talk to Pia', npc: 'Pia' }, { number: 2, title: 'Collect caps', monster: '' }]);
-  assert.equal(steps.length, 2); assert.equal(steps[1].monster, null);
+  assert.deepEqual(steps.map(step => step.title), ['Talk to Pia', 'Collect caps', 'Defeat 20 Blue Mushroom', 'Collect 10 Blue Mushroom Cap', 'Hand it in to Pia']);
+  assert.equal(steps[1].monster, null);
+  assert.deepEqual(steps.slice(2, 4).map(step => step.number), [3, 4]);
+});
+
+test('pluralized wiki wording still covers a game objective', () => {
+  const steps = buildSteps({ needs: [{ type: 'mob', name: 'Green Mushroom', count: 25 }] }, [{ number: 1, title: 'Defeat 25 Green Mushrooms' }]);
+  assert.equal(steps.length, 1);
 });
 
 test('the current step skips ticked steps and the accept step once accepted', () => {
@@ -21,4 +28,11 @@ test('the current step skips ticked steps and the accept step once accepted', ()
   assert.equal(currentStep(steps, [], { accepted: true, giver: 'Pia' }).step.number, 2);
   assert.equal(currentStep(steps, [2, 3], { accepted: true, giver: 'Pia' }).step.title, 'Hand it in to Pia');
   assert.equal(currentStep(steps, [1, 2, 3, 4]).step, null);
+});
+
+test('an item already marked ready is not offered again as the next quest step', () => {
+  const quest = { giver: 'Luke', turnIn: 'Luke', needs: [{ type: 'item', name: 'Salad', count: 1 }, { type: 'item', name: 'Stirge Wing', count: 10 }] };
+  const steps = buildSteps(quest, [{ number: 1, title: 'Talk to Luke', npc: 'Luke' }]);
+  assert.equal(currentStep(steps, [], { accepted: true, giver: 'Luke', completedNeeds: ['Stirge Wing'] }).step.item, 'Salad');
+  assert.equal(currentStep(steps, ['need:Salad'], { accepted: true, giver: 'Luke', completedNeeds: ['Stirge Wing'] }).step.handIn, true);
 });

@@ -41,3 +41,13 @@ test('game-file quest list keeps quest lines, order, earlier quests and what to 
   assert.deepEqual(second.prerequisites, ['How to Enjoy Mushrooms']); assert.equal(second.arcOrder, 1);
   assert.equal(job.job, 'Warrior');
 });
+
+test('wiki required items join the correct job-specific quest even when its title differs', () => {
+  const payload = { quests: [
+    { id: '1', name: 'Test of Qualification', region: 'Warrior', requirements_list: [] },
+    { id: '2', name: 'Test of Qualification', region: 'Thief', requirements_list: [] }
+  ] };
+  const quests = fromOsmsQuests(payload, [], [{ quest: 'Test of Qualification (Thief)', item: 'Dark Marble', quantity: 30 }]);
+  assert.deepEqual(quests[0].needs, []);
+  assert.deepEqual(quests[1].needs.map(need => [need.name, need.count]), [['Dark Marble', 30]]);
+});

@@ -1,11 +1,14 @@
 import { normalize, shortestRoute } from './core.js';
+import { completeQuestNeeds } from './questneeds.js';
+import { wikiQuestMatches } from './questidentity.js';
 
 const API = 'https://mapleclassic.wiki/api.php';
 const text = value => String(value ?? '').replace(/&quot;/g, '"').replace(/&#39;|&#039;/g, "'").replace(/&amp;/g, '&').trim();
 
-function query(tables, fields, where = '', limit = 500) {
+function query(tables, fields, where = '', limit = 500, offset = 0) {
   const params = new URLSearchParams({ action: 'cargoquery', tables, fields, limit: String(limit), format: 'json', origin: '*' });
   if (where) params.set('where', where);
+  if (offset) params.set('offset', String(offset));
   return `${API}?${params}`;
 }
 
@@ -17,6 +20,16 @@ async function rows(url) {
   return payload.cargoquery.map(row => row.title ?? {});
 }
 
+async function allRows(table, fields) {
+  const all = [];
+  for (let offset = 0; offset < 10000; offset += 500) {
+    const page = await rows(query(table, fields, '', 500, offset));
+    all.push(...page);
+    if (page.length < 500) return all;
+  }
+  throw new Error('The community quest guide has more rows than this app can read.');
+}
+
 // Quest list from the Classic game files (OSMS Data Explorer, "Public Release"): every quest that
 // exists, its quest line (`parent`, the name the in-game quest window shows) and order, level,
 // earlier quests it needs, and what to hunt/collect. The wiki only adds hand-in NPCs and step
@@ -24,14 +37,13 @@ async function rows(url) {
 export const OSMS_QUESTS = 'https://osmsdataexplorer.com/data/current/quests.json';
 const JOB_REGIONS = new Set(['Warrior', 'Magician', 'Bowman', 'Thief']);
 
-export function fromOsmsQuests(payload, wikiRows = []) {
+export function fromOsmsQuests(payload, wikiRows = [], wikiItemRows = []) {
   const list = Array.isArray(payload?.quests) ? payload.quests : [];
   const byId = new Map(list.map(q => [String(q.id), q]));
   const order = new Map();
   for (const chain of payload?.chains ?? []) chain.quest_ids?.forEach((id, index) => order.set(String(id), { parent: chain.parent, index, ids: chain.quest_ids.map(String) }));
-  const wiki = new Map(wikiRows.map(row => [normalize(row.name), row]));
   const quests = list.filter(q => q?.name).map(q => {
-    const id = String(q.id), chain = order.get(id), extra = wiki.get(normalize(q.name));
+    const id = String(q.id), chain = order.get(id), extra = wikiRows.find(row => wikiQuestMatches({ name: q.name, job: JOB_REGIONS.has(q.region) ? q.region : '' }, row.name));
     const prerequisites = new Set();
     for (const match of String(q.requirements ?? '').matchAll(/Complete:\s*(.+?)\s*\(#0*(\d+)\)/g)) prerequisites.add(byId.get(String(Number(match[2])))?.name ?? byId.get(match[2])?.name ?? match[1]);
     if (chain && chain.index > 0) { const before = byId.get(chain.ids[chain.index - 1]); if (before) prerequisites.add(before.name); }
@@ -48,7 +60,15 @@ export function fromOsmsQuests(payload, wikiRows = []) {
       grade: (q.requirements_list ?? []).find(r => r.type === 'citizenship')?.grade ?? null
     };
   });
-  return collapseRotations(quests);
+  const catalog = collapseRotations(quests);
+  for (const quest of catalog) {
+    const requiredItems = wikiItemRows.filter(row => wikiQuestMatches(quest, row.quest)).map(row => ({ name: row.item, quantity: row.quantity }));
+    if (!requiredItems.length) continue;
+    quest.requiredItems = requiredItems;
+    // Rotating quests have no chosen version yet; do not combine several weeks' objectives.
+    if (!quest.variants?.length) quest.needs = completeQuestNeeds(quest, requiredItems);
+  }
+  return catalog;
 }
 
 // Weekly rotations ("Donating to Kerning City": 18 versions, one picked each week, all with the same
@@ -70,16 +90,22 @@ export function collapseRotations(quests) {
 }
 
 async function fetchWikiQuestRows() {
-  const result = await rows(query('quests', 'name_en,giver,turn_in,start_point'));
+  const result = await allRows('quests', 'name_en,giver,turn_in,start_point');
   return result.map(row => ({ name: text(row['name en']), giver: text(row.giver), turnIn: text(row['turn in']), start: text(row['start point']) })).filter(row => row.name);
 }
 
+async function fetchWikiRequiredItems() {
+  const result = await allRows('quest_required_items', 'quest_id,item_id,quantity');
+  return result.map(row => ({ quest: text(row['quest id']), item: text(row['item id']), quantity: Number(row.quantity) || 1 })).filter(row => row.quest && row.item);
+}
+
 export async function fetchQuestCatalog() {
-  const [game, wiki] = await Promise.all([
+  const [game, wiki, items] = await Promise.all([
     fetch(OSMS_QUESTS, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('The quest list is unavailable right now.'); return r.json(); }),
-    fetchWikiQuestRows().catch(() => [])
+    fetchWikiQuestRows().catch(() => []),
+    fetchWikiRequiredItems().catch(() => [])
   ]);
-  const quests = fromOsmsQuests(game, wiki);
+  const quests = fromOsmsQuests(game, wiki, items);
   if (!quests.length) throw new Error('The quest list changed format.');
   return quests;
 }
