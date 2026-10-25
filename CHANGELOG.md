@@ -3,6 +3,7 @@
 ## 1.1.0-beta.10
 
 - Add open, opt-in Maple Route chat with Here, Map, Channel and World rooms, local filters, and reporting. Chat uses a separate anonymous identity from Market and never interacts with MapleStory chat.
+- Put the In Progress and Available quest-scan buttons directly on the Windows Live GPS front page.
 
 ## 1.1.0-beta.9
 
