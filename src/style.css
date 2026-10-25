@@ -152,4 +152,11 @@ body.gps-page #mapview-note{line-height:1.3}
 .mv-tip strong{font-size:.9rem}.mv-tip small{color:#698074}.mv-tip b{color:#18573f;margin-right:2px}.mv-tip div{margin-top:3px}
 .mv-tip-close{position:absolute;top:2px;right:4px;border:0;background:none;font-size:1.1rem;line-height:1;cursor:pointer;color:#698074;padding:2px 4px}
 .mv-spawn,.mv-npc{cursor:pointer}
+/* Checklist lines: box and text on one row, same size in the steps and under Done. */
+.all-checklist .need-list{font-size:.8rem;font-weight:400}
+.all-checklist .need-list li{margin:1px 0}
+.all-checklist .need-list label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.all-checklist .need-list input{margin:0;flex:0 0 auto;width:14px;height:14px}
+.all-checklist .need-list small{margin-left:2px}
+.all-checklist details .need-list,.all-checklist > details .need-list{padding-left:22px}
 
