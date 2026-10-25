@@ -2773,7 +2773,16 @@ function rebuildNotes() {
   applyObjective(); renderLive(); renderNotes();
 }
 async function loadNotes() {
-  try { state.noteRows = await market.store.notes(); } catch { state.noteRows = []; }
+  let ok = true;
+  try { state.noteRows = await market.store.notes(); } catch { state.noteRows = []; ok = false; }
+  // Notes saved while sharing was down (or before the table existed): share them now.
+  const waiting = ok && market.store.shared ? myNotes().filter(n => String(n.id).startsWith('local-')) : [];
+  if (waiting.length) {
+    const mine = myNotes();
+    for (const n of waiting) { try { const { id: _local, ...note } = n; const row = await market.store.addNote(note); Object.assign(mine.find(x => x.id === n.id), row); } catch { /* try again next time */ } }
+    saveMyNotes(mine);
+    try { state.noteRows = await market.store.notes(); } catch { /* keep what we have */ }
+  }
   rebuildNotes();
 }
 async function sendNote(raw) {
