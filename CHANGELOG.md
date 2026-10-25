@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+- Do all quests together: started, crafted and handed-in steps you tick can be unticked again (listed under Done), in case of a slip.
+- Hunting plans never pick a map no portal leads into (Pig Town, an unused map full of Ribbon Pigs); Pig's Ribbon now goes to a map you can reach.
+
 ## 1.0.1
 
 - Maps with no in-game mini map (the subway, shops, houses): the pop-out no longer keeps the last map's size with a tiny picture in it; it sizes to the map and small maps fill it.

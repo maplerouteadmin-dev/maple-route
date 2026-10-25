@@ -200,12 +200,15 @@ export function aliveAtOnce(data, mapId, count) {
 }
 // The maps a goal can be done on: map id → its monsters alive there at once (summed).
 const spawnCache = new WeakMap();
+const enteredCache = new WeakMap();
 export function goalSpawns(data, goal) {
   const key = `${goal.monsters?.join('|')}#${minSpawns(goal)}`;
   let byData = spawnCache.get(data); if (!byData) spawnCache.set(data, byData = new Map());
   if (byData.has(key)) return byData.get(key);
+  // Maps no portal leads into (Pig Town: an unused map full of Ribbon Pigs) cannot be hunted on.
+  let entered = enteredCache.get(data); if (!entered) enteredCache.set(data, entered = new Set((data.portals ?? []).map(p => p.to)));
   const all = new Map();
-  for (const name of goal.monsters ?? []) for (const l of mobByName(data, name)?.locations ?? []) all.set(l.mapId, (all.get(l.mapId) ?? 0) + aliveAtOnce(data, l.mapId, l.count ?? 1));
+  for (const name of goal.monsters ?? []) for (const l of mobByName(data, name)?.locations ?? []) if (!entered.size || entered.has(l.mapId)) all.set(l.mapId, (all.get(l.mapId) ?? 0) + aliveAtOnce(data, l.mapId, l.count ?? 1));
   const min = minSpawns(goal), most = Math.max(0, ...all.values());
   const usable = new Map([...all].filter(([, count]) => count >= Math.min(min, most)));
   byData.set(key, usable);

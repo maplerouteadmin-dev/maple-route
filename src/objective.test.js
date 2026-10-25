@@ -199,3 +199,11 @@ test('items sold in NPC shops are bought, at the seller that fits the trip, befo
   assert.deepEqual(trip.order[1].open.map(o => o.npc), ['24 Hr Mobile Store']);
 });
 
+
+test('maps no portal leads into are never hunting stops (Pig Town)', async () => {
+  const { goalSpawns } = await import('./objective.js');
+  const world = validateDataset({ schemaVersion: 1, maps: [{ id: 'park', name: 'Pig Park' }, { id: 'town', name: 'Pig Town' }, { id: 'road', name: 'Road' }], portals: [{ from: 'road', to: 'park', name: 'p', cost: 1 }, { from: 'park', to: 'road', name: 'q', cost: 1 }], targets: [
+    { id: 'r', name: 'Ribbon Pig', kind: 'mob', locations: [{ mapId: 'park', count: 10 }, { mapId: 'town', count: 40 }] }
+  ] });
+  assert.deepEqual([...goalSpawns(world, { name: "Pig's Ribbon", need: 30, monsters: ['Ribbon Pig'] }).keys()], ['park']);
+});
