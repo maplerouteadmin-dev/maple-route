@@ -92,6 +92,9 @@ $('#app').innerHTML = `
       <p class="fine">For the game's own list: in game press <b>Q</b>, open the <b>Available</b> tab (expand the towns), then press the button below. Suggestions then only show quests the game is offering you.</p>
       <div class="action-row"><button type="button" class="button secondary" id="read-available" data-read-quests="available">Read my Available tab</button></div><div id="available-read" aria-live="polite"></div>
       <div class="divider"></div><h3 class="sub-title">What have I finished?</h3><p class="fine">Quests are marked finished automatically when Live GPS sees one leave the Quest Helper after it was ready to hand in. To catch up on older ones: in game press <b>Q</b>, open the <b>Completed</b> tab, then press the button below (once per page of the list). Only your shared screen is read.</p>
+      <h3 class="sub-title">What am I doing?</h3><p class="fine">Open the quest window (<b>Q</b>) on the <b>In Progress</b> tab with the towns expanded, then press below: every quest you have accepted is added, in the Quest Helper or not.</p>
+      <div class="action-row"><button type="button" class="button secondary" id="read-progress" data-read-quests="progress">Read my In Progress tab</button></div><div id="progress-read" aria-live="polite"></div>
+      <div class="divider"></div>
       <div class="action-row"><button type="button" class="button secondary" id="read-completed" data-read-quests="completed">Read my Completed tab</button></div><div id="completed-read" aria-live="polite"></div><div id="finished-list"></div></section>
     <section class="card" aria-labelledby="quest-helper-title"><h2 id="quest-helper-title">Quest Helper sync</h2><p class="muted">While Live GPS runs, the app reads the in-game Quest Helper, ticks finished counts and tells you when a quest is ready to hand in.</p><div id="quest-helper" aria-live="polite"></div></section>
     <section class="card" aria-labelledby="live-exp-title"><h2 id="live-exp-title">Live EXP tracker</h2><p class="muted">Reads EXP from the status bar while Live GPS runs and checks it against the bar's fill, so misreads are ignored.</p><div id="live-exp" aria-live="polite"></div></section>
@@ -783,10 +786,22 @@ function quickSignature(image) {
 }
 
 function applyQuestWindow(tab, text, { auto = false } = {}) {
-  const available = tab === 'available', out = $(available ? '#available-read' : '#completed-read');
+  const available = tab === 'available', out = $(available ? '#available-read' : tab === 'progress' ? '#progress-read' : '#completed-read');
   const seen = questsInText(text, gameQuestNames(state.quests));
   logTest('quest-window', { tab, auto, seen, text: text.slice(0, 3000) });
   if (auto && !seen.length) return 0;
+  // In Progress: every quest you have accepted, Quest Helper or not; they join your quests (and Do all
+  // quests together). A quest line counts as its first unfinished quest, as on the Available tab.
+  if (tab === 'progress') {
+    const doing = questsForGameNames(state.quests, seen, { tab: 'available', finished: state.questsFinished }).filter(name => !state.questsFinished.includes(name));
+    const added = doing.filter(name => !state.activeQuests.includes(name));
+    for (const name of added) { if (state.activeQuests.length < 25) { state.activeQuests.push(name); ensureQuestDetails(name); } }
+    if (added.length) { state.allTripCache = null; persist(); applyObjective(); renderLive(); }
+    if (auto && !added.length) return seen.length;
+    out.innerHTML = !doing.length ? '<p class="fine">No quest names found. Open the quest window (Q) on the <b>In Progress</b> tab with the towns expanded, then try again.</p>'
+      : `<p class="fine">${auto ? 'Read from your quest window' : 'Read from your In Progress tab'}: ${doing.map(esc).join(', ')}.${added.length ? ` Added ${added.length} to your quests; Do all quests together now includes them.` : ' All already on your list.'}</p>`;
+    return seen.length;
+  }
   const found = questsForGameNames(state.quests, seen, { tab, finished: state.questsFinished }), fresh = found.filter(name => !state.questsFinished.includes(name));
   if (available) {
     // Quest Helper lines are quests already in progress, not offered ones.
@@ -819,10 +834,10 @@ function applyQuestWindow(tab, text, { auto = false } = {}) {
 }
 
 async function readQuestWindow(tab) {
-  const available = tab === 'available', out = $(available ? '#available-read' : '#completed-read'), live = state.live;
+  const available = tab === 'available', out = $(available ? '#available-read' : tab === 'progress' ? '#progress-read' : '#completed-read'), live = state.live;
   if (!live || live.paused) { out.innerHTML = '<p class="fine">Start Live GPS first: the quest window is read from the same shared screen.</p>'; return; }
   if (state.questCatalogStatus !== 'loaded') { await loadQuestCatalog(); if (state.questCatalogStatus !== 'loaded') { out.innerHTML = '<p class="fine">The quest list is unavailable right now.</p>'; return; } }
-  const button = $(available ? '#read-available' : '#read-completed'); button.disabled = true; out.innerHTML = '<p class="fine">Reading the quest window… (a few seconds)</p>';
+  const button = $(available ? '#read-available' : tab === 'progress' ? '#read-progress' : '#read-completed'); button.disabled = true; out.innerHTML = '<p class="fine">Reading the quest window… (a few seconds)</p>';
   let grabbed = null, worker = null;
   try {
     grabbed = await live.capture.grab();
@@ -830,7 +845,7 @@ async function readQuestWindow(tab) {
     // The quest window found on screen: read just its list (and trust its open tab); else the whole frame.
     const win = findQuestWindow(regionImage(grabbed.source, { x: 0, y: 0, w: grabbed.width, h: grabbed.height }));
     const text = win ? await readRegion(worker, grabbed.source, win.list, { scale: 2, ink: inkQuestList }) : await readWholeFrame(worker, grabbed.source, grabbed.width, grabbed.height);
-    applyQuestWindow(win?.tab === 'available' || win?.tab === 'completed' ? win.tab : tab, text);
+    applyQuestWindow(win?.tab === 'available' || win?.tab === 'completed' || win?.tab === 'progress' ? win.tab : tab, text);
   } catch (error) { out.innerHTML = `<p class="fine">Could not read the screen: ${esc(error?.message ?? String(error))}</p>`; }
   finally { grabbed?.release(); worker?.terminate?.(); button.disabled = false; }
 }
@@ -2887,11 +2902,11 @@ async function hudTick(live, grabbed, ocrUsed) {
     }
     return;
   }
-  // The quest window open on the Available or Completed tab: read its list whenever it changes.
+  // The quest window open on the Available, In Progress or Completed tab: read its list whenever it changes.
   if (state.tools.quest && state.questCatalogStatus === 'loaded' && due('questwin', 4000) && now > (live.questWinQuietUntil ?? 0)) {
     live.jobs.questwin = now;
     const win = findQuestWindow(regionImage(source, { x: 0, y: 0, w: width, h: height }));
-    if (win && (win.tab === 'available' || win.tab === 'completed')) {
+    if (win && (win.tab === 'available' || win.tab === 'completed' || win.tab === 'progress')) {
       const sig = quickSignature(regionImage(source, win.list));
       // Read again only when the list really changed (scrolled, a town opened, another tab).
       if (win.tab !== live.questWinTab || listChange(sig, live.questWinSig) > .06) {
@@ -2968,7 +2983,7 @@ async function syncQuestHelper(parsed) {
     setGuide(started);
   }
   for (const q of quests.filter(q => q.name)) {
-    if (!state.activeQuests.includes(q.name) && state.activeQuests.length < 8) { state.activeQuests.push(q.name); ensureQuestDetails(q.name); }
+    if (!state.activeQuests.includes(q.name) && state.activeQuests.length < 25) { state.activeQuests.push(q.name); ensureQuestDetails(q.name); }
     const details = state.questDetails[q.name];
     const done = new Set(state.questDone[q.name] ?? []), ready = new Set(state.questItemsReady[q.name] ?? []);
     // Singular/plural-insensitive: "Green Mushroom Caps" in a step matches "Green Mushroom Cap" on screen.
@@ -3207,7 +3222,7 @@ function allStepsHtml(all) {
   });
   const doneHtml = done.length ? `<details class="all-checklist"><summary>Done (${done.length})</summary><ul class="need-list">${done.join('')}</ul></details>` : '';
   const head = steps.length ? `<p class="fine">${trip.hops} map${trip.hops === 1 ? '' : 's'} in all · tick what you have done</p>` : `<p class="fine">${all?.goals.some(g => g.pending) ? 'Looking up which monsters drop what you need…' : 'Nothing left to hunt.'}</p>`;
-  const setup = `<div class="trip-setup"><strong>For the best plan:</strong> <span>Add quests by name in <a href="#quests" data-reveal-plan>My quest plan</a>${state.planQuests.length ? ` <small>(${state.planQuests.length} added)</small>` : ''}, or:</span> <span>1. In game, add all the quests you would like to complete to the Quest Helper so their counts are read.</span> <span>2. Open your quest window on the Available tab (towns expanded) and <button type="button" class="link-button" data-trip-read>read it</button>${state.questsAvailable.length ? ` <small>(${state.questsAvailable.length} read)</small>` : ''}.</span>
+  const setup = `<div class="trip-setup"><strong>For the best plan:</strong> <span>Add quests by name in <a href="#quests" data-reveal-plan>My quest plan</a>${state.planQuests.length ? ` <small>(${state.planQuests.length} added)</small>` : ''}, or:</span> <span>1. In game, add all the quests you would like to complete to the Quest Helper so their counts are read.</span> <span>2. Open your quest window on the <b>In Progress</b> tab (adds every quest you have accepted) and then the <b>Available</b> tab, towns expanded, with Live GPS on; both are read by themselves. Or <button type="button" class="link-button" data-trip-read>read Available now</button>${state.questsAvailable.length ? ` <small>(${state.questsAvailable.length} read)</small>` : ''}.</span>
     <label class="toggle"><input type="checkbox" data-trip-available${state.tripAvailable !== false ? ' checked' : ''}> Include quests I haven't started${all.waiting ? ` (${all.waiting})` : ''}</label></div>`;
   return `<div class="all-checklist">${setup}<ul class="live-steps all-steps">${steps.join('')}</ul>${head}${missing}${doneHtml}</div>`;
 }
@@ -3679,7 +3694,7 @@ try {
   state.guideMode = saved?.guideMode === 'money' ? 'money' : 'xp';
   state.goals = Array.isArray(saved?.goals) ? saved.goals.filter(goal => goal && typeof goal.id === 'string' && typeof goal.title === 'string' && typeof goal.mapId === 'string').slice(0, 200) : [];
   state.questDone = saved?.questDone && typeof saved.questDone === 'object' && !Array.isArray(saved.questDone) ? saved.questDone : {};
-  state.activeQuests = Array.isArray(saved?.activeQuests) ? [...new Set(saved.activeQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 8) : [];
+  state.activeQuests = Array.isArray(saved?.activeQuests) ? [...new Set(saved.activeQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 25) : [];
   state.questItemsReady = saved?.questItemsReady && typeof saved.questItemsReady === 'object' && !Array.isArray(saved.questItemsReady) ? saved.questItemsReady : {};
   state.questsAvailable = Array.isArray(saved?.questsAvailable) ? [...new Set(saved.questsAvailable.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   // My citizenship: { Henesys: 0-10, 'Kerning City': 0-10 }, or null when not set.

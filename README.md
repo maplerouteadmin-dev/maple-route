@@ -44,7 +44,7 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - **Pop-out window**: a small always-on-top window laid out like the mini map, to sit over a corner of
   the game.
 - **Quests**: suggestions for your level, step-by-step guiding (talk to the NPC, the best maps to hunt or
-  collect, hand-in), Quest Helper counts ticked off automatically, your in-game Available and Completed
+  collect, hand-in), Quest Helper counts ticked off automatically, your in-game Available, In Progress and Completed
   tabs read. **Do all quests together** plans every quest you're doing, and the ones your Available tab
   offers, or that you add by name, as one numbered checklist: pick up each quest, hunt (each map chosen for
   what's still needed), buy what shops sell, hand in. Tick what's done and the trip plans again.
