@@ -1640,7 +1640,7 @@ function hudHtml() {
 }
 
 const POSITION_NOTES = {
-  collapsed: 'No mini map on this map (or it is collapsed), so only the map name is read here.',
+  collapsed: 'This map has no mini map in game (or yours is collapsed), so your spot on it cannot be seen: follow the directions above.',
   'few-portals': 'Can’t place you on this map right now. Go through any portal and you’ll be picked up at the other side.',
   'no-dot': 'Your dot is not visible on the mini map.',
   covered: 'A game window (inventory, stats…) is covering the mini map. Move it off the mini map and tracking picks up again.'
@@ -1869,6 +1869,9 @@ function showPicture(container, svg, picture, mapId) {
   container.dataset.map = mapId;
   if (box.dataset.svg === svg && !fresh) return;
   box.innerHTML = svg; box.dataset.svg = svg;
+  // Pop-out: a map smaller than the window (a subway booth, a shop) is scaled up to fill it.
+  const small = box.querySelector('svg');
+  if (small && container.id === 'pip-map' && parseFloat(small.style.width) <= box.clientWidth && parseFloat(small.style.height) <= box.clientHeight) small.classList.add('fill');
   const drawing = box.querySelector('svg'), focus = box.querySelector('.mv-player circle') ?? box.querySelector('.mv-next circle');
   if (!drawing || !focus || !picture.width) return;
   const userRecently = Date.now() - Number(box.dataset.userAt || 0) < 5000;
@@ -2151,6 +2154,8 @@ function updatePosition(found, mapId) {
   if (located.world) state.position = { mapId, x: located.world.x, y: located.world.y, at: Date.now() };
   else if (state.position?.mapId !== mapId) state.position = null;
   if (located.world) located.reason = null;
+  // No mini map in game (subway, shops): the pop-out sizes to the drawn map, not the last map's mini map.
+  if (located.reason === 'collapsed' && live) live.minimapBox = null;
   if (!located.world && located.covered > .15) located.reason = 'covered';
   coveredReminder(located.reason === 'covered');
   state.positionNote = located.world ? null : POSITION_NOTES[located.reason] ?? null;

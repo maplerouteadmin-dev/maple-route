@@ -167,4 +167,4 @@ body.gps-page #mapview-note{line-height:1.3}
 .view.view-split{columns:auto;display:flex;gap:20px;align-items:flex-start}.view-split>.view-col{flex:1 1 0;min-width:0}.view-col>.card{margin:0 0 20px}
 @media (max-width:860px){.view.view-split{flex-direction:column;gap:0}.view-split>.view-col{width:100%}}
 .price-who .button{padding:1px 8px;font-size:.75rem;margin-left:4px}.price-ads td{background:rgba(0,0,0,.03)}.price-ads ul{margin:4px 0;padding-left:16px}.price-ads li{margin:2px 0}
-
+.pip-body .mv-picture .mv-overlay.fill{width:100%!important;height:100%!important}
