@@ -55,9 +55,13 @@ function placeOverlayBox(window, position) {
   const b = overlayBounds(position);
   window.webContents.executeJavaScript(`window.placeMapleBox(${JSON.stringify({ x: 0, y: 0, width: b.width, height: b.height })})`).catch(() => {});
 }
+// QR code first: while no phone is connected, the pop-up shows the phone's QR code for the first
+// minute after the game opens (and whenever reading is off), then the map. A connected phone hides it.
+let gameOpenedAt = 0;
 function showPairing() {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
-  const svg = phone?.qr && deckStream?.status().state !== 'reading' ? phone.qr : '';
+  const noPhone = !phone?.clients?.size, early = Date.now() - gameOpenedAt < 60_000;
+  const svg = phone?.qr && noPhone && (early || deckStream?.status().state !== 'reading') ? phone.qr : '';
   overlayWindow.webContents.executeJavaScript(`window.setMaplePairing(${JSON.stringify(svg)})`).catch(() => {});
 }
 
@@ -296,10 +300,11 @@ async function start() {
       if (open !== gameOpen) {
         gameOpen = open;
         phone?.publish({ game: open });
-        if (open) { if (overlayWanted) await setDeckOverlay(true, overlayPosition); }
+        if (open) { gameOpenedAt = Date.now(); if (overlayWanted) await setDeckOverlay(true, overlayPosition); }
         else { deckStream.stop(); mainWindow.webContents.send('deck:phone-stop'); await setDeckOverlay(false, overlayPosition, { remember: false }); }
       }
       if (open && keepReading() && deckStream.status().state === 'off') mainWindow.webContents.send('deck:phone-start');
+      showPairing(); // a phone connecting, or the first minute ending, switches the QR code to the map
     };
     setTimeout(follow, 3000);
     setInterval(follow, 5000).unref();

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.2
+
+- Steam Deck: the pop-up shows the phone QR code first (first minute after MapleStory opens, and whenever reading is off) until a phone connects, then the map.
+
 ## 1.1.0-beta.1
 
 **Steam Deck beta.** Play in Gaming Mode with a small Maple Route map over the game and the whole app on your phone. Setup and use: see **Steam Deck (beta)** in the README. Download `Maple-Route-1.1.0-beta.1-linux-x86_64.AppImage` below (in Desktop Mode), make it executable, open it and press **Set up Gaming Mode**.
