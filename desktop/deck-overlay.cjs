@@ -15,8 +15,9 @@ function pairingBounds(position = 'bottom-left') {
 }
 function overlayBounds(position = 'bottom-left') {
   if (position === 'upper-right') return { x: 1020, y: 150, width: 250, height: 142 };
-  if (position === 'bottom-right') return { x: 1020, y: 608, width: 250, height: 142 };
-  return { x: 4, y: 600, width: 258, height: 156 };
+  // Bottom corners sit on the screen's bottom edge, partly over the black band under the game (y 760-800).
+  if (position === 'bottom-right') return { x: 1020, y: 658, width: 250, height: 142 };
+  return { x: 4, y: 644, width: 258, height: 156 };
 }
 
 async function markOwnWindowAsOverlay(window) {

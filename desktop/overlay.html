@@ -21,7 +21,8 @@ function place(box){
   // box changes size must not compound the last zoom).
   if(!svg.dataset.nw){svg.dataset.nw=parseFloat(svg.style.width)||svg.viewBox.baseVal.width;svg.dataset.nh=parseFloat(svg.style.height)||svg.viewBox.baseVal.height;}
   const w=Number(svg.dataset.nw),h=Number(svg.dataset.nh);
-  const zoom=Math.min(1.4,Math.max(.75,box.clientHeight/h*1.6));
+  // Zoomed in (about 1.6x "fill the height"), but never shorter than the box: the map always reaches its bottom edge.
+  const fill=box.clientHeight/h,zoom=Math.max(fill,Math.min(1.4,Math.max(.75,fill*1.6)));
   svg.style.width=Math.round(w*zoom)+'px';svg.style.height=Math.round(h*zoom)+'px';
   const scroller=svg.parentElement===box?box:svg.parentElement;
   const focus=svg.querySelector('.mv-player circle')||svg.querySelector('.mv-goal circle')||svg.querySelector('.mv-next circle');

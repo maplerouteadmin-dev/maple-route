@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.7
+
+- Steam Deck: the pop-up sits on the bottom edge of the screen and the map always fills it to the bottom.
+
 ## 1.1.0-beta.6
 
 - Steam Deck: the pop-up map keeps the right zoom after the QR code shrinks back to the map.
