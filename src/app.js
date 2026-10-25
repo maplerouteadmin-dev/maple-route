@@ -513,7 +513,7 @@ async function loadQuestCatalog() {
   loadCrafting(); loadShops();
   state.questCatalogStatus = 'loading'; renderQuestResults();
   try {
-    const QUESTS_KEY = 'maple-route-quests-v3'; // v2: quest text kept (names the monsters when the wiki has no drops); v3: weekly rotations as one quest
+    const QUESTS_KEY = 'maple-route-quests-v4'; // v2: quest text kept (names the monsters when the wiki has no drops); v3/v4: same-named weekly versions as one quest
     let cached = null; try { cached = JSON.parse(localStorage.getItem(QUESTS_KEY) || 'null'); } catch { cached = null; }
     const fresh = cached?.quests?.length && Date.now() - cached.savedAt < 24 * 60 * 60 * 1000;
     try {
@@ -2865,7 +2865,7 @@ function dropsSaid(item) { const d = state.notes.drops[normalize(item)]; return 
 function unknownHtml(names) {
   const rows = names.map(name => {
     const q = state.quests.find(x => x.name === name); if (!q) return '';
-    if (q.variants?.length) {
+    if (variantItems(q).length > 1) {
       if (q.week?.by === 'helper') return '';
       const said = q.week?.by ? ` <small>${esc(q.week.item)} ×${q.week.needs[0]?.count ?? '?'} (${esc(q.week.by === 'you' ? 'you picked it' : saidBy(q.week.players))})</small>` : ' <small>which item this week? Pick it, or add the quest to your Quest Helper</small>';
       return `<li><label>${esc(name)}: <select data-week-pick="${esc(name)}"><option value="">choose…</option>${variantItems(q).map(item => `<option${q.week?.item === item ? ' selected' : ''}>${esc(item)}</option>`).join('')}</select></label>${said}</li>`;

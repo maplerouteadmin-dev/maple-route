@@ -64,3 +64,13 @@ test('notes fill gaps but never replace game data', () => {
   const sources = notedSources({ 'Leaf': ['Stump'], 'Old Key': [] }, mergeNotes([{ kind: 'drop', item: 'old key', value: 'Octopus', owner: 'me' }, { kind: 'drop', item: 'Leaf', value: 'Octopus', owner: 'me' }], 'me', now), ['Old Key']);
   assert.deepEqual(sources, { 'Leaf': ['Stump'], 'Old Key': ['Octopus'] });
 });
+
+test('quests that are alone in a rotation keep their own needs (daily greetings, crafting weeklies)', () => {
+  const out = collapseRotations([
+    { id: '1', name: 'First Greeting with Shumi, the Town Resident', rotation: 'Citizenship Kerning City Daily', needs: [] },
+    { id: '2', name: 'Silas Irons in Need of Help', rotation: 'Crafting Weekly Quest', needs: [{ name: 'Bubbling', count: 25 }] }
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].variants, undefined);
+  assert.deepEqual(out[1].needs, [{ name: 'Bubbling', count: 25 }]);
+});

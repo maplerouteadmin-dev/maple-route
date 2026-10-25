@@ -54,10 +54,13 @@ export function fromOsmsQuests(payload, wikiRows = []) {
 // Weekly rotations ("Donating to Kerning City": 18 versions, one picked each week, all with the same
 // name) become one quest whose `variants` hold each version's needs. Its `needs` stay empty until the
 // week's version is known (Quest Helper line, the player's pick or other players' reports: questnotes.js).
+// Only names that really have several versions: the daily greetings (one quest per NPC) and the
+// crafting weeklies (one per crafter) are fixed quests in a rotation and stay as they are.
 export function collapseRotations(quests) {
-  const out = [], groups = new Map();
+  const out = [], groups = new Map(), versions = new Map();
+  for (const q of quests) if (q.rotation) versions.set(`${q.rotation}|${q.name}`, (versions.get(`${q.rotation}|${q.name}`) ?? 0) + 1);
   for (const q of quests) {
-    if (!q.rotation) { out.push(q); continue; }
+    if (!q.rotation || versions.get(`${q.rotation}|${q.name}`) < 2) { out.push(q); continue; }
     const key = `${q.rotation}|${q.name}`;
     if (!groups.has(key)) { const first = { ...q, needs: [], variants: [] }; groups.set(key, first); out.push(first); }
     groups.get(key).variants.push({ id: q.id, needs: q.needs, grade: q.grade, level: q.level });
