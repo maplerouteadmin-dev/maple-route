@@ -208,3 +208,10 @@ test('Quest Helper lines show the game names, even when the OCR is garbled', asy
   assert.deepEqual(quests[0].progress.map(p => `${p.have}/${p.need} ${p.name}`), ['0/12 Plant Fossil', '0/12 Animal Fossil', '1/25 Green Mushroom', '0/25 Axe Stump']);
 });
 
+
+test('weekly quests: the Quest Helper line picks the week version, never the first one', async () => {
+  const { fixCounts } = await import('./hud.js');
+  const versions = [{ name: 'Red Snail Shell', count: 30 }, { name: 'Leaf', count: 30 }, { name: 'Firewood', count: 30 }];
+  const [q] = fixCounts([{ name: 'Donating to Kerning City', progress: [{ name: 'Firewod', have: 3, need: 30 }] }], () => versions);
+  assert.deepEqual([q.progress[0].name, q.progress[0].have, q.progress[0].need], ['Firewood', 3, 30]);
+});

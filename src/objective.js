@@ -129,7 +129,7 @@ export const craftStops = (data, goals) => [...new Set(goals.filter(g => g.craft
 
 // Map-to-map hop counts, remembered per dataset (trip planning asks for the same pairs a lot).
 const hopCache = new WeakMap();
-function hops(data, from, to) {
+export function hops(data, from, to) {
   if (!from || !to) return 0;
   if (from === to) return 0;
   let cache = hopCache.get(data); if (!cache) hopCache.set(data, cache = new Map());

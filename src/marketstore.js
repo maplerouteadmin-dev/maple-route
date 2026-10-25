@@ -8,6 +8,7 @@ export const MARKET_KEY = 'sb_publishable_NbHieog1F-0uR_1I-Do77g_BWU-TQP_';
 const SESSION_KEY = 'maple-route-market-session';
 const PRACTICE_KEY = 'maple-route-market-practice';
 const PRACTICE_OFFERS = 'maple-route-market-practice-offers';
+const PRACTICE_NOTES = 'maple-route-notes-practice';
 
 const storage = {
   get(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } },
@@ -71,7 +72,17 @@ function sharedStore(url, key, fetchImpl) {
     offers() { return call(`offers?${new URLSearchParams({ select: '*', order: 'created_at.desc', limit: '300' })}`); },
     async makeOffer(offer) { const [row] = await call('offers', { method: 'POST', body: offer, prefer: 'return=representation' }); return row; },
     answerOffer(id, status) { return call(`offers?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: { status } }); },
-    removeOffer(id) { return call(`offers?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+    removeOffer(id) { return call(`offers?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+    // Quest notes (supabase/notes.sql): everyone's, read without signing in; adding one signs in.
+    knownMe() { return storage.get(SESSION_KEY)?.user ?? null; },
+    async notes() {
+      const params = new URLSearchParams({ select: 'id,owner,kind,quest,item,value,count,week', order: 'created_at.desc', limit: '5000' });
+      const response = await fetchImpl(`${url}/rest/v1/quest_notes?${params}`, { headers: { apikey: key } });
+      if (!response.ok) throw new Error('Shared quest notes are unavailable right now.');
+      return response.json();
+    },
+    async addNote(note) { const [row] = await call('quest_notes', { method: 'POST', body: note, prefer: 'return=representation' }); return row; },
+    removeNote(id) { return call(`quest_notes?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
   };
 }
 
@@ -91,6 +102,10 @@ function practiceStore() {
     async offers() { return offersAll(); },
     async makeOffer(offer) { const row = { ...offer, id: `o${Date.now().toString(36)}`, owner: 'practice-buyer', status: 'open', created_at: new Date().toISOString() }; storage.set(PRACTICE_OFFERS, [row, ...offersAll().filter(o => !(o.listing_id === offer.listing_id && o.owner === row.owner && o.status === 'open'))]); return row; },
     async answerOffer(id, status) { storage.set(PRACTICE_OFFERS, offersAll().map(o => o.id === id ? { ...o, status } : o)); return null; },
-    async removeOffer(id) { storage.set(PRACTICE_OFFERS, offersAll().filter(o => o.id !== id)); return null; }
+    async removeOffer(id) { storage.set(PRACTICE_OFFERS, offersAll().filter(o => o.id !== id)); return null; },
+    knownMe() { return 'practice'; },
+    async notes() { return storage.get(PRACTICE_NOTES) ?? []; },
+    async addNote(note) { const row = { ...note, id: `n${Date.now().toString(36)}`, owner: 'practice' }; storage.set(PRACTICE_NOTES, [row, ...(storage.get(PRACTICE_NOTES) ?? [])].slice(0, 300)); return row; },
+    async removeNote(id) { storage.set(PRACTICE_NOTES, (storage.get(PRACTICE_NOTES) ?? []).filter(n => n.id !== id)); return null; }
   };
 }

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Fill in a quest** (Quests page): tell the app what the game data leaves out (this week's item for a
+  rotating quest, what a quest needs and how many, which monster drops an item, which NPC hands it over
+  or takes the hand-in). Your notes count for you at once; other players' are used once two agree.
+- Weekly donation quests (Donating to Henesys / Kerning City) are one quest with all their versions.
+  This week's item comes from your Quest Helper, your pick in the plan, or other players' reports.
+  Before, the plan always used the first version.
+- Quests started at an NPC found in several towns (each town's Community Board) start at the one
+  nearest the hand-in.
+
 ## 1.0.0
 
 The first full release of Maple Route, a free, unofficial second-screen companion for MapleStory

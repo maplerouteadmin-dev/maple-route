@@ -24,6 +24,16 @@ What players see and agree to: mesos only (real-money trading is against the gam
 seller's character name and channel are public, contact happens in game (`/find` + whisper).
 Reported listings arrive as GitHub issues labelled `listing`; remove one in **Table Editor → listings**.
 
+## Quest notes (same project)
+
+**SQL Editor**: paste and run [`supabase/notes.sql`](../supabase/notes.sql) once. It creates the
+`quest_notes` table behind **Quests → Fill in a quest**: players add what the game data leaves open
+(this week's donation item, a quest's needs and counts, who drops or hands over an item, who takes the
+hand-in). Anyone can read; each player adds or removes only their own; at most 30 an hour and 300 in
+all; week picks are cleared after 3 weeks. The app checks every name against the game data and uses
+other players' notes once two of them agree. Until the table exists, notes are kept on the player's PC.
+Remove a bad note in **Table Editor → quest_notes**.
+
 ## Keeping it running
 
 - **Pausing:** Supabase pauses a free project after about a week without activity. The public repo's

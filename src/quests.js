@@ -30,7 +30,7 @@ export function fromOsmsQuests(payload, wikiRows = []) {
   const order = new Map();
   for (const chain of payload?.chains ?? []) chain.quest_ids?.forEach((id, index) => order.set(String(id), { parent: chain.parent, index, ids: chain.quest_ids.map(String) }));
   const wiki = new Map(wikiRows.map(row => [normalize(row.name), row]));
-  return list.filter(q => q?.name).map(q => {
+  const quests = list.filter(q => q?.name).map(q => {
     const id = String(q.id), chain = order.get(id), extra = wiki.get(normalize(q.name));
     const prerequisites = new Set();
     for (const match of String(q.requirements ?? '').matchAll(/Complete:\s*(.+?)\s*\(#0*(\d+)\)/g)) prerequisites.add(byId.get(String(Number(match[2])))?.name ?? byId.get(match[2])?.name ?? match[1]);
@@ -43,9 +43,27 @@ export function fromOsmsQuests(payload, wikiRows = []) {
       repeatable: Boolean(q.is_repeatable || q.is_daily || q.is_weekly), needs: (q.requirements_list ?? []).filter(r => r.type === 'mob' || r.type === 'item').map(r => ({ type: r.type, name: r.name, count: r.count })),
       text: String(q.description ?? '').slice(0, 1200),
       doneText: String(q.description ?? '').split('\n').map(line => line.trim()).filter(Boolean).pop() ?? '',
-      rewards: { exp: q.rewards_exp ?? null, mesos: q.rewards_money ?? null, items: q.rewards_items ?? '' }
+      rewards: { exp: q.rewards_exp ?? null, mesos: q.rewards_money ?? null, items: q.rewards_items ?? '' },
+      rotation: q.rotation?.group ? String(q.rotation.group) : null,
+      grade: (q.requirements_list ?? []).find(r => r.type === 'citizenship')?.grade ?? null
     };
   });
+  return collapseRotations(quests);
+}
+
+// Weekly rotations ("Donating to Kerning City": 18 versions, one picked each week, all with the same
+// name) become one quest whose `variants` hold each version's needs. Its `needs` stay empty until the
+// week's version is known (Quest Helper line, the player's pick or other players' reports: questnotes.js).
+export function collapseRotations(quests) {
+  const out = [], groups = new Map();
+  for (const q of quests) {
+    if (!q.rotation) { out.push(q); continue; }
+    const key = `${q.rotation}|${q.name}`;
+    if (!groups.has(key)) { const first = { ...q, needs: [], variants: [] }; groups.set(key, first); out.push(first); }
+    groups.get(key).variants.push({ id: q.id, needs: q.needs, grade: q.grade, level: q.level });
+  }
+  for (const q of groups.values()) q.level = Math.min(...q.variants.map(v => v.level ?? Infinity)) === Infinity ? q.level : Math.min(...q.variants.map(v => v.level ?? Infinity));
+  return out;
 }
 
 async function fetchWikiQuestRows() {
