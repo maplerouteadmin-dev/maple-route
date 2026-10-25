@@ -321,7 +321,9 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
       const cost = dist(before, seller.mapId) + (after ? dist(seller.mapId, after) - dist(before, after) : 0);
       if (!best || cost < best.cost) best = { cost, i, seller };
     }
-    if (best) order.splice(best.i, 0, { mapId: best.seller.mapId, type: 'buy', quests: goal.quests ?? [], item: goal.name, count: Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)), npc: best.seller.npc, price: best.seller.price });
+    // The chosen seller's citizenship need, and who sells it to anyone (no citizenship) as the fallback.
+    if (best) order.splice(best.i, 0, { mapId: best.seller.mapId, type: 'buy', quests: goal.quests ?? [], item: goal.name, count: Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)), npc: best.seller.npc, price: best.seller.price,
+      grade: best.seller.grade ?? null, town: best.seller.town ?? '', open: best.seller.grade ? goal.buy.sellers.filter(x => !x.grade).map(x => ({ npc: x.npc, map: x.map, mapId: x.mapId })) : [] });
   }
   at = order.at(-1)?.mapId ?? currentMapId;
   const unnamedLeft = [...unnamed];

@@ -179,8 +179,8 @@ test('quests not started yet: picked up at the giver before hunting for them, ha
 test('items sold in NPC shops are bought, at the seller that fits the trip, before the hand-in', async () => {
   const { planMultiTrip } = await import('./objective.js');
   const { fromWikiShops } = await import('./shops.js');
-  const shops = fromWikiShops([{ page: 'Raymond', npc: 'Raymond', map: 'Henesys Town Hall' }, { page: '24 Hr Mobile Store', npc: '24 Hr Mobile Store', map: 'Ant Tunnel Park' }],
-    [{ 'shop id': '24 Hr Mobile Store', 'item id': 'Salad', price: '220' }, { 'shop id': 'Raymond', 'item id': 'Salad', price: '220' }]);
+  const shops = fromWikiShops([{ page: 'Raymond', npc: 'Raymond', map: 'Henesys Town Hall', town: 'Henesys' }, { page: '24 Hr Mobile Store', npc: '24 Hr Mobile Store', map: 'Ant Tunnel Park' }],
+    [{ 'shop id': '24 Hr Mobile Store', 'item id': 'Salad', price: '220' }, { 'shop id': 'Raymond', 'item id': 'Salad', price: '220', 'citizenship grade': '2' }]);
   // start - hall(Raymond) - dungeon(Luke) ; start - swamp(Stirge) - sleepy - antpark(Mobile Store)
   const world = validateDataset({ schemaVersion: 1, maps: ['start', 'hall', 'dungeon', 'swamp', 'sleepy', 'antpark'].map(id => ({ id, name: id })), portals: [
     ['start', 'hall'], ['hall', 'dungeon'], ['start', 'swamp'], ['swamp', 'sleepy'], ['sleepy', 'antpark']
@@ -194,5 +194,8 @@ test('items sold in NPC shops are bought, at the seller that fits the trip, befo
   const trip = planMultiTrip(world, goals, 'start', [{ mapId: 'dungeon', quests: ['Luke'] }]);
   assert.deepEqual(trip.order.map(o => `${o.type}:${o.mapId}`), ['hunt:swamp', 'buy:hall', 'handin:dungeon']); // Raymond is on the way to Luke
   assert.equal(trip.order[1].npc, 'Raymond');
+  const { citizenshipNote } = await import('./shops.js');
+  assert.equal(citizenshipNote(trip.order[1]), 'needs Henesys citizenship, grade 2 (Visitor)'); // Raymond sells to Henesys residents only
+  assert.deepEqual(trip.order[1].open.map(o => o.npc), ['24 Hr Mobile Store']);
 });
 

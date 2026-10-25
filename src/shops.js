@@ -9,14 +9,19 @@ export function fromWikiShops(shopRows, itemRows) {
   const shops = new Map((shopRows ?? []).map(r => [decode(r.page ?? r.name_en ?? r['name en']), { npc: decode(r.npc) || decode(r.page), map: decode(r.map), town: decode(r.town) }]));
   const sold = {};
   for (const row of itemRows ?? []) {
-    const shop = decode(row['shop id'] ?? row.shop_id), item = decode(row['item id'] ?? row.item_id), price = Number(row.price);
+    const shop = decode(row['shop id'] ?? row.shop_id), item = decode(row['item id'] ?? row.item_id), price = Number(row.price), grade = Number(row['citizenship grade'] ?? row.citizenship_grade) || null;
     if (!shop || !item) continue;
     const where = shops.get(shop) ?? { npc: shop, map: '', town: '' };
-    (sold[item.toLowerCase()] ??= []).push({ item, shop, npc: where.npc, map: where.map, town: where.town, price: Number.isFinite(price) && price > 0 ? price : null });
+    (sold[item.toLowerCase()] ??= []).push({ item, shop, npc: where.npc, map: where.map, town: where.town, price: Number.isFinite(price) && price > 0 ? price : null, grade });
   }
   for (const list of Object.values(sold)) list.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
   return sold;
 }
+
+// Town hall shopkeepers sell only to that town's residents of at least this grade (Henesys and Kerning
+// City; wiki Citizenship page). Grade names, lowest first.
+export const CITIZEN_GRADES = ['Traveler', 'Visitor', 'Helpful Stranger', 'Recognized Guest', 'Town Resident', 'Trusted Neighbor', 'Distinguished Citizen', 'Town Patron', 'Guardian of the Village', 'Citizen of Honor'];
+export const citizenshipNote = seller => seller?.grade ? `needs ${seller.town || 'town'} citizenship, grade ${seller.grade} (${CITIZEN_GRADES[seller.grade - 1] ?? '?'})` : '';
 
 export const sellersOf = (shops, itemName) => shops?.[String(itemName ?? '').trim().toLowerCase()] ?? [];
 
@@ -34,6 +39,6 @@ async function cargo(table, fields) {
 }
 
 export async function fetchShops() {
-  const [shopRows, itemRows] = await Promise.all([cargo('shops', '_pageName=page,npc,map,town'), cargo('shop_items', 'shop_id,item_id,price')]);
+  const [shopRows, itemRows] = await Promise.all([cargo('shops', '_pageName=page,npc,map,town'), cargo('shop_items', 'shop_id,item_id,price,citizenship_grade')]);
   return fromWikiShops(shopRows, itemRows);
 }
