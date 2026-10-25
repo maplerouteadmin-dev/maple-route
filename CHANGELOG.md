@@ -1,16 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- **Fill in a quest** (Quests page): tell the app what the game data leaves out (this week's item for a
-  rotating quest, what a quest needs and how many, which monster drops an item, which NPC hands it over
-  or takes the hand-in). Your notes count for you at once; other players' are used once two agree.
-- Weekly donation quests (Donating to Henesys / Kerning City) are one quest with all their versions.
-  This week's item comes from your Quest Helper, your pick in the plan, or other players' reports.
-  Before, the plan always used the first version.
-- Quests started at an NPC found in several towns (each town's Community Board) start at the one
-  nearest the hand-in.
-
 ## 1.0.0
 
 The first full release of Maple Route, a free, unofficial second-screen companion for MapleStory
@@ -27,8 +16,20 @@ Classic World. It reads only the game window you share, on your own PC.
 - Suggestions for your level; reading your in-game Available and Completed tabs. A quest line like
   "Winston's Fossil Dig-up" can be started with one press, and Live GPS guides you through it.
 - Step-by-step guiding with Quest Helper counts ticked off automatically.
-- Hunting trips that end at the hand-in, one map or several; **Plan all my quests together** makes one
-  trip for every quest you are doing.
+- Hunting trips that end at the hand-in, one map or several, on maps with enough monsters alive at once.
+- **Do all quests together**: one numbered checklist for every quest you are doing or can start (picking
+  each up, hunting, buying, crafting, handing in), in the order that walks the fewest maps. Quests come
+  from your Quest Helper, your In Progress and Available tabs, or **My quest plan** (add them by name);
+  leave any out with ×.
+- Quest counts come from the game data, and Quest Helper lines show the game's item names even when the
+  screen reading is garbled.
+- Shop-bought quest items (a Salad for the Omok quest…) with the nearest shop you can use; set **My
+  citizenship** and town hall shops are used when your grade allows.
+- Weekly donation quests (Donating to Henesys / Kerning City): this week's item from your Quest Helper,
+  your pick, or other players' reports.
+- **Fill in a quest**: tell the app what the game data leaves out (this week's item, what a quest needs
+  and how many, who drops or hands over an item, who takes the hand-in). Your notes count for you at
+  once; other players' are used once two agree.
 - Item sources from the MapleClassic Wiki, the game's crafting recipes (jewels, ingots, screws…) and the
   game's own quest text, labelled "best guess" where they are guesses.
 
@@ -40,11 +41,13 @@ Classic World. It reads only the game window you share, on your own PC.
 - Offers: sellers set a lowest offer or a fixed price; buyers offer, sellers accept or decline.
 - A 🔔 on the Market tab for offers waiting, answers to your offers and expiring listings.
 - Listings last 7 days; you can relist your expired ones.
-- Trade-chat prices from your own screen, grouped by item, next to the live listings.
+- Trade-chat prices from your own screen, grouped by item, next to the live listings; open an item for
+  every advert and Copy /find to reach the player.
 - Maple Route is only a noticeboard: trades happen in game, in mesos, between players.
 
 ### Also
-- World map, leveling guide, EXP tracker, crafting recipes and where to craft them.
+- World map (click a map, monster or NPC for details), leveling guide, EXP tracker, crafting recipes
+  and where to craft them.
 - Report a problem or a drop: a pre-filled GitHub issue you check and submit yourself.
 - Separate progress per character.
 
