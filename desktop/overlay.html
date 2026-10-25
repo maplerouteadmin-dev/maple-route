@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><base href="__BASE__"><link rel="stylesheet" href="__CSS__"><style>
+*{box-sizing:border-box}:root,html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent!important;background-color:transparent!important;color:#f5fbf2;font:13px system-ui,sans-serif}
+#box{position:absolute;left:4px;top:548px;width:258px;height:208px;background:#102c24;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+.shell{padding:5px;width:100%;height:100%;display:flex;flex-direction:column;gap:3px}
+.next{font-weight:700;font-size:13px;line-height:1.2;max-height:32px;overflow:hidden}
+.map{flex:1;min-height:0;overflow:hidden;position:relative;border-radius:6px;background:#14302a}
+.map .mv-picture{overflow:hidden;width:100%;height:100%;padding:0;margin:0;max-height:none}
+.map svg{display:block;max-width:none}
+.note{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d8eadb}
+.pair{position:absolute;inset:0;z-index:2;background:#102c24;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center}.pair[hidden]{display:none}
+.pair #qr{width:140px;height:140px;background:#fff;padding:4px;border-radius:6px}.pair #qr svg{width:100%;height:100%}.pair small{font-size:11px;color:#d8eadb}
+</style></head><body><div id="box"><div class="shell"><div class="next" id="next">Maple Route</div><div class="map" id="map"></div><div class="note" id="note"></div></div><div class="pair" id="pair" hidden><b>Scan with your phone</b><div id="qr"></div><small>then press Start reading</small></div></div><script>
+window.placeMapleBox=b=>{const box=document.querySelector('#box');Object.assign(box.style,{left:b.x+'px',top:b.y+'px',width:b.width+'px',height:b.height+'px'});const map=document.querySelector('#map');if(map.firstChild)place(map);};
+window.setMaplePairing=svg=>{const pair=document.querySelector('#pair');if(svg){document.querySelector('#qr').innerHTML=svg;pair.hidden=false;}else pair.hidden=true;};
+// Zoom so map labels stay readable in a small box: map height fills the box (not shrunk below 0.55x
+// of the app's own drawing), then keep you, else the next exit, in the middle.
+function place(box){
+  const svg=box.querySelector('svg');if(!svg)return;
+  const w=parseFloat(svg.style.width)||svg.viewBox.baseVal.width,h=parseFloat(svg.style.height)||svg.viewBox.baseVal.height;
+  const zoom=Math.min(1.4,Math.max(.75,box.clientHeight/h*1.6));
+  svg.style.width=Math.round(w*zoom)+'px';svg.style.height=Math.round(h*zoom)+'px';
+  const scroller=svg.parentElement===box?box:svg.parentElement;
+  const focus=svg.querySelector('.mv-player circle')||svg.querySelector('.mv-goal circle')||svg.querySelector('.mv-next circle');
+  if(!focus)return;
+  const vb=svg.viewBox.baseVal,k=(w*zoom)/(vb.width||w);
+  scroller.scrollLeft=Math.max(0,Number(focus.getAttribute('cx'))*k-scroller.clientWidth/2);
+  scroller.scrollTop=Math.max(0,Number(focus.getAttribute('cy'))*k-scroller.clientHeight/2);
+}
+window.setMapleOverlay=detail=>{
+  const next=document.querySelector('#next'),map=document.querySelector('#map'),note=document.querySelector('#note');
+  if(next.textContent!==detail.next)next.textContent=detail.next;
+  if(map.dataset.html!==detail.map){map.dataset.html=detail.map;map.innerHTML=detail.map;place(map);}
+  if(note.textContent!==detail.note)note.textContent=detail.note;
+};
+</script></body></html>

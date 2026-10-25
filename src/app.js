@@ -25,6 +25,7 @@ import { issueUrl, problemReport, dropReport } from './report.js';
 import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, suggestPrice, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
 import { spoken, taskWords } from './speech.js';
+import { fetchReactorSources, reactorTargets } from './reactors.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -1819,10 +1820,58 @@ document.addEventListener('click', event => {
   if (last) state.live.tracker = addExpReading(state.live.tracker, { value: last.value, percent: last.percent, level: last.level ?? null, mapId: state.current }, Date.now()).tracker;
   state.hud.tracker = state.live.tracker; renderLiveExp(); renderLive();
 });
+// "from Jr. Necki", or for a breakable object "hit Ellinia Flowers" (they give the item).
+function sourceText(names = []) {
+  return names.slice(0, 2).map(name => state.data.targets.find(t => t.reactor && t.name === name) ? `hit ${name}s` : name).join(', ').replace(/^(?!hit )/, 'from ');
+}
+// The plan being followed (all quests together, or the guided quest) and what it wants on a map.
+function currentTrip() {
+  if (!state.guide.quest) return null;
+  return state.tripAll ? allQuestsTrip() : allQuestsTrip(state.guide.quest);
+}
+// "On this map: hit Ellinia Flowers for Plant Sample 0/8" — the plan's stop on the map you are on.
+function hereTask(mapId = state.current) {
+  if (!mapId) return '';
+  const all = currentTrip(), stop = all?.trip?.order?.find(step => step.mapId && step.mapId === mapId);
+  if (!stop) return '';
+  if (stop.type === 'hunt') {
+    return all.goals.filter(g => stop.goals.includes(g.name)).map(g => {
+      const counts = (g.quests ?? []).map(q => needCount(q, g.name)).filter(Boolean)[0] ?? '';
+      const target = state.data.targets.find(t => t.kind === 'mob' && normalize(t.name) === normalize(g.name));
+      const how = target && !target.reactor ? `Kill ${g.name}` : `${g.name}${g.monsters?.length && normalize(g.monsters[0]) !== normalize(g.name) ? ` (${sourceText(g.monsters)})` : ''}`;
+      return `${how}${counts ? ` ${counts}` : ''}`;
+    }).join(' · ');
+  }
+  return taskWords(stop, { npc: stop.type === 'handin' ? all.ends.get(stop.mapId)?.[0] : null }).replace(/\.$/, '');
+}
+function hereTaskHtml() {
+  const here = hereTask(), first = currentTrip()?.trip?.order?.[0];
+  if (!here && !first) return '';
+  return `<div class="here-task">${here ? `<span><b>On this map:</b> ${esc(here)}</span>` : '<span></span>'}${first ? '<button type="button" class="button secondary next-step" data-next-step title="Mark the current step done">Next step ✓</button>' : ''}</div>`;
+}
+// Next step: mark the plan's current step done. A hunting stop ticks every need it covers; a buy
+// ticks the item; start / craft / hand-in tick like their own boxes. Undo brings it all back.
+function completeNextStep() {
+  const all = currentTrip(), step = all?.trip?.order?.[0];
+  if (!step) return;
+  if (step.type === 'hunt' || step.type === 'buy') {
+    const names = step.type === 'hunt' ? step.goals : [step.item], ticks = [];
+    for (const goal of all.goals.filter(g => names.includes(g.name))) for (const quest of goal.quests ?? step.quests ?? []) {
+      const key = `need:${goal.name}`, done = new Set(state.questDone[quest] ?? []);
+      if (!done.has(key)) { done.add(key); state.questDone[quest] = [...done]; ticks.push([quest, key]); }
+    }
+    if (step.type === 'buy' && !ticks.length) for (const quest of step.quests ?? []) { const key = `need:${step.item}`, done = new Set(state.questDone[quest] ?? []); if (!done.has(key)) { done.add(key); state.questDone[quest] = [...done]; ticks.push([quest, key]); } }
+    state.lastTick = { multi: ticks, label: step.type === 'hunt' ? `${step.goals.join(', ')}` : step.item, at: Date.now() };
+    state.allTripCache = null; persist(); applyObjective(); renderLive(); renderTicks();
+    return;
+  }
+  document.querySelector('#live-plan [data-trip-step="0"]')?.click();
+}
+document.addEventListener('click', event => { if (event.target.closest('[data-next-step]')) completeNextStep(); });
 const CHOOSE_DEST = '<button type="button" class="link-button choose-dest" data-choose-dest>Choose destination</button>';
 function renderLive() {
   // Directions above the map (the map's header); quests, checklist and EXP in the card below it.
-  const html = destinationHtml() + expChipHtml() + liveHtml(liveModel()) + CHOOSE_DEST, planHtml = hudHtml();
+  const html = destinationHtml() + expChipHtml() + liveHtml(liveModel()) + hereTaskHtml() + CHOOSE_DEST, planHtml = hudHtml();
   const card = $('#live-step'), plan = $('#live-plan');
   if (card && card.dataset.html !== html) { card.innerHTML = html; card.dataset.html = html; }
   const offer = $('#guide-offer'), offerHtml = guideOfferHtml();
@@ -2970,6 +3019,7 @@ document.addEventListener('click', event => {
   if (event.target.closest('[data-undo-last]') && state.lastTick) {
     const last = state.lastTick;
     if (last.trip) { const i = state.tripTicks.indexOf(last.trip); if (i >= 0) document.querySelector(`[data-trip-untick="${i}"]`)?.click(); state.lastTick = null; return; }
+    if (last.multi) { for (const [quest, key] of last.multi) state.questDone[quest] = (state.questDone[quest] ?? []).filter(x => x !== key); state.lastTick = null; state.allTripCache = null; persist(); applyObjective(); renderLive(); renderTicks(); return; }
     state.questDone[last.quest] = (state.questDone[last.quest] ?? []).filter(x => x !== last.key);
     state.lastTick = null; state.allTripCache = null; persist(); applyObjective(); renderLive(); renderTicks();
   }
@@ -3378,8 +3428,16 @@ function loadItemSources(names) {
   for (const name of names) {
     if (name in state.itemSources || state.itemSources[`loading:${name}`]) continue;
     state.itemSources[`loading:${name}`] = true;
-    fetchWikiDrops(name).then(monsters => { state.itemSources[name] = monsters; applyObjective(); renderQuestHelper(); renderLive(); })
-      .catch(() => { state.itemSources[name] = []; });
+    fetchWikiDrops(name).then(async monsters => {
+      // No monster drops it: maybe a breakable object does (Plant Sample ← Ellinia Flower).
+      if (!monsters.length) {
+        const targets = reactorTargets(state.data, await fetchReactorSources(name).catch(() => []));
+        for (const target of targets) if (!state.data.targets.some(t => t.id === target.id)) state.data.targets.push(target);
+        monsters = targets.map(t => t.name);
+      }
+      state.itemSources[name] = monsters; state.planSourcesCache = null; state.allTripCache = null; state.tripCache = null;
+      applyObjective(); renderQuestHelper(); renderLive();
+    }).catch(() => { state.itemSources[name] = []; });
   }
 }
 
@@ -3540,7 +3598,7 @@ function allChecklistHtml(all, doneHtml = '') {
       const done = progress.done.has(step.number) || Boolean(need && ticked.has(normalize(need.name)));
       if (done) return '';
       const goal = need && all.goals.find(g => normalize(g.name) === normalize(need.name) || normalize(g.craft?.item ?? '') === normalize(need.name));
-      const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.given ? givenBy(need.name) : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `from ${goal.monsters.slice(0, 2).join(', ')}${goal.guess ? ' (best guess)' : dropsSaid(need.name)}` : '';
+      const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.given ? givenBy(need.name) : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `${sourceText(goal.monsters)}${goal.guess ? ' (best guess)' : dropsSaid(need.name)}` : '';
       const count = need ? `${seen?.have ?? 0}/${need.count}` : '';
       const map = step.npc ? questStepMaps(travel(), step, state.current, 1)[0]?.map : null;
       const route = map && !done ? ` <button type="button" class="link-button" data-route="${esc(map.id)}" data-route-npc="${esc(step.npc)}">Route to ${esc(step.npc)}</button>` : '';
@@ -3571,7 +3629,7 @@ function allStepsHtml(all, { single = false } = {}) {
     const now = i === 0 ? ' <span class="pill">now</span>' : '', mapName = esc(mapById(step.mapId)?.name ?? '?');
     if (step.type === 'hunt') {
       const needs = all.goals.filter(g => step.goals.includes(g.name)).flatMap(g => (g.quests ?? []).map(q => {
-        const where = g.craft ? `for ${g.craft.item}` : g.given ? givenBy(g.name) : g.monsters?.length && normalize(g.monsters[0]) !== normalize(g.name) ? `from ${g.monsters.slice(0, 2).join(', ')}${g.guess ? ' (best guess)' : dropsSaid(g.name)}` : '';
+        const where = g.craft ? `for ${g.craft.item}` : g.given ? givenBy(g.name) : g.monsters?.length && normalize(g.monsters[0]) !== normalize(g.name) ? `${sourceText(g.monsters)}${g.guess ? ' (best guess)' : dropsSaid(g.name)}` : '';
         return line(q, g.name, where);
       }));
       return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hunt on ${mapName}</strong>${now} <small>(${esc(step.quests.join(', '))})</small><ul class="need-list">${needs.join('')}</ul></li>`;
@@ -3603,7 +3661,7 @@ function allStepsHtml(all, { single = false } = {}) {
   const chips = `<div class="plan-in"><b>In this plan:</b> ${all.quests.map(name => `<span class="plan-chip">${esc(label(name))}<button type="button" class="link-button" data-plan-skip="${esc(name)}" title="Leave this quest out of the plan" aria-label="Leave out ${esc(name)}">×</button></span>`).join('') || '<small>no quests</small>'}
     ${all.skipped?.length ? `<details class="plan-out"><summary>Left out (${all.skipped.length})</summary>${all.skipped.map(name => `<span class="plan-chip off">${esc(label(name))}<button type="button" class="link-button" data-plan-unskip="${esc(name)}" title="Plan it again" aria-label="Plan ${esc(name)} again">↺</button></span>`).join('')}</details>` : ''}</div>`;
   const last = state.lastTick && Date.now() - state.lastTick.at < 120_000 ? state.lastTick : null;
-  const undoLast = last ? `<p class="fine tick-undo">Ticked <b>${esc(last.trip ? `${{ start: 'started', craft: 'crafted', handin: 'handed in' }[last.trip.type] ?? 'step'}: ${last.trip.quests.join(', ')}` : last.key.slice(5))}</b> · <button type="button" class="link-button" data-undo-last>Undo</button></p>` : '';
+  const undoLast = last ? `<p class="fine tick-undo">Ticked <b>${esc(last.trip ? `${{ start: 'started', craft: 'crafted', handin: 'handed in' }[last.trip.type] ?? 'step'}: ${last.trip.quests.join(', ')}` : last.multi ? last.label : last.key.slice(5))}</b> · <button type="button" class="link-button" data-undo-last>Undo</button></p>` : '';
   return `<div class="all-checklist">${single ? '' : setup + chips}${unknownHtml(all.quests)}${allChecklistHtml(all, doneHtml)}${undoLast}<ul class="live-steps all-steps">${steps.join('')}</ul>${head}${missing}</div>`;
 }
 function allTripHtml(all) {
@@ -4208,6 +4266,79 @@ bootstrapping = false;
 // Cards drawn before the saved profile loaded: draw them again with it.
 renderPlanList(); renderCitizenship(); renderTicks();
 persist();
+
+// Gaming Mode uses this same app as its single state owner. The phone receives
+// the app's DOM, never captured game pixels, and sends UI actions back here.
+if (window.mapleDeck) {
+  const appRoot = $('#app');
+  window.mapleDeck.onPhoneStart(() => startLive());
+  window.mapleDeck.onPhoneStop(() => stopLive());
+  window.mapleDeck.onStatus(status => {
+    if (status.error && state.live && !state.live.paused) pauseLive('capture-error');
+  });
+  window.mapleDeck.onPhoneAction(action => {
+    if (!['click', 'input', 'change'].includes(action?.kind) || !Array.isArray(action.path)) return;
+    let element = appRoot;
+    for (const index of action.path) {
+      if (!Number.isInteger(index) || index < 0 || index > 500) return;
+      element = element?.children[index];
+    }
+    if (!element || element === appRoot || element.tagName !== action.tag) return;
+    if (action.id && element.id !== action.id) return;
+    if (action.kind === 'click') {
+      if (element.tagName === 'A' && !element.getAttribute('href')?.startsWith('#')) return;
+      if (element.tagName === 'INPUT' && !['checkbox', 'radio'].includes(element.type)) return;
+      element.click();
+    } else if (['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName) && typeof action.value === 'string') {
+      element.value = action.value;
+      if (element.type === 'checkbox' && typeof action.checked === 'boolean') element.checked = action.checked;
+      element.dispatchEvent(new Event(action.kind, { bubbles: true }));
+    }
+  });
+  // Mirror saved progress to a file on the Deck every 2 s (see preload: it survives hard restarts).
+  let lastStorage = '';
+  setInterval(() => {
+    const values = {};
+    for (let i = 0; i < localStorage.length; i++) { const key = localStorage.key(i); if (key?.startsWith('maple-route') && !key.startsWith('maple-route-picture') && !key.startsWith('maple-route-quests') && !key.startsWith('maple-route-osms') && !key.startsWith('maple-route-shops') && !key.startsWith('maple-route-crafting')) values[key] = localStorage.getItem(key); }
+    const text = JSON.stringify(values);
+    if (text !== lastStorage) { lastStorage = text; window.mapleDeck.saveStorage(values); }
+  }, 2000);
+  let lastPhoneHtml = '';
+  setInterval(() => {
+    const copy = appRoot.cloneNode(true);
+    for (const input of copy.querySelectorAll('input,textarea,select')) {
+      const source = input.id ? document.getElementById(input.id) : null;
+      if (!source) continue;
+      if (input.tagName === 'INPUT') {
+        if (input.type === 'checkbox' || input.type === 'radio') input.toggleAttribute('checked', source.checked);
+        else input.setAttribute('value', source.value);
+      } else if (input.tagName === 'TEXTAREA') input.textContent = source.value;
+      else for (const option of input.options) option.toggleAttribute('selected', option.value === source.value);
+    }
+    const html = copy.innerHTML;
+    if (html !== lastPhoneHtml) {
+      lastPhoneHtml = html;
+      // Map pictures resolve to this app's 127.0.0.1 server, which a phone cannot reach: make them
+      // relative, so they come through the phone server's picture relay.
+      window.mapleDeck.publish({ html: html.replaceAll(`${location.origin}/`, '/'), bodyClass: document.body.className });
+    }
+    const overlay = {
+      next: [$('#live-step .live-headline')?.textContent, $('#live-step .live-hint')?.textContent].filter(Boolean).join(' · ').slice(0, 180) || 'Waiting for a route',
+      map: $('#mapview')?.innerHTML ?? '',
+      note: (hereTask() ? `Here: ${hereTask()}` : $('#live-step .live-where')?.textContent?.trim() ?? '').slice(0, 120)
+    };
+    if (JSON.stringify(overlay) !== JSON.stringify(window.__lastDeckOverlay)) {
+      window.__lastDeckOverlay = overlay;
+      window.mapleDeck.publishOverlay(overlay);
+    }
+    window.mapleDeck.publishSummary({
+      map: mapById(state.current)?.name ?? '',
+      destination: mapById(state.destination)?.name ?? '',
+      next: overlay.next,
+      quest: $('#live-plan .live-steps li')?.textContent?.trim() ?? ''
+    });
+  }, 800);
+}
 
 // Dev server only: stream new test-log entries to fixtures/live/session.jsonl on this computer so a
 // play session can be followed while it happens (see vite.config.js).

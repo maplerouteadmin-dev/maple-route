@@ -211,7 +211,7 @@ export function aliveAtOnce(data, mapId, count) {
   let totals = totalPoints.get(data);
   if (!totals) {
     totalPoints.set(data, totals = new Map());
-    for (const t of data.targets ?? []) if (t.kind === 'mob') for (const l of t.locations ?? []) totals.set(l.mapId, (totals.get(l.mapId) ?? 0) + (l.count ?? 1));
+    for (const t of data.targets ?? []) if (t.kind === 'mob' && !t.reactor) for (const l of t.locations ?? []) totals.set(l.mapId, (totals.get(l.mapId) ?? 0) + (l.count ?? 1));
   }
   const all = totals.get(mapId) ?? count;
   return all > map.capacity ? Math.round(count * map.capacity / all * 10) / 10 : count;
@@ -226,7 +226,7 @@ export function goalSpawns(data, goal) {
   // Maps no portal leads into (Pig Town: an unused map full of Ribbon Pigs) cannot be hunted on.
   let entered = enteredCache.get(data); if (!entered) enteredCache.set(data, entered = new Set((data.portals ?? []).map(p => p.to)));
   const all = new Map();
-  for (const name of goal.monsters ?? []) for (const l of mobByName(data, name)?.locations ?? []) if (!entered.size || entered.has(l.mapId)) all.set(l.mapId, (all.get(l.mapId) ?? 0) + aliveAtOnce(data, l.mapId, l.count ?? 1));
+  for (const name of goal.monsters ?? []) { const target = mobByName(data, name); for (const l of target?.locations ?? []) if (!entered.size || entered.has(l.mapId)) all.set(l.mapId, (all.get(l.mapId) ?? 0) + (target.reactor ? (l.count ?? 1) : aliveAtOnce(data, l.mapId, l.count ?? 1))); }
   const min = minSpawns(goal), most = Math.max(0, ...all.values());
   const usable = new Map([...all].filter(([, count]) => count >= Math.min(min, most)));
   byData.set(key, usable);

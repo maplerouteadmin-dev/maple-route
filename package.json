@@ -1,13 +1,13 @@
 {
   "name": "maple-route-companion",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.0-beta.1",
   "type": "module",
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "node scripts/copy-ocr.mjs && vite build",
-    "test": "node --check src/app.js && node --test",
+    "test": "node --check src/app.js && node --test src/*.test.js scripts/*.test.mjs desktop/*.test.mjs desktop/*.test.cjs",
     "scan:titles": "node scripts/scan-titles.mjs",
     "audit:handins": "node scripts/audit-handins.mjs",
     "audit:quests": "node scripts/audit-quests.mjs",
@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@tesseract.js-data/eng": "^1.0.0",
+    "qrcode": "^1.5.4",
     "tesseract.js": "7.0.0"
   },
   "devDependencies": {
@@ -30,17 +31,27 @@
   "build": {
     "appId": "dev.mapleroute.companion",
     "productName": "Maple Route",
-    "directories": { "output": "release" },
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**",
       "desktop/**",
+      "!desktop/probe/**",
       "scripts/serve.mjs",
       "scripts/osmscache.mjs",
       "scripts/autostart.mjs",
       "package.json"
     ],
     "linux": {
-      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "category": "Utility",
       "artifactName": "Maple-Route-${version}-linux-${arch}.${ext}"
     }

@@ -1,6 +1,7 @@
 // One screen-share for a whole play session. The game is never touched: the browser receives the
 // same video a streaming app would, and the app samples a frame from it about once a second.
 export async function startCapture() {
+  if (window.mapleDeck) return startDeckCapture();
   if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen sharing is unavailable in this browser. Use Chrome or Edge on a desktop.');
   // Suggest the game window: a window share sees the game even with the pop-out on top of it.
   // Sharing normally pulls the shared window (or a browser window) to the front; ask the browser
@@ -31,6 +32,35 @@ export async function startCapture() {
       return { source: video, width: video.videoWidth, height: video.videoHeight, release() {} };
     },
     stop() { stream.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+  };
+}
+
+async function startDeckCapture() {
+  const status = await window.mapleDeck.startCapture();
+  if (status.error) throw new Error(status.error);
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const track = {
+    label: 'Gaming Mode screen',
+    getSettings: () => ({ displaySurface: 'monitor', width: canvas.width || 1280, height: canvas.height || 800 }),
+    addEventListener() {}, stop() {}
+  };
+  return {
+    track,
+    async grab() {
+      const frame = await window.mapleDeck.frame();
+      if (!frame) throw new Error('Waiting for the first Gaming Mode frame.');
+      if (canvas.width !== frame.width || canvas.height !== frame.height) {
+        canvas.width = frame.width; canvas.height = frame.height;
+      }
+      const rgba = new Uint8ClampedArray(frame.pixels);
+      for (let i = 0; i < rgba.length; i += 4) {
+        const blue = rgba[i]; rgba[i] = rgba[i + 2]; rgba[i + 2] = blue; rgba[i + 3] = 255;
+      }
+      context.putImageData(new ImageData(rgba, frame.width, frame.height), 0, 0);
+      return { source: canvas, width: frame.width, height: frame.height, release() {} };
+    },
+    stop() { window.mapleDeck.stopCapture(); }
   };
 }
 

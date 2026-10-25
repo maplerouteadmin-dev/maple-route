@@ -25,7 +25,7 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - [What it does](#what-it-does)
 - [What it never does](#what-it-never-does)
 - [Setup](#setup)
-- [Steam Deck / Linux](#steam-deck--linux)
+- [Steam Deck (beta)](#steam-deck-beta)
 - [Using it](#using-it)
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
@@ -35,20 +35,44 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - [Data and credits](#data-and-credits)
 - [Feedback](#feedback)
 
-## Steam Deck / Linux
+## Steam Deck (beta)
 
-The Linux AppImage is an **unverified Desktop Mode preview**. It uses the same route and screen-reader code as Windows, but needs a real Steam Deck test before anyone should rely on its map reads. It does not hook MapleStory or press buttons for you.
+Play in **Gaming Mode** with a small Maple Route map over the game and the full app on your phone. This is a
+**beta**: it has been tested on one Steam Deck with MapleStory Classic World running through Proton.
 
-After an AppImage has been attached to an approved GitHub release:
+**Set it up once (about two minutes):**
 
-1. Switch the Deck to Desktop Mode and download the `Maple-Route-*-linux-x64.AppImage` file from that release.
-2. In a terminal, run `chmod +x` on the downloaded AppImage, then open it. You may optionally add that AppImage as a non-Steam game in Steam's Desktop Mode Library.
-3. Start MapleStory Classic World through Proton at 1280×800. In Maple Route, choose **Start live GPS** and select the MapleStory window in the screen-sharing picker. You must grant the share yourself; nothing reads the game until you do.
-4. Use **Compact mode** to keep a small, resizable, always-on-top directions/map/checklist window in a corner. Use **Full view** or Ctrl+Shift+C to switch back.
+1. Switch the Deck to **Desktop Mode** (Steam button → Power → Switch to Desktop).
+2. Download **`Maple-Route-…-linux-x86_64.AppImage`** from the
+   [latest release](https://github.com/maplerouteadmin-dev/maple-route/releases) (it is in the release's
+   *Assets*).
+3. In the Downloads folder, right-click the file → **Properties → Permissions → Is executable**, then
+   double-click it.
+4. Maple Route asks **"Use Maple Route in Gaming Mode?"** → press **Set up Gaming Mode**. That is all
+   (no terminal, no admin password).
+5. Go back to **Gaming Mode** and start MapleStory as usual.
 
-Voice is enabled by default. If Electron has no built-in Linux voice, install `espeak-ng` or `speech-dispatcher` for the fallback. The OSMS map/image cache is kept at `~/.local/share/MapleRoute/cache` (or `$XDG_DATA_HOME/MapleRoute/cache`); no third-party map dataset is bundled. The existing Windows browser + shortcut setup is unchanged.
+**Playing:**
 
-KDE Wayland, X11, Proton window capture, 1280×800 OCR, and Gaming Mode remain device test gates. Gaming Mode capture and Decky are **not shipped**; see [Steam Deck investigation](docs/STEAM_DECK.md). If the picker shows no live game window, do not assume GPS has a reliable position; use the manual map selector until a private Deck screenshot can be tested.
+- While MapleStory is open, a small box appears in the **bottom-left corner** of the game. The first time
+  it shows a **QR code**: scan it with your phone (on the same Wi-Fi as the Deck) and press
+  **Start reading**. From then on Maple Route reads the game by itself whenever MapleStory is open.
+- The box then shows the map around you, your dot, the next exit and the route line, plus what to do on
+  the map you are on. Move it to another corner from your phone.
+- Your phone has the whole app: directions, the map, **Do all quests together** with its checklist,
+  **Next step ✓**, and every setting. Bookmark the page; the link keeps working on your Wi-Fi.
+- **Stop** on your phone stops reading until you press Start again. When you close MapleStory, the box
+  goes away and reading stops.
+
+**How it reads the game:** in Gaming Mode it reads the Deck's screen the same way Steam's own game
+recording does. It never reads game memory, never presses anything, and never touches the game or its
+connection. The phone page only works on your home network and needs the secret in its link.
+
+**To remove it:** open the AppImage in Desktop Mode → menu **Maple Route → Remove Gaming Mode service**.
+
+In Desktop Mode you can also just use the AppImage as a normal window: press **Start live GPS** and pick
+the MapleStory window. Voice uses `espeak-ng`, which SteamOS already has. Details and what was tested:
+[Steam Deck notes](docs/STEAM_DECK.md).
 
 ## What it does
 

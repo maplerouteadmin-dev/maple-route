@@ -1,10 +1,22 @@
 # Changelog
 
-## 1.1.0 (unreleased)
+## 1.1.0-beta.1
 
-- Added an Electron/Linux AppImage wrapper around the same `src/` app, with user-selected screen capture, a compact always-on-top Live GPS window, and a Linux speech fallback.
-- The production relay remains loopback-only and caches OSMS files in the Linux user data directory. Windows serving and shortcut behavior are unchanged.
-- Added Linux packaging workflow and Steam Deck Desktop Mode instructions. Hardware capture, 1280×800 OCR, and Gaming Mode are still unverified; no release has been published.
+**Steam Deck beta.** Play in Gaming Mode with a small Maple Route map over the game and the whole app on your phone. Setup and use: see **Steam Deck (beta)** in the README. Download `Maple-Route-1.1.0-beta.1-linux-x86_64.AppImage` below (in Desktop Mode), make it executable, open it and press **Set up Gaming Mode**.
+
+### Steam Deck
+- Reads the game in Gaming Mode the way Steam's own recording does (gamescope's screen stream); never touches the game.
+- A small map box over the game (bottom-left by default; move it from your phone), following your dot with the route line and what to do on this map. It only shows while MapleStory is open.
+- Your phone is the second screen: scan the QR code in the box, press Start reading. The whole app works from the phone, and the link keeps working on your Wi-Fi. The phone screen stays on.
+- Starts with Gaming Mode, waits for MapleStory, resumes reading after the game or Gaming Mode restarts, and keeps your progress through restarts.
+- One-click setup from the AppImage, no terminal or admin password.
+
+### Everyone
+- "On this map" line: what to collect or kill on the map you are on, with counts.
+- **Next step ✓** marks the current step of your plan done (Undo brings it back).
+- Quest items from breakable objects are planned: Plant Samples come from Ellinia Flowers (The Forest North of Ellinia has 24).
+
+Tested on one Steam Deck (SteamOS, MapleStory Classic World through Proton). Please report problems with the Report button.
 
 ## 1.0.18
 

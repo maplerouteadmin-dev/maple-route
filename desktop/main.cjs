@@ -3,6 +3,20 @@
 const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, session } = require('electron');
 const { join } = require('node:path');
 const { spawn } = require('node:child_process');
+const { readFileSync } = require('node:fs');
+const { DeckStream } = require('./deck-stream.cjs');
+const { overlayBounds } = require('./deck-overlay.cjs');
+
+const deckMode = process.platform === 'linux' && process.argv.includes('--deck-service');
+if (deckMode) {
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+  // The pop-up is a see-through full-screen window (gamescope pins overlays to the top-left); on X11
+  // Chromium only makes windows see-through with this.
+  app.commandLine.appendSwitch('enable-transparent-visuals');
+  // GPU drawing only keeps transparency when Chromium detects a desktop compositor, which it may not
+  // inside gamescope; software drawing hands the alpha channel straight to the window.
+  app.commandLine.appendSwitch('disable-gpu');
+}
 
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
@@ -15,6 +29,37 @@ let localOrigin;
 let compact = false;
 let normalBounds;
 let speaking;
+let phone;
+let deckApi;
+let deckSummary = { map: null, destination: null, next: null, quest: null };
+let overlayWindow;
+let overlayPosition = 'bottom-left';
+let overlayWanted = true;
+let overlaySnapshot = null;
+const deckStream = deckMode ? new DeckStream(status => {
+  mainWindow?.webContents?.send('deck:status', status);
+  phone?.publish({ status });
+  showPairing();
+}) : null;
+// Until the game is being read, the pop-up shows the phone's QR code (the only way to find the link
+// in Gaming Mode); once reading, it shows the mini GPS.
+// "Keep reading": once you press Start, Maple Route resumes by itself after the game or Gaming Mode
+// restarts (the service restarts with it). Only an explicit Stop clears it.
+const readingFlag = () => join(app.getPath('userData'), 'keep-reading');
+function setKeepReading(on) {
+  try { if (on) require('node:fs').writeFileSync(readingFlag(), '1'); else require('node:fs').rmSync(readingFlag(), { force: true }); } catch { /* best effort */ }
+}
+const keepReading = () => { try { return require('node:fs').existsSync(readingFlag()); } catch { return false; } };
+function explicitStop() { setKeepReading(false); deckStream.stop(); mainWindow.webContents.send('deck:phone-stop'); }
+function placeOverlayBox(window, position) {
+  const b = overlayBounds(position);
+  window.webContents.executeJavaScript(`window.placeMapleBox(${JSON.stringify({ x: 0, y: 0, width: b.width, height: b.height })})`).catch(() => {});
+}
+function showPairing() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const svg = phone?.qr && deckStream?.status().state !== 'reading' ? phone.qr : '';
+  overlayWindow.webContents.executeJavaScript(`window.setMaplePairing(${JSON.stringify(svg)})`).catch(() => {});
+}
 
 function isLocalRequest(contents) {
   return contents === mainWindow?.webContents && contents.getURL().startsWith(localOrigin + '/');
@@ -51,6 +96,70 @@ function setCompact(value) {
   }
   mainWindow.webContents.send('desktop:compact-changed', compact);
   return compact;
+}
+
+// The pop-up over the game. gamescope shows "external overlay" windows full-screen from the top-left
+// and Chromium cannot make its windows see-through there, so the map box is drawn in a hidden
+// offscreen window and its picture handed to a small GTK helper (deck-overlay-gtk.py) that paints it,
+// see-through around it, in the chosen corner. Clicks pass through to the game.
+let overlayHelper = null;
+function overlayToHelper(message) {
+  if (overlayHelper?.stdin?.writable) overlayHelper.stdin.write(JSON.stringify(message) + String.fromCharCode(10));
+}
+async function setDeckOverlay(enabled, position = 'bottom-left', { remember = true } = {}) {
+  if (!deckMode) return false;
+  if (remember) overlayWanted = Boolean(enabled);
+  overlayPosition = position;
+  const bounds = overlayBounds(position);
+  if (!enabled) {
+    overlayToHelper({ hide: true }); overlayHelper?.kill(); overlayHelper = null;
+    overlayWindow?.destroy(); overlayWindow = null;
+    phone?.publish({ overlay: false, overlayPosition });
+    return false;
+  }
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.setSize(bounds.width, bounds.height);
+    placeOverlayBox(overlayWindow, position);
+    overlayToHelper({ x: bounds.x, y: bounds.y });
+    phone?.publish({ overlay: true, overlayPosition });
+    return true;
+  }
+  const window = new BrowserWindow({
+    width: bounds.width, height: bounds.height, show: false, frame: false, resizable: false,
+    focusable: false, skipTaskbar: true, backgroundColor: '#102c24', title: 'Maple Route mini GPS',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, offscreen: true }
+  });
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // The app's own stylesheet, so the map looks like the phone's (route line, coloured exits, you).
+  const cssName = require('node:fs').readdirSync(join(__dirname, '..', 'dist', 'assets')).find(name => /^index-[\w-]+\.css$/.test(name));
+  const html = readFileSync(join(__dirname, 'overlay.html'), 'utf8').replace('__BASE__', localOrigin + '/').replace('__CSS__', cssName ? `assets/${cssName}` : '');
+  try {
+    await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    overlayHelper = spawn('python3', [join(__dirname, 'deck-overlay-gtk.py')], { stdio: ['pipe', 'ignore', 'pipe'], env: process.env });
+    overlayHelper.on('exit', () => { overlayHelper = null; });
+    overlayHelper.stdin.on('error', () => {});
+    overlayWindow = window;
+    window.on('closed', () => { if (overlayWindow === window) overlayWindow = null; });
+    // Hand over a new picture at most twice a second, only when the box changed.
+    window.webContents.setFrameRate(2);
+    let lastSent = '';
+    window.webContents.on('paint', (_event, _dirty, image) => {
+      const png = image.toPNG().toString('base64');
+      if (png === lastSent) return;
+      lastSent = png;
+      const b = overlayBounds(overlayPosition);
+      overlayToHelper({ x: b.x, y: b.y, png });
+    });
+    placeOverlayBox(window, position);
+    if (overlaySnapshot) await window.webContents.executeJavaScript(`window.setMapleOverlay(${JSON.stringify(overlaySnapshot)})`);
+    showPairing();
+    phone?.publish({ overlay: true, overlayPosition, overlayError: null });
+    return true;
+  } catch (error) {
+    window.destroy(); overlayHelper?.kill(); overlayHelper = null;
+    phone?.publish({ overlay: false, overlayPosition, overlayError: error.message });
+    return false;
+  }
 }
 
 async function speakWithFallback(text, rate) {
@@ -91,13 +200,57 @@ async function start() {
 
   ipcMain.handle('desktop:compact', (event, value) => isLocalRequest(event.sender) ? setCompact(value) : false);
   ipcMain.handle('desktop:voice', (event, words, rate) => isLocalRequest(event.sender) ? speakWithFallback(words, rate) : false);
+  if (deckMode) {
+    // A copy of the app's saved progress (plan, ticks, settings), written to a file right away.
+    const storageFile = join(app.getPath('userData'), 'progress.json');
+    ipcMain.on('deck:storage-load', event => {
+      try { event.returnValue = JSON.parse(readFileSync(storageFile, 'utf8')); } catch { event.returnValue = null; }
+    });
+    ipcMain.on('deck:storage-save', (event, values) => {
+      if (!isLocalRequest(event.sender) || !values || typeof values !== 'object') return;
+      const clean = Object.fromEntries(Object.entries(values).filter(([k, v]) => k.startsWith('maple-route') && typeof v === 'string' && v.length < 2_000_000));
+      const fs = require('node:fs');
+      try { fs.writeFileSync(storageFile + '.tmp', JSON.stringify(clean)); fs.renameSync(storageFile + '.tmp', storageFile); } catch { /* try again next time */ }
+    });
+    ipcMain.on('deck:summary', (event, summary) => {
+      if (!isLocalRequest(event.sender) || !summary || typeof summary !== 'object') return;
+      deckSummary = Object.fromEntries(['map', 'destination', 'next', 'quest'].map(key => [key, String(summary[key] ?? '').slice(0, 180)]));
+    });
+    ipcMain.on('deck:overlay-update', (event, snapshot) => {
+      if (!isLocalRequest(event.sender) || typeof snapshot?.next !== 'string' || typeof snapshot?.map !== 'string' || snapshot.map.length > 500_000) return;
+      overlaySnapshot = snapshot;
+      if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.webContents.executeJavaScript(`window.setMapleOverlay(${JSON.stringify(snapshot)})`).catch(() => {});
+    });
+    ipcMain.on('deck:publish', (event, snapshot) => {
+      if (!isLocalRequest(event.sender) || typeof snapshot?.html !== 'string' || snapshot.html.length > 2_000_000) return;
+      phone?.publish({ html: snapshot.html, bodyClass: String(snapshot.bodyClass ?? '').slice(0, 200) });
+    });
+    ipcMain.handle('deck:start-capture', async event => {
+      if (!isLocalRequest(event.sender)) return { state: 'off', error: 'Not authorized' };
+      try { await deckStream.start(); setKeepReading(true); } catch (error) { deckStream.error = error.message; deckStream.stop(); }
+      return deckStream.status();
+    });
+    ipcMain.handle('deck:stop-capture', event => {
+      if (!isLocalRequest(event.sender)) return false;
+      deckStream.stop(); return true;
+    });
+    ipcMain.handle('deck:frame', event => {
+      if (!isLocalRequest(event.sender)) return null;
+      const frame = deckStream.frame;
+      return frame ? { width: frame.width, height: frame.height, pixels: frame.pixels } : null;
+    });
+    ipcMain.handle('deck:status', event => isLocalRequest(event.sender) ? deckStream.status() : { state: 'off' });
+  }
 
   mainWindow = new BrowserWindow({
     width: 1050, height: 760, minWidth: 600, minHeight: 500,
+    show: !deckMode,
     title: 'Maple Route', backgroundColor: '#f7f8f2',
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
-      contextIsolation: true, nodeIntegration: false, sandbox: true
+      contextIsolation: true, nodeIntegration: false, sandbox: true,
+      backgroundThrottling: !deckMode,
+      additionalArguments: deckMode ? ['--maple-deck'] : []
     }
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -106,8 +259,74 @@ async function start() {
   });
   mainWindow.webContents.on('did-finish-load', () => mainWindow.webContents.send('desktop:compact-changed', compact));
   await mainWindow.loadURL(localOrigin + '/#navigate');
+  if (deckMode) {
+    const { startDeckApi } = require('./deck-api.cjs');
+    deckApi = await startDeckApi({
+      status: () => ({ ...deckStream.status(), ...deckSummary, phoneUrl: phone?.url ?? null,
+        qr: phone?.qr ?? null, overlay: Boolean(overlayWindow && !overlayWindow.isDestroyed()), overlayPosition }),
+      start: () => mainWindow.webContents.send('deck:phone-start'),
+      stop: explicitStop,
+      overlay: setDeckOverlay
+    });
+  }
+  if (deckMode && process.argv.includes('--lan')) {
+    try {
+      const { startPhoneServer } = require('./phone-server.cjs');
+      const tokenFile = join(app.getPath('userData'), 'phone-token');
+      let token = null; try { token = readFileSync(tokenFile, 'utf8').trim(); } catch { /* first run */ }
+      phone = await startPhoneServer({
+        localOrigin, token,
+        onAction: action => mainWindow.webContents.send('deck:phone-action', action),
+        onStart: () => mainWindow.webContents.send('deck:phone-start'),
+        onStop: explicitStop,
+        onOverlay: (enabled, position) => setDeckOverlay(enabled, position)
+      });
+      try { require('node:fs').writeFileSync(tokenFile, phone.token, { mode: 0o600 }); } catch { /* a new link next time */ }
+      phone.publish({ status: deckStream.status() });
+      console.log(`Maple Route phone: ${phone.url}`);
+    } catch (error) { console.error(`Phone sharing stayed off: ${error.message}`); }
+  }
+  if (deckMode) {
+    // Follow MapleStory: while it is open, show the pop-up and (if you pressed Start before) read it;
+    // when it closes, stop reading and hide the pop-up, so nothing shows over other games.
+    const { mapleRunning } = require('./game-watch.cjs');
+    let gameOpen = null;
+    const follow = async () => {
+      const open = mapleRunning();
+      if (open !== gameOpen) {
+        gameOpen = open;
+        phone?.publish({ game: open });
+        if (open) { if (overlayWanted) await setDeckOverlay(true, overlayPosition); }
+        else { deckStream.stop(); mainWindow.webContents.send('deck:phone-stop'); await setDeckOverlay(false, overlayPosition, { remember: false }); }
+      }
+      if (open && keepReading() && deckStream.status().state === 'off') mainWindow.webContents.send('deck:phone-start');
+    };
+    setTimeout(follow, 3000);
+    setInterval(follow, 5000).unref();
+  }
+  // Steam Deck: offer the one-click Gaming Mode setup the first time the AppImage is opened in
+  // Desktop Mode (and from the menu any time).
+  const gaming = require('./gaming-mode.cjs');
+  const setUpGamingMode = async (asked = false) => {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'question', title: 'Steam Deck Gaming Mode', buttons: ['Set up Gaming Mode', 'Not now'], defaultId: 0, cancelId: 1, noLink: true,
+      message: 'Use Maple Route in Gaming Mode?',
+      detail: "Maple Route will start by itself in Gaming Mode and wait for MapleStory. While the game is open it shows a small map in a corner and reads your screen (like Steam's own recording; it never touches the game). Scan its QR code with your phone for the full app." + (asked ? '' : ' You can do this later from the Maple Route menu.')
+    });
+    if (response !== 0) return;
+    try {
+      const where = gaming.install();
+      await dialog.showMessageBox(mainWindow, { type: 'info', title: 'Gaming Mode is set up', message: 'Done. Switch to Gaming Mode and start MapleStory.', detail: `Maple Route was copied to ${where} and starts with Gaming Mode. A small pop-up with a QR code appears in the bottom-left corner while MapleStory is open: scan it with your phone (same Wi-Fi) and press Start reading.` });
+    } catch (error) { dialog.showErrorBox('Gaming Mode setup failed', String(error?.message ?? error)); }
+  };
+  if (!deckMode && process.platform === 'linux' && process.env.APPIMAGE && !gaming.installed()) setTimeout(() => setUpGamingMode(false), 1500);
   const menu = Menu.buildFromTemplate([
-    { label: 'Maple Route', submenu: [{ role: 'quit' }] },
+    { label: 'Maple Route', submenu: [
+      ...(process.platform === 'linux' ? [
+        { label: 'Set up Steam Deck Gaming Mode…', click: () => setUpGamingMode(true) },
+        { label: 'Remove Gaming Mode service', click: () => { gaming.remove(); dialog.showMessageBox(mainWindow, { type: 'info', message: 'Maple Route will no longer start in Gaming Mode.' }); } },
+        { type: 'separator' }] : []),
+      { role: 'quit' }] },
     { label: 'View', submenu: [
       { label: 'Compact Mode', accelerator: 'CommandOrControl+Shift+C', click: () => setCompact(!compact) },
       { role: 'reload' }, { role: 'togglefullscreen' }
@@ -121,4 +340,6 @@ app.whenReady().then(start).catch(error => {
   app.quit();
 });
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { speaking?.kill(); localServer?.close(); });
+// Stopped by the service manager: close properly so nothing is lost.
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => app.quit());
+app.on('before-quit', () => { speaking?.kill(); deckStream?.stop(); overlayHelper?.kill(); overlayWindow?.destroy(); deckApi?.close(); phone?.server?.close(); localServer?.close(); });
