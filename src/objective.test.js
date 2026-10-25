@@ -207,3 +207,22 @@ test('maps no portal leads into are never hunting stops (Pig Town)', async () =>
   ] });
   assert.deepEqual([...goalSpawns(world, { name: "Pig's Ribbon", need: 30, monsters: ['Ribbon Pig'] }).keys()], ['park']);
 });
+
+test('needs from the same monster hunt on the same map (Axe Stump kills and Plant Fossils)', async () => {
+  const { planMultiTrip } = await import('./objective.js');
+  // 'few' (where you are): 7 Axe Stumps alive, enough for 12 fossils but not for 25 kills.
+  // 'many': 10 alive, good for both, but 10 maps away. Before, the fossils went to 'few' and the kills to 'many'.
+  const road = Array.from({ length: 9 }, (_, i) => ({ id: `r${i}`, name: `Road ${i}` }));
+  const chain = ['few', ...road.map(r => r.id), 'many'];
+  const portals = chain.slice(1).flatMap((to, i) => [{ from: chain[i], to, name: `p${i}`, cost: 1 }, { from: to, to: chain[i], name: `q${i}`, cost: 1 }]);
+  const world = validateDataset({ schemaVersion: 1, maps: [{ id: 'few', name: 'Few', capacity: 7 }, { id: 'many', name: 'Many', capacity: 10 }, ...road], portals, targets: [
+    { id: 's', name: 'Axe Stump', kind: 'mob', locations: [{ mapId: 'few', count: 7 }, { mapId: 'many', count: 10 }] }
+  ] });
+  const goals = [
+    { name: 'Axe Stump', kind: 'kill', need: 25, have: 0, monsters: ['Axe Stump'], quests: ['Searching for Fossils'] },
+    { name: 'Plant Fossil', kind: 'collect', need: 12, have: 0, monsters: ['Axe Stump'], quests: ['Searching for Fossils'] }
+  ];
+  const hunts = planMultiTrip(world, goals, 'few').order.filter(step => step.type === 'hunt');
+  assert.equal(hunts.length, 1);
+  assert.deepEqual(hunts[0].goals.sort(), ['Axe Stump', 'Plant Fossil']);
+});

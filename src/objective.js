@@ -142,6 +142,7 @@ export function hops(data, from, to) {
 // has it all, or one stop per need in the best order (Stumps on one map, then Orange Mushrooms on
 // another, then Casey). Scored by spawns of the wanted monsters minus every hop of the whole trip.
 export function planHuntTrip(data, goals, currentMapId = null, endMapId = null, { via = [] } = {}) {
+  goals = shareMonsterThresholds(goals);
   const active = goals.filter(g => g.monsters?.length).slice(0, 3);
   if (!active.length) return null;
   const spawnsOn = (goal, mapId) => goalSpawns(data, goal).get(mapId) ?? 0;
@@ -179,7 +180,24 @@ export function planHuntTrip(data, goals, currentMapId = null, endMapId = null, 
 // A map is only worth hunting on if the monster spawns there often enough for what is still needed:
 // 25 Green Mushrooms cannot be done on a map with 2 of them. Fewest spawns: 8 when 20+ are left, 6 for
 // 10+, 4 for 4+, else 2. If no map anywhere has that many (a rare monster), the best maps still count.
+// Needs met by the same monster ("Defeat 25 Axe Stump" and "12 Plant Fossil", which only Axe Stumps
+// drop) must hunt on the same maps: they share the strictest "enough alive at once" threshold, so a
+// map good enough for one is good enough for both. Goals sharing any monster form one group.
+export function shareMonsterThresholds(goals) {
+  const groups = [];
+  for (const goal of goals) {
+    const names = new Set((goal.monsters ?? []).map(normalize));
+    const touching = groups.filter(g => [...names].some(n => g.names.has(n)));
+    const merged = { names: new Set([...names, ...touching.flatMap(g => [...g.names])]), goals: [goal, ...touching.flatMap(g => g.goals)] };
+    for (const g of touching) groups.splice(groups.indexOf(g), 1);
+    groups.push(merged);
+  }
+  const strictest = new Map();
+  for (const group of groups) { const min = Math.max(...group.goals.map(minSpawns)); for (const goal of group.goals) strictest.set(goal, min); }
+  return goals.map(goal => goal.monsters?.length && strictest.get(goal) !== minSpawns(goal) ? { ...goal, minAlive: strictest.get(goal) } : goal);
+}
 export function minSpawns(goal) {
+  if (Number.isFinite(goal?.minAlive)) return goal.minAlive;
   const left = Math.max(1, (goal?.need ?? 1) - (goal?.have ?? 0));
   return left >= 20 ? 8 : left >= 10 ? 6 : left >= 4 ? 4 : 2;
 }
@@ -218,6 +236,7 @@ export function goalSpawns(data, goal) {
 // Maps ranked by how much of the remaining work they cover (listed spawns of useful monsters),
 // lightly penalised by distance. Maps with too few of a goal's monsters do not count for it.
 export function rankObjectiveMaps(data, goals, currentMapId = null) {
+  goals = shareMonsterThresholds(goals);
   const scores = new Map();
   for (const goal of goals) for (const name of goal.monsters) {
     const mob = mobByName(data, name), usable = goalSpawns(data, goal);
@@ -248,6 +267,7 @@ export function rankObjectiveMaps(data, goals, currentMapId = null) {
 // hand-in comes after it.
 // Returns { order: [{ type: 'hunt'|'craft'|'handin', mapId, … }], stops, via, ends, hops, missing }.
 export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { via = [], starts = [] } = {}) {
+  goals = shareMonsterThresholds(goals);
   const active = goals.filter(g => g.monsters?.length);
   if (!active.length && !starts.length && !handIns.length && !goals.some(g => g.kind === 'buy')) return null;
   const ends = handIns.map(h => typeof h === 'string' ? { mapId: h, quests: [] } : h).filter(h => h.mapId);

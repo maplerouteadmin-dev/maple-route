@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.14
+
+- Needs from the same monster are hunted on the same map: Searching for Fossils' Axe Stump kills and Plant Fossils (which only Axe Stumps drop) no longer get split across two maps.
+
 ## 1.0.13
 
 - EXP per hour sits on the "On <map>" line of the Live GPS page (EXP %, EXP/h, %/h and time to level) with a reset button to start counting again from now.
