@@ -72,6 +72,9 @@ async function startPhoneServer({ localOrigin, port = 5178, onAction, onStart, o
     if (req.method === 'GET' && request.pathname === '/phone.js') {
       res.setHeader('content-type', 'text/javascript; charset=utf-8'); res.end(await readFile(join(__dirname, 'phone.js'))); return;
     }
+    if (req.method === 'GET' && request.pathname === '/map-follow.mjs') {
+      res.setHeader('content-type', 'text/javascript; charset=utf-8'); res.end(await readFile(join(__dirname, 'map-follow.mjs'))); return;
+    }
     // A 1.7 KB silent blank video looped by the page keeps the phone screen on (the Wake Lock API needs https).
     if (req.method === 'GET' && request.pathname === '/keepawake.mp4') {
       res.setHeader('content-type', 'video/mp4'); res.end(await readFile(join(__dirname, 'keepawake.mp4'))); return;

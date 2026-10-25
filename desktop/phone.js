@@ -1,12 +1,40 @@
 // The phone displays the Deck-hosted app UI. Every action goes back to the
 // Deck; this page has no separate quest/route state and never receives pixels.
 const app = document.querySelector('#app');
+let scrollCalculator;
+import('/map-follow.mjs').then(module => { scrollCalculator = module.centeredScroll; followMap(); }).catch(() => {});
 const statusText = document.querySelector('#phone-status');
 const disconnected = document.querySelector('#phone-disconnected');
 let voice = false;
 let lastWords = '';
 let wakeLock;
 let currentHtml = '';
+let mapUserAt = 0;
+app.addEventListener('wheel', event => { if (event.target.closest('#mapview .mv-picture')) mapUserAt = Date.now(); }, { passive: true });
+for (const type of ['pointerdown', 'touchstart', 'keydown'])
+  app.addEventListener(type, event => { if (event.target.closest('#mapview .mv-picture')) mapUserAt = Date.now(); }, { passive: true });
+
+function followMap(previous = null) {
+  const box = app.querySelector('#mapview .mv-picture');
+  const drawing = box?.querySelector('svg');
+  if (!box || !drawing || !scrollCalculator) return;
+  if (Date.now() - mapUserAt < 5000) {
+    if (previous && previous.map === app.querySelector('#mapview')?.dataset.map) {
+      box.scrollLeft = previous.left; box.scrollTop = previous.top;
+    }
+    return;
+  }
+  const marker = drawing.querySelector('.mv-player circle') ?? drawing.querySelector('.mv-next circle');
+  const viewBox = drawing.viewBox?.baseVal;
+  if (!marker || !viewBox) return;
+  const position = scrollCalculator({
+    x: Number(marker.getAttribute('cx')), y: Number(marker.getAttribute('cy')),
+    svgWidth: drawing.clientWidth, svgHeight: drawing.clientHeight,
+    viewBoxWidth: viewBox.width, viewBoxHeight: viewBox.height,
+    viewportWidth: box.clientWidth, viewportHeight: box.clientHeight
+  });
+  if (position) { box.scrollLeft = position.left; box.scrollTop = position.top; }
+}
 
 async function action(endpoint, value) {
   const response = await fetch(endpoint, {
@@ -59,13 +87,18 @@ function applySnapshot(snapshot) {
     status.state === 'starting' ? 'Starting the screen reader…' : 'Reader off';
   document.querySelector('#phone-overlay').textContent = snapshot.overlay ? 'Pop-up on' : 'Pop-up off';
   document.querySelector('#phone-position').value = snapshot.overlayPosition ?? 'bottom-left';
+  document.body.className = snapshot.bodyClass ?? '';
   if (!snapshot.html || snapshot.html === currentHtml) return;
+  const previousBox = app.querySelector('#mapview .mv-picture');
+  const previousMap = app.querySelector('#mapview')?.dataset.map;
+  const previous = previousBox ? { map: previousMap, left: previousBox.scrollLeft, top: previousBox.scrollTop } : null;
   const focused = document.activeElement;
   const focusPath = app.contains(focused) ? pathFor(focused) : null;
   const selection = focusPath && 'selectionStart' in focused ? [focused.selectionStart, focused.selectionEnd] : null;
   currentHtml = snapshot.html;
   app.innerHTML = currentHtml;
-  document.body.className = snapshot.bodyClass ?? '';
+  requestAnimationFrame(() => followMap(previous));
+  setTimeout(() => followMap(), 150);
   if (focusPath) {
     let replacement = app;
     for (const index of focusPath) replacement = replacement?.children[index];

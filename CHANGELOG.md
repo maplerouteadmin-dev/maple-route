@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.9
+
+- Steam Deck: the phone map follows the character, using the phone's own map viewport. Manually panning pauses following for five seconds. The game pop-up is unchanged.
+
 ## 1.1.0-beta.8
 
 - Steam Deck: natural voices with Piper, running on the Deck (Kristin, Joe, Alba, Northern English Male; picked in Settings → Voice). Downloads once in the background (about 90 MB); the basic voice speaks until it's ready.
