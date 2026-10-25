@@ -141,4 +141,6 @@ body.gps-page #mapview-note{line-height:1.3}
 .market-alerts ul{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:6px}
 .market-alerts li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;align-items:center;font-size:.86rem}
 .market-alerts .alert-accepted{font-weight:700;color:#1c6247}
+.all-checklist{margin-top:6px}.all-checklist summary{cursor:pointer;font-weight:700;color:#18573f;font-size:.86rem}
+.all-checklist .need-list{list-style:none;padding:0 0 0 6px;margin:2px 0 6px}.all-checklist .need-list li.done{opacity:.6;text-decoration:line-through}
 

@@ -2998,10 +2998,12 @@ function allQuestsTrip() {
     if (!quest || state.questsFinished?.includes?.(name)) continue;
     const helper = (state.hud.quests ?? []).find(q => q.name === name);
     let goals;
-    if (name === state.guide.quest) goals = huntOptions(guideSteps())?.goals ?? [];
+    const ticked = new Set((state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))));
+    const isTicked = goal => ticked.has(normalize(goal.name)) || (goal.craft && ticked.has(normalize(goal.craft.item)));
+    if (name === state.guide.quest) goals = (huntOptions(guideSteps())?.goals ?? []).filter(goal => !isTicked(goal));
     else {
       if (!quest.needs?.length) continue;
-      const progress = quest.needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: seen?.have ?? 0, need: seen?.need ?? n.count, done: Boolean(seen && believableDone(seen)) }; });
+      const progress = quest.needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: seen?.have ?? 0, need: seen?.need ?? n.count, done: Boolean(seen && believableDone(seen)) || ticked.has(normalize(n.name)) }; });
       goals = huntGoals(state.data, progress, state.itemSources, quest.text, quest.needs.map(n => n.name), state.crafting);
       loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
     }
@@ -3018,9 +3020,27 @@ function allQuestsTrip() {
   if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()].map(mapId => ({ mapId, quests: endQuests.get(mapId) ?? [] })), { via: craftStops(state.data, goals) }) };
   return { goals, ends, quests: names, trip: state.allTripCache.trip };
 }
+// Every hunting and collecting need of every quest in the trip, with Quest Helper counts; tick one
+// off by hand and it drops out of the trip (counts the Quest Helper shows as done are ticked for you).
+function allChecklistHtml(all) {
+  const rows = all.quests.map(name => {
+    const quest = state.quests.find(q => q.name === name); if (!quest?.needs?.length) return '';
+    const helper = (state.hud.quests ?? []).find(q => q.name === name);
+    const ticked = new Set((state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))));
+    const items = quest.needs.map(need => {
+      const seen = matchCount(helper?.progress, need.name), auto = Boolean(seen && believableDone(seen)), done = auto || ticked.has(normalize(need.name));
+      const goal = all.goals.find(g => normalize(g.name) === normalize(need.name) || normalize(g.craft?.item ?? '') === normalize(need.name));
+      const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.given ? 'from an NPC' : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `from ${goal.monsters.slice(0, 2).join(', ')}${goal.guess ? ' (best guess)' : ''}` : '';
+      const count = seen ? `${seen.have ?? '?'}/${seen.need ?? need.count}` : `0/${need.count}`;
+      return `<li class="${done ? 'done' : ''}"><label><input type="checkbox" data-need-tick="${esc(name)}" data-need="${esc(need.name)}"${done ? ' checked' : ''}${auto ? ' disabled title="Done, says your Quest Helper"' : ''}> ${esc(need.name)} <small>${count}${where ? ` · ${esc(where)}` : ''}</small></label></li>`;
+    }).join('');
+    return `<li><strong>${esc(quest.arc && normalize(quest.arc) !== normalize(name) ? `${quest.arc} · ${name}` : name)}</strong><ul class="need-list">${items}</ul></li>`;
+  }).join('');
+  return rows ? `<details class="all-checklist" open><summary>Checklist (tick what you've done)</summary><ul class="live-steps">${rows}</ul></details>` : '';
+}
 function allTripHtml(all) {
   const trip = all?.trip;
-  if (!trip) return `<p class="fine">${all?.goals.some(g => g.pending) ? 'Looking up which monsters drop what you need…' : 'Nothing to hunt for your other quests right now.'}</p>`;
+  if (!trip) return `<p class="fine">${all?.goals.some(g => g.pending) ? 'Looking up which monsters drop what you need…' : 'Nothing left to hunt: hand your quests in.'}</p>${all ? allChecklistHtml(all) : ''}`;
   const npcsAt = mapId => [...new Set(all.ends.get(mapId) ?? [])].join(', ');
   const parts = [
     // In the order you go: hunting maps, each quest's hand-in as soon as it is done (when close), crafters.
@@ -3029,7 +3049,7 @@ function allTripHtml(all) {
       : `${esc(npcsAt(step.mapId) || mapById(step.mapId)?.name || '?')} <small>(hand in${step.quests?.length ? `: ${esc(step.quests.join(', '))}` : ''}${step.noRoute ? '; no walking route there' : ''})</small>`)
   ];
   const first = trip.stops[0]?.mapId;
-  return `<div class="fine hunt-trip"><strong>All quests trip:</strong> ${parts.join(' → ')} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${first && first !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(first)}">Go</button>` : ''}${trip.missing.length ? `<br><small>No known spot for: ${esc(trip.missing.join(', '))}</small>` : ''}</div>`;
+  return `<div class="fine hunt-trip"><strong>All quests trip:</strong> ${parts.join(' → ')} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${first && first !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(first)}">Go</button>` : ''}${trip.missing.length ? `<br><small>No known spot for: ${esc(trip.missing.join(', '))}</small>` : ''}</div>${allChecklistHtml(all)}`;
 }
 // Trade-chat adverts grouped under real item names (OCR slips split them otherwise), once the item
 // list has loaded (game items, plus the Market's list with cash items when it is open).
@@ -3377,6 +3397,12 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
     switchCharacter(name); return;
   }
   const dismiss = event.target.closest('[data-character-dismiss]'); if (dismiss) { state.characterDismissed = dismiss.dataset.characterDismiss; renderLive(); return; }
+  const needTick = event.target.closest('[data-need-tick]');
+  if (needTick) {
+    const quest = needTick.dataset.needTick, key = `need:${needTick.dataset.need}`, done = new Set(state.questDone[quest] ?? []);
+    if (needTick.checked) done.add(key); else done.delete(key);
+    state.questDone[quest] = [...done]; state.allTripCache = null; persist(); applyObjective(); renderLive(); return;
+  }
   const tripAll = event.target.closest('[data-trip-all]'); if (tripAll) { state.tripAll = tripAll.checked; state.allTripCache = null; saveLive(); applyObjective(); renderLive(); return; }
   const stepBox = event.target.closest('[data-step]'); if (stepBox) { toggleStep(Number(stepBox.dataset.step)); return; }
   const huntMap = event.target.closest('[data-hunt-map]'); if (huntMap) { state.guide.huntMap = huntMap.dataset.huntMap; applyObjective(); renderLive(); return; }
@@ -3466,7 +3492,7 @@ try {
   if (saved?.crop && [saved.crop.x, saved.crop.y, saved.crop.w, saved.crop.h].every(n => Number.isFinite(n) && n >= 0 && n <= 1) && saved.crop.x + saved.crop.w <= 1.001 && saved.crop.y + saved.crop.h <= 1.001) state.crop = saved.crop;
   $('#session-start-level').value = state.level; $('#session-end-level').value = state.level;
   populateMaps();
-  if (!legacy?.data || (state.data.source === 'https://osmsdataexplorer.com/' && (!state.data.targets.length || !state.data.portals.some(portal => portal.x !== null && portal.y !== null) || !state.data.portals.some(portal => portal.kind !== 'visible') || !state.data.portals.some(portal => portal.npc) || !state.data.portals.some(portal => portal.boat) || !state.data.maps.some(map => map.mobSpots?.length) || !state.data.maps.some(map => map.returnTo) || !state.data.maps.some(map => map.picture) || Date.now() - state.dataFetchedAt > 24 * 60 * 60 * 1000))) loadPublicData(true);
+  if (!legacy?.data || (state.data.source === 'https://osmsdataexplorer.com/' && (!state.data.targets.length || !state.data.portals.some(portal => portal.x !== null && portal.y !== null) || !state.data.portals.some(portal => portal.kind !== 'visible') || !state.data.portals.some(portal => portal.npc) || !state.data.portals.some(portal => portal.boat) || !state.data.maps.some(map => map.mobSpots?.length) || !state.data.maps.some(map => map.returnTo) || !state.data.maps.some(map => map.picture) || !state.data.maps.some(map => map.capacity) || Date.now() - state.dataFetchedAt > 24 * 60 * 60 * 1000))) loadPublicData(true);
 } catch { populateMaps(); loadPublicData(true); }
 bootstrapping = false;
 persist();
