@@ -1,0 +1,11 @@
+{
+  "name": "Maple Route",
+  "author": "Maple Route",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["maplestory", "gps", "quests"],
+    "description": "Maple Route in the Quick Access Menu: the next direction, what to do on this map, and Next step / Undo for your quest plan, without picking up your phone. Needs the Maple Route Steam Deck app.",
+    "image": ""
+  }
+}

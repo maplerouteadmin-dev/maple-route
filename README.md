@@ -64,6 +64,10 @@ Play in **Gaming Mode** with a small Maple Route map over the game and the full 
 - **Stop** on your phone stops reading until you press Start again. When you close MapleStory, the box
   goes away and reading stops.
 
+**Voice:** natural voices from [Piper](https://github.com/rhasspy/piper), running on the Deck (no internet while
+you play). It downloads once in the background, about 90 MB, the first time Maple Route runs; pick another voice
+in Settings → Voice. Until it's ready, the basic built-in voice (`espeak-ng`) speaks.
+
 **How it reads the game:** in Gaming Mode it reads the Deck's screen the same way Steam's own game
 recording does. It never reads game memory, never presses anything, and never touches the game or its
 connection. The phone page only works on your home network and needs the secret in its link.
@@ -71,7 +75,7 @@ connection. The phone page only works on your home network and needs the secret 
 **To remove it:** open the AppImage in Desktop Mode → menu **Maple Route → Remove Gaming Mode service**.
 
 In Desktop Mode you can also just use the AppImage as a normal window: press **Start live GPS** and pick
-the MapleStory window. Voice uses `espeak-ng`, which SteamOS already has. Details and what was tested:
+the MapleStory window. Details and what was tested:
 [Steam Deck notes](docs/STEAM_DECK.md).
 
 ## What it does
@@ -243,6 +247,10 @@ What that means for you:
 
 Because the wiki content is non-commercial, Maple Route is and stays free: no ads, no paid features.
 MapleStory is a trademark of NEXON. This project is not affiliated with NEXON.
+
+- **Voices on the Steam Deck:** [Piper](https://github.com/rhasspy/piper) (MIT) with voices from
+  [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices): Kristin (public domain), Joe (CC0),
+  Alba (CC BY 4.0) and Northern English Male (CC BY-SA 4.0). Downloaded on the Deck, not bundled.
 
 ## Feedback
 

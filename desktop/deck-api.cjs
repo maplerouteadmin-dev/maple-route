@@ -1,6 +1,6 @@
 const { createServer } = require('node:http');
 
-async function startDeckApi({ status, start, stop, overlay, port = 5179 }) {
+async function startDeckApi({ status, start, stop, overlay, nextStep = () => {}, undo = () => {}, port = 5179 }) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://127.0.0.1').pathname;
     res.setHeader('cache-control', 'no-store');
@@ -14,6 +14,9 @@ async function startDeckApi({ status, start, stop, overlay, port = 5179 }) {
     try {
       if (req.method === 'POST' && path === '/start') { start(); res.end(JSON.stringify({ ok: true })); return; }
       if (req.method === 'POST' && path === '/stop') { stop(); res.end(JSON.stringify({ ok: true })); return; }
+      // The Decky panel's Next step / Undo: the same as the buttons in the app.
+      if (req.method === 'POST' && path === '/next-step') { nextStep(); res.end(JSON.stringify({ ok: true })); return; }
+      if (req.method === 'POST' && path === '/undo') { undo(); res.end(JSON.stringify({ ok: true })); return; }
       if (req.method === 'POST' && path === '/overlay') {
         let body = '';
         for await (const chunk of req) { body += chunk; if (body.length > 1024) { res.writeHead(413); res.end('{}'); return; } }

@@ -3,7 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('mapleDesktop', {
   toggleCompact: value => ipcRenderer.invoke('desktop:compact', Boolean(value)),
   onCompactChange: callback => ipcRenderer.on('desktop:compact-changed', (_event, value) => callback(Boolean(value))),
-  speak: (words, rate) => ipcRenderer.invoke('desktop:voice', String(words), Number(rate) || 1)
+  speak: (words, rate, voice) => ipcRenderer.invoke('desktop:voice', String(words), Number(rate) || 1, voice ? String(voice) : undefined),
+  voices: () => ipcRenderer.invoke('desktop:voices'),
+  installVoice: name => ipcRenderer.invoke('desktop:install-voice', String(name))
 });
 
 // Gaming Mode: Maple Route is often stopped hard (the game or Gaming Mode restarting), before the
@@ -26,6 +28,8 @@ if (process.argv.includes('--maple-deck')) contextBridge.exposeInMainWorld('mapl
   publishOverlay: snapshot => ipcRenderer.send('deck:overlay-update', snapshot),
   publishSummary: summary => ipcRenderer.send('deck:summary', summary),
   onPhoneStart: callback => ipcRenderer.on('deck:phone-start', callback),
+  onNextStep: callback => ipcRenderer.on('deck:next-step', callback),
+  onUndo: callback => ipcRenderer.on('deck:undo', callback),
   onPhoneStop: callback => ipcRenderer.on('deck:phone-stop', callback),
   onPhoneOverlay: callback => ipcRenderer.on('deck:phone-overlay', (_event, enabled) => callback(enabled)),
   onPhoneAction: callback => ipcRenderer.on('deck:phone-action', (_event, action) => callback(action))

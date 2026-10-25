@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.8
+
+- Steam Deck: natural voices with Piper, running on the Deck (Kristin, Joe, Alba, Northern English Male; picked in Settings → Voice). Downloads once in the background (about 90 MB); the basic voice speaks until it's ready.
+
 ## 1.1.0-beta.7
 
 - Steam Deck: the pop-up sits on the bottom edge of the screen and the map always fills it to the bottom.

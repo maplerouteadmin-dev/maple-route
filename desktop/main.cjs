@@ -31,7 +31,7 @@ let normalBounds;
 let speaking;
 let phone;
 let deckApi;
-let deckSummary = { map: null, destination: null, next: null, quest: null };
+let deckSummary = { map: null, destination: null, next: null, quest: null, here: null, step: null, canUndo: false };
 let overlayWindow;
 let overlayPosition = 'bottom-left';
 let overlayWanted = true;
@@ -168,8 +168,10 @@ async function setDeckOverlay(enabled, position = 'bottom-left', { remember = tr
   }
 }
 
-async function speakWithFallback(text, rate) {
+async function speakWithFallback(text, rate, voice) {
   if (process.platform !== 'linux') return false;
+  // Natural voice first (Piper, once downloaded), else espeak-ng.
+  if (require('./piper.cjs').speak(text, rate, voice)) return true;
   const { speechCandidates } = await import('./speech.mjs');
   speaking?.kill();
   speaking = null;
@@ -205,7 +207,15 @@ async function start() {
   });
 
   ipcMain.handle('desktop:compact', (event, value) => isLocalRequest(event.sender) ? setCompact(value) : false);
-  ipcMain.handle('desktop:voice', (event, words, rate) => isLocalRequest(event.sender) ? speakWithFallback(words, rate) : false);
+  ipcMain.handle('desktop:voice', (event, words, rate, voice) => isLocalRequest(event.sender) ? speakWithFallback(words, rate, voice) : false);
+  // Piper voices: the list for Settings, and downloading one when it is picked.
+  ipcMain.handle('desktop:voices', event => isLocalRequest(event.sender) && process.platform === 'linux' ? require('./piper.cjs').voiceList() : []);
+  ipcMain.handle('desktop:install-voice', async (event, name) => {
+    if (!isLocalRequest(event.sender) || process.platform !== 'linux') return false;
+    try { return await require('./piper.cjs').install(String(name)); } catch (error) { return { error: error.message }; }
+  });
+  // First run on Linux: fetch Piper and the default voice in the background (about 90 MB, once).
+  if (process.platform === 'linux') setTimeout(() => require('./piper.cjs').install().catch(() => {}), 8000);
   if (deckMode) {
     // A copy of the app's saved progress (plan, ticks, settings), written to a file right away.
     const storageFile = join(app.getPath('userData'), 'progress.json');
@@ -220,7 +230,7 @@ async function start() {
     });
     ipcMain.on('deck:summary', (event, summary) => {
       if (!isLocalRequest(event.sender) || !summary || typeof summary !== 'object') return;
-      deckSummary = Object.fromEntries(['map', 'destination', 'next', 'quest'].map(key => [key, String(summary[key] ?? '').slice(0, 180)]));
+      deckSummary = { ...Object.fromEntries(['map', 'destination', 'next', 'quest', 'here', 'step'].map(key => [key, String(summary[key] ?? '').slice(0, 240)])), canUndo: Boolean(summary.canUndo) };
     });
     ipcMain.on('deck:overlay-update', (event, snapshot) => {
       if (!isLocalRequest(event.sender) || typeof snapshot?.next !== 'string' || typeof snapshot?.map !== 'string' || snapshot.map.length > 500_000) return;
@@ -272,7 +282,9 @@ async function start() {
         qr: phone?.qr ?? null, overlay: Boolean(overlayWindow && !overlayWindow.isDestroyed()), overlayPosition }),
       start: () => mainWindow.webContents.send('deck:phone-start'),
       stop: explicitStop,
-      overlay: setDeckOverlay
+      overlay: setDeckOverlay,
+      nextStep: () => mainWindow.webContents.send('deck:next-step'),
+      undo: () => mainWindow.webContents.send('deck:undo')
     });
   }
   if (deckMode && process.argv.includes('--lan')) {
@@ -349,4 +361,4 @@ app.whenReady().then(start).catch(error => {
 app.on('window-all-closed', () => app.quit());
 // Stopped by the service manager: close properly so nothing is lost.
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => app.quit());
-app.on('before-quit', () => { speaking?.kill(); deckStream?.stop(); overlayHelper?.kill(); overlayWindow?.destroy(); deckApi?.close(); phone?.server?.close(); localServer?.close(); });
+app.on('before-quit', () => { speaking?.kill(); try { require('./piper.cjs').stop(); } catch { /* not loaded */ } deckStream?.stop(); overlayHelper?.kill(); overlayWindow?.destroy(); deckApi?.close(); phone?.server?.close(); localServer?.close(); });

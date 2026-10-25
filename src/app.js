@@ -460,7 +460,7 @@ function sayPart(part, words) { if (words && voiceOn(part)) say(words); }
 
 function say(words) {
   if (window.mapleDesktop && !voices().length) {
-    window.mapleDesktop.speak(spoken(words), state.voiceRate ?? 1).then(ok => {
+    window.mapleDesktop.speak(spoken(words), state.voiceRate ?? 1, state.voiceName?.startsWith('piper:') ? state.voiceName.slice(6) : undefined).then(ok => {
       if (!ok) status('Install espeak-ng or speech-dispatcher for voice on Linux.', true);
     });
     return;
@@ -473,6 +473,16 @@ function say(words) {
 }
 function renderVoicePicker() {
   const select = $('#voice-name'); if (!select) return;
+  // Steam Deck / Linux app: Piper's natural voices (downloaded on first use), then the basic one.
+  if (window.mapleDesktop?.voices && !voices().length) {
+    window.mapleDesktop.voices().then(list => {
+      if (!list?.length) return;
+      const current = state.voiceName?.startsWith('piper:') ? state.voiceName.slice(6) : 'kristin';
+      select.innerHTML = list.map(v => `<option value="piper:${esc(v.id)}"${v.id === current ? ' selected' : ''}>${esc(v.label)}${v.ready ? '' : ' (downloads ~60 MB)'}</option>`).join('');
+      $('#voice-rate').value = String(state.voiceRate ?? 1);
+    });
+    return;
+  }
   const all = voices().slice().sort((a, b) => voiceRank(a) - voiceRank(b) || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
   const current = chosenVoice()?.name ?? '';
   select.innerHTML = all.length ? all.map(v => `<option value="${esc(v.name)}"${v.name === current ? ' selected' : ''}>${esc(v.name.replace(/^Microsoft /, '').replace(/ Online \(Natural\)/, ' (natural)'))}</option>`).join('') : '<option value="">Default voice</option>';
@@ -3186,7 +3196,17 @@ renderVoicePicker();
 $('#voice-parts').innerHTML = Object.entries(VOICE_PARTS).map(([key, label]) => `<label class="toggle"><input type="checkbox" data-voice-part="${key}"${(state.voiceParts?.[key] ?? !VOICE_DEFAULT_OFF.has(key)) ? ' checked' : ''}> ${esc(label)}</label>`).join('');
 $('#voice-parts').addEventListener('change', event => { const key = event.target.dataset.voicePart; if (!key) return; state.voiceParts = { ...(state.voiceParts ?? {}), [key]: event.target.checked }; saveLive(); });
 if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', renderVoicePicker);
-$('#voice-name').addEventListener('change', event => { state.voiceName = event.target.value || null; saveLive(); say('This map has Orange Mushroom and Blue Snail.'); });
+$('#voice-name').addEventListener('change', async event => {
+  state.voiceName = event.target.value || null; saveLive();
+  // A Piper voice not downloaded yet: fetch it first (once), then let it speak.
+  if (state.voiceName?.startsWith('piper:') && window.mapleDesktop?.installVoice) {
+    status('Downloading that voice (about 60 MB, once)…');
+    const done = await window.mapleDesktop.installVoice(state.voiceName.slice(6));
+    status(done?.error ? `Could not download the voice: ${done.error}` : 'Voice ready.', Boolean(done?.error));
+    renderVoicePicker();
+  }
+  say('This map has Orange Mushroom and Blue Snail.');
+});
 $('#voice-rate').addEventListener('change', event => { state.voiceRate = Number(event.target.value) || 1; saveLive(); say('Head right, about two screens.'); });
 $('#voice-test').addEventListener('click', () => say('Welcome to Henesys. Talk to Pia to start Pia and the Blue Mushroom.'));
 // The open-with-MapleStory switch lives in the local server; hidden when the server has no such switch.
@@ -4272,6 +4292,9 @@ persist();
 if (window.mapleDeck) {
   const appRoot = $('#app');
   window.mapleDeck.onPhoneStart(() => startLive());
+  // The Decky panel: Next step and Undo, the same as the app's buttons.
+  window.mapleDeck.onNextStep?.(() => completeNextStep());
+  window.mapleDeck.onUndo?.(() => document.querySelector('[data-undo-last]')?.click());
   window.mapleDeck.onPhoneStop(() => stopLive());
   window.mapleDeck.onStatus(status => {
     if (status.error && state.live && !state.live.paused) pauseLive('capture-error');
@@ -4335,7 +4358,10 @@ if (window.mapleDeck) {
       map: mapById(state.current)?.name ?? '',
       destination: mapById(state.destination)?.name ?? '',
       next: overlay.next,
-      quest: $('#live-plan .live-steps li')?.textContent?.trim() ?? ''
+      quest: $('#live-plan .live-steps li')?.textContent?.trim() ?? '',
+      here: hereTask(),
+      step: (() => { const step = currentTrip()?.trip?.order?.[0]; return step ? `${{ hunt: 'Hunt on', buy: 'Buy at', start: 'Start at', craft: 'Craft at', handin: 'Hand in at' }[step.type] ?? 'Go to'} ${mapById(step.mapId)?.name ?? '?'}` : ''; })(),
+      canUndo: Boolean(state.lastTick && Date.now() - state.lastTick.at < 120_000)
     });
   }, 800);
 }
