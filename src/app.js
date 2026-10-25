@@ -162,7 +162,7 @@ $('#app').innerHTML = `
       <div class="divider"></div><h3 class="sub-title">My listings</h3><div id="market-mine"></div><h3 class="sub-title">My offers</h3><div id="market-my-offers"></div></section>
 <section class="card" aria-labelledby="feedback-title"><h2 id="feedback-title">Report a problem or a drop</h2><p class="muted">Opens a GitHub issue already filled in with what Maple Route saw (map names, the last mini map reads, your screen size). You read it and press Submit yourself; nothing is sent before that. Chat, character names and other players are never included.</p>
       <label class="field">What went wrong (optional)<input id="report-what" maxlength="300" placeholder="e.g. it thought I was on Henesys Hunting Ground II"></label>
-      <div class="action-row"><button type="button" class="button secondary" id="report-problem">Report a problem</button><button type="button" class="button light" id="report-copy">Copy mini map picture</button></div><p class="fine" id="report-note" role="status"></p>
+      <div class="action-row"><button type="button" class="button secondary" id="report-problem">Report a problem</button><button type="button" class="button light" id="report-copy">Copy mini map picture</button><button type="button" class="button light" id="report-frame" title="Saves the whole shared game window, full size, to your Downloads folder (it shows your screen, chat and names: share it only where you mean to)">Save what Live GPS sees</button></div><p class="fine" id="report-note" role="status"></p>
       <div class="divider"></div><h3 class="sub-title">Saw a drop?</h3><p class="fine">Drop tables are not in the game files, so player reports are how the drop data gets better.</p>
       <div class="sell-fields"><label class="field">Item<input id="drop-item" maxlength="80" placeholder="e.g. Diamond Ore"></label><label class="field">Monster<input id="drop-monster" maxlength="80" placeholder="e.g. Stone Golem"></label></div>
       <div class="action-row"><button type="button" class="button secondary" id="report-drop">Report this drop</button></div></section>
@@ -2550,6 +2550,22 @@ $('#report-drop').addEventListener('click', () => {
   openIssue(dropReport({ item, monster, map: mapById(state.current)?.name ?? '', version: APP_VERSION }));
 });
 // Only the mini map itself (title strip to bottom edge): no chat, no names over characters.
+// The whole shared frame at full size, as a PNG download: for checking what the reader sees.
+$('#report-frame').addEventListener('click', async () => {
+  const note = text => { $('#report-note').textContent = text; };
+  if (!state.live?.capture) { note('Start Live GPS first.'); return; }
+  let frame = null;
+  try {
+    frame = await state.live.capture.grab();
+    const canvas = document.createElement('canvas'); canvas.width = frame.width; canvas.height = frame.height;
+    canvas.getContext('2d').drawImage(frame.source, 0, 0);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `maple-route-frame-${frame.width}x${frame.height}.png`; link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+    note(`Saved maple-route-frame-${frame.width}x${frame.height}.png to your Downloads folder. It shows your whole game window (chat and names too).`);
+  } catch { note('Could not save the picture here.'); }
+  finally { frame?.release?.(); }
+});
 $('#report-copy').addEventListener('click', async () => {
   const note = text => { $('#report-note').textContent = text; };
   const live = state.live, found = live?.lastFound, box = live?.minimapBox;

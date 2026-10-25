@@ -72,9 +72,27 @@ export function questsInText(text, names, { min = .82 } = {}) {
       const score = Math.max(whole, start, end, lead);
       if (score > bestScore || (score === bestScore && best && name.length < best.length)) { best = name; bestScore = score; }
     }
-    if (bestScore >= min) found.add(best);
+    if (bestScore >= min) { found.add(best); continue; }
+    // Quest window rows only: match word by word. Icons add junk in front, the row is cut off at the
+    // end, and letters get misread ("EX Cr Betty's Rezoarch an FI" = Dr. Betty's Research on Plants).
+    if (min < .82) { const byWords = wordMatch(line, byNorm); if (byWords) found.add(byWords); }
   }
   return [...found];
+}
+
+// The name whose real words (3+ letters) are mostly in the line: each within a couple of misread
+// letters, the line's last word may be the cut-off start of one. Needs 2+ words and two thirds of them.
+function wordMatch(line, byNorm) {
+  const lineWords = line.split(' ').filter(Boolean), last = lineWords.at(-1) ?? '';
+  let best = null, bestShare = 0, bestHits = 0;
+  for (const [n, name] of byNorm) {
+    const words = n.split(' ').filter(w => w.length >= 3);
+    if (words.length < 2) continue;
+    const hits = words.filter(w => lineWords.some(lw => lw.length >= 3 && editDistance(lw, w) <= Math.max(1, Math.floor(w.length / 4))) || (last.length >= 2 && w.startsWith(last.slice(0, 2)) && w === words.at(-1))).length;
+    const share = hits / words.length;
+    if (hits >= 2 && share >= .66 && (share > bestShare || (share === bestShare && hits > bestHits))) { best = name; bestShare = share; bestHits = hits; }
+  }
+  return best;
 }
 
 // Everything that has to be done before a quest (earliest first, through the whole chain) and the

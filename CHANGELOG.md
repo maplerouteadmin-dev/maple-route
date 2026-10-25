@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.17
+
+- The quest window is found at any game window size, up to 4K (its tab line gets thicker the bigger the window), and its rows match word by word when icons, cut-off names or misread letters get in the way.
+- Settings → Report: Save what Live GPS sees saves the shared game window, full size, to your Downloads folder, for checking a read that went wrong.
+
 ## 1.0.16
 
 - The quest window is found on stretched game windows (its red tab line is thicker there), so reading the In Progress and Available tabs works at 2000 px wide and up; cut-off, slightly misread rows in the list still match ("Dr. Betty's Research on Pl...").

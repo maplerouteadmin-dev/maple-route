@@ -116,3 +116,11 @@ test('quest window list rows match a little more loosely (a truncated, misread r
   assert.deepEqual(questsInText(row, names, { min: .74 }), ["Dr. Betty's Research on Plants"]);
 });
 
+
+test('quest window rows match word by word (icons in front, cut off, misread letters)', async () => {
+  const { questsInText } = await import('./questrecs.js');
+  const names = ["Dr. Betty's Research on Plants", 'Research on Plant Fossils', "Winston's Fossil Dig-up", 'Luke the Security Guy'];
+  assert.deepEqual(questsInText("J - Perion (1) ed\nEX Cr Betty's Rezoarch an FI |\nDETALLM |", names, { min: .74 }), ["Dr. Betty's Research on Plants"]);
+  assert.deepEqual(questsInText("EX Cr Betty's Rezoarch an FI |", names), [], 'whole-screen reads stay strict');
+  assert.deepEqual(questsInText('Research done\nPerion (1)', names, { min: .74 }), []);
+});

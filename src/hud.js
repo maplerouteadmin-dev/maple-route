@@ -368,11 +368,15 @@ export function findQuestWindow(image) {
   if (!best) return null;
   // A thin line (2-3 px, thicker on a stretched window: 4 px at 2000 wide), not a red bar like HP:
   // measure how many rows it spans, then no red rows just above or below it.
-  const redRow = y => { if (y < 0 || y >= height) return false; let n = 0; for (let dx = 0; dx < best.w; dx += 2) if (red((y * width + best.x + dx) * 4)) n++; return n > best.w / 4; };
-  let thick = 1; while (thick < 8 && redRow(best.y + thick)) thick++;
-  if (thick > 6) return null;
-  const redRows = [-4, -3, thick + 2, thick + 3].filter(dy => redRow(best.y + dy)).length;
-  if (redRows > 0) return null;
+  const rowShare = y => { if (y < 0 || y >= height) return 0; let n = 0; for (let dx = 0; dx < best.w; dx += 2) if (red((y * width + best.x + dx) * 4)) n++; return n / Math.ceil(best.w / 2); };
+  // The line's real top and bottom (the longest run can be any of its rows).
+  while (rowShare(best.y - 1) > .9) best.y--;
+  let thick = 1; while (thick < 40 && rowShare(best.y + thick) > .9) thick++;
+  // Thicker the bigger the window (about 1 px per 85 px of line): 4 px at 2000 wide, 8 at 4K.
+  if (thick > Math.max(6, Math.round(best.w / 60))) return null;
+  // Not a thick red bar: nothing red just below, and above at most the open tab (a third of the width).
+  const gap = Math.max(2, Math.round(thick / 2));
+  if ([thick + gap, thick + gap + 1].some(dy => rowShare(best.y + dy) > .25) || [-gap - 2, -gap - 1].some(dy => rowShare(best.y + dy) > .6)) return null;
   // Open tab: the third of the tab row above the line that is mostly red/pink.
   const tabH = Math.max(6, Math.round(best.w * .07)), names = ['available', 'progress', 'completed'];
   const share = third => {
