@@ -139,7 +139,7 @@ async function setDeckOverlay(enabled, position = 'bottom-left', { remember = tr
   const html = readFileSync(join(__dirname, 'overlay.html'), 'utf8').replace('__BASE__', localOrigin + '/').replace('__CSS__', cssName ? `assets/${cssName}` : '');
   try {
     await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-    overlayHelper = spawn('python3', [join(__dirname, 'deck-overlay-gtk.py')], { stdio: ['pipe', 'ignore', 'pipe'], env: process.env });
+    overlayHelper = spawn('python3', [require('./unpacked.cjs').unpacked(join(__dirname, 'deck-overlay-gtk.py'))], { stdio: ['pipe', 'ignore', 'pipe'], env: process.env });
     overlayHelper.on('exit', () => { overlayHelper = null; });
     overlayHelper.stdin.on('error', () => {});
     overlayWindow = window;

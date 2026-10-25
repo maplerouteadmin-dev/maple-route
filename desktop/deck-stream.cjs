@@ -49,7 +49,7 @@ class DeckStream {
     if (node === null) throw new Error('The gamescope screen stream is unavailable. Return to Gaming Mode and try again.');
     this.state = 'starting'; this.onState(this.status());
     const env = { ...process.env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}` };
-    const child = spawn('python3', [join(__dirname, 'deck-pipewire.py'), String(node)], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('python3', [require('./unpacked.cjs').unpacked(join(__dirname, 'deck-pipewire.py')), String(node)], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     this.child = child;
     const consume = parseFrames(frame => {
       if (this.child !== child) return;

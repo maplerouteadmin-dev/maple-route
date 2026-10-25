@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.3
+
+- Steam Deck: the downloaded AppImage can start its screen reader and pop-up (the Python helpers are kept outside the app archive). Betas 1 and 2 could not read the game when installed from the release.
+
 ## 1.1.0-beta.2
 
 - Steam Deck: the pop-up shows the phone QR code first (first minute after MapleStory opens, and whenever reading is off) until a phone connects, then the map.
