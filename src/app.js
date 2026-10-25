@@ -24,6 +24,8 @@ import { mapInfo, mobInfo, npcInfo } from './mapinfo.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
 import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, suggestPrice, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
+import { createChatStore } from './chatstore.js';
+import { mountChat } from './chatui.js';
 import { spoken, taskWords } from './speech.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
@@ -90,7 +92,7 @@ const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ u
 // Parts not yet checked in real play carry this label, so players know to double-check them.
 const UNTESTED = '<span class="untested" title="Not checked in real play yet: it may misread or miss things. Please report what you see.">Untested</span>';
 $('#app').innerHTML = `
-  <header class="top"><div class="top-inner"><div class="brand"><span class="brand-mark">✦</span> Maple Route</div><nav class="top-nav" aria-label="Sections" role="tablist"><a class="top-link" role="tab" href="#navigate">Live GPS</a><a class="top-link" role="tab" href="#goto">Go to</a><a class="top-link" role="tab" href="#world">World map</a><a class="top-link" role="tab" href="#quests">Quests</a><a class="top-link" role="tab" href="#market">Market</a><a class="top-link hidden" role="tab" href="#hunt" hidden>Hunt &amp; trade</a><a class="top-link" role="tab" href="#settings">Settings</a><button type="button" class="top-link top-report" id="live-report" title="Something wrong? Report a problem">Report</button></nav></div></header>
+  <header class="top"><div class="top-inner"><div class="brand"><span class="brand-mark">✦</span> Maple Route</div><nav class="top-nav" aria-label="Sections" role="tablist"><a class="top-link" role="tab" href="#navigate">Live GPS</a><a class="top-link" role="tab" href="#goto">Go to</a><a class="top-link" role="tab" href="#world">World map</a><a class="top-link" role="tab" href="#quests">Quests</a><a class="top-link" role="tab" href="#market">Market</a><a class="top-link" role="tab" href="#chat">Chat</a><a class="top-link hidden" role="tab" href="#hunt" hidden>Hunt &amp; trade</a><a class="top-link" role="tab" href="#settings">Settings</a><button type="button" class="top-link top-report" id="live-report" title="Something wrong? Report a problem">Report</button></nav></div></header>
   <main class="shell">
     <section class="hero"><div><div class="eyebrow">Classic World companion</div><h1>Your next map, clearly.</h1><p>Turn-by-turn portal directions. Share your game window once and Live GPS follows you from map to map.</p></div><span class="safety">Never touches the game</span></section>
     <section class="card live-card" aria-labelledby="live-title"><div class="live-head"><div><div class="eyebrow">Live GPS</div><h2 id="live-title">Next move</h2></div><span class="pill" id="live-state">Off</span></div>
@@ -100,6 +102,7 @@ $('#app').innerHTML = `
       <p class="live-note hidden" id="live-note" role="status"></p>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
+    <section class="card" aria-labelledby="chat-title"><h2 id="chat-title">Community chat</h2><div id="chat-root"></div></section>
     <section class="card" aria-labelledby="recs-title"><h2 id="recs-title">Quests for your level</h2><p class="muted">Quests you can start now, nearest your level first, skipping ones you have finished or are doing.</p><div id="quest-recs" aria-live="polite"></div><p class="fine">To show only quests the game is offering you, read your in-game Available tab (below, or on the <b>Quests</b> page).</p></section>
     <section class="card" aria-labelledby="questplan-title"><h2 id="questplan-title">My quest plan</h2><p class="muted">Quests to do together, picked by hand (no screen reading needed). <b>Do all quests together</b> on the Live GPS card plans them with the ones you are doing: pick each up, hunt, buy, hand in.</p>
       <label class="field">Add a quest<input id="plan-search" type="search" autocomplete="off" placeholder="Type a quest name, e.g. Luke, fossils, omok"></label><div id="plan-suggest" class="start-results"></div><div id="plan-list"></div></section>
@@ -225,6 +228,7 @@ const VIEWS = {
   world: ['world-title', 'atlas-title'],
   quests: ['quest-helper-title', 'questplan-title', 'ticks-title', 'notes-title', 'questlog-title', 'next-title', 'trip-title', 'goals-title'],
   market: ['market-title', 'market-post-title'],
+  chat: ['chat-title'],
   // Two set columns (left, right) instead of flowing: gear & crafting stays bottom right.
   hunt: [['live-exp-title', 'session-title'], ['sell-title', 'prices-title', 'gear-title']],
   settings: ['mapstyle-title', 'voice-title', 'autostart-title', 'characters-title', 'citizen-title', 'settings-title', 'feedback-title', 'data-title', 'privacy-title']
@@ -302,8 +306,10 @@ function placeQuestLog(view) {
     delete card.dataset.picker; card.classList.remove('picker-off');
   }
 }
+let chatUI = null;
 function showView(view) {
   if (!VIEWS[view]) view = 'navigate';
+  if (view === 'chat') chatUI?.open(); else chatUI?.close();
   placeQuestLog(view);
   // After start-up finishes: opening the site straight on #market runs this before the market code exists.
   if (view === 'market') setTimeout(() => loadMarket(), 0);
@@ -2655,6 +2661,8 @@ $('#report-copy').addEventListener('click', async () => {
 
 // ---------- Market (player listings: src/market.js, src/marketstore.js) ----------
 const market = { store: createMarketStore(), catalog: null, byId: new Map(), listings: [], mine: [], offers: [], offerFor: null, me: null, item: null, loading: false, error: '', loadedAt: 0, active: 0 };
+chatUI = mountChat($('#chat-root'), { store: createChatStore(), getMap: () => state.current ? { id: state.current, name: mapById(state.current)?.name } : null });
+if (location.hash === '#chat') chatUI.open();
 // The item a listing is for: from the game files, or rebuilt from the name for a custom item.
 const marketItem = listing => listing.item_id === 'custom' ? customItem(listing.item_name) : market.byId.get(listing.item_id);
 const IGN_KEY = 'maple-route-market-ign';

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.10
+
+- Add open, opt-in Maple Route chat with Here, Map, Channel and World rooms, local filters, and reporting. Chat uses a separate anonymous identity from Market and never interacts with MapleStory chat.
+
 ## 1.1.0-beta.9
 
 - Steam Deck: the phone map follows the character, using the phone's own map viewport. Manually panning pauses following for five seconds. The game pop-up is unchanged.

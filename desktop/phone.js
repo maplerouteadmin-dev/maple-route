@@ -56,16 +56,23 @@ function pathFor(element) {
 function forward(kind, element) {
   const path = pathFor(element);
   if (!path) return;
-  action('/action', { kind, path, tag: element.tagName, id: element.id || undefined, value: 'value' in element ? String(element.value).slice(0, 512) : undefined,
+  return action('/action', { kind, path, tag: element.tagName, id: element.id || undefined, value: 'value' in element ? String(element.value).slice(0, 512) : undefined,
     checked: 'checked' in element ? Boolean(element.checked) : undefined });
 }
-app.addEventListener('click', event => {
+app.addEventListener('click', async event => {
   const element = event.target.closest('button,a,input,label,[data-map],[data-mob],[data-npc]');
   if (!element || element.tagName === 'LABEL') return;
   if (element.tagName === 'A' && !element.getAttribute('href')?.startsWith('#')) return;
   if (element.tagName === 'INPUT' && !['checkbox', 'radio'].includes(element.type)) return;
   event.preventDefault();
-  forward('click', element);
+  if (element.closest('#chat-root')) {
+    clearTimeout(typingTimer);
+    for (const id of ['#chat-world', '#chat-channel', '#chat-text', '#chat-muted']) {
+      const input = app.querySelector(id);
+      if (input) await forward('input', input);
+    }
+  }
+  await forward('click', element);
 });
 app.addEventListener('change', event => {
   const element = event.target;

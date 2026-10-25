@@ -30,6 +30,7 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
 - [Privacy](#privacy)
+- [Community chat](#community-chat)
 - [Run it on your own PC (optional)](#run-it-on-your-own-pc-optional)
 - [How this was made](#how-this-was-made)
 - [Data and credits](#data-and-credits)
@@ -197,13 +198,19 @@ looking.
 
 ## Privacy
 
-- Nothing read from your screen leaves your PC.
+- Screenshots and OCR text stay on your device. If you opt into Community chat, the current map ID is sent to the chat service to select a Here or Map room; your image and character name are not sent.
 - Progress, settings and saved map pictures are stored in your browser (clearing site data removes them).
 - The public site counts, anonymously and without cookies ([GoatCounter](https://www.goatcounter.com/)),
   only two things: that the app was opened and that Live GPS was started. No game data, map names or
   player names. Turn it off in **Settings → How screen reading works → Don't count my visits**.
 - The optional trade-chat price log is **off by default**. When on, it saves adverts (seller, item,
   price) in your browser only.
+
+## Community chat
+
+The optional Chat tab connects Maple Route players to Here (map and channel), Map (all channels on that map), Channel (all maps in that channel), and World rooms. Choose your world and channel yourself; the app cannot verify another person's location. This chat is separate from MapleStory's chat and cannot remove spam inside the game.
+
+Messages are visible to other app users in the same room. Chat has its own anonymous account, separate from Market, so your Market listings are not linked to your chat pseudonym. You can mute words, hide repeated messages, block a sender on your device, and report a message. Basic posting limits and a link ban reduce spam, but this is an open beta without a dedicated moderation team. Do not share personal information. See [chat setup and safety](docs/CHAT.md).
 
 ## Run it on your own PC (optional)
 
