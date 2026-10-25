@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+
+- "Guide a quest · Do all quests together" sits in the header next to Choose destination, and also lists quests your Available tab offers (marked not started).
+- Missing a quest? Search it in My quest plan: it says if it was marked finished or left out of the plan, and adding it brings it back.
+
 ## 1.0.6
 
 - Live GPS page fits the window again: the map sits right under the buttons (Choose destination moved above them) and is a little shorter, and your quests and checklist scroll in their own box below the map.

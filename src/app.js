@@ -89,7 +89,7 @@ $('#app').innerHTML = `
     <section class="hero"><div><div class="eyebrow">Classic World companion</div><h1>Your next map, clearly.</h1><p>Turn-by-turn portal directions. Share your game window once and Live GPS follows you from map to map.</p></div><span class="safety">Never touches the game</span></section>
     <section class="card live-card" aria-labelledby="live-title"><div class="live-head"><div><div class="eyebrow">Live GPS</div><h2 id="live-title">Next move</h2></div><span class="pill" id="live-state">Off</span></div>
       <div id="live-step" class="live-step" aria-live="polite"></div>
-      <div class="choose-row"><button type="button" class="link-button choose-dest" id="choose-destination">Choose destination</button></div>
+      <div class="choose-row"><div id="guide-offer"></div><button type="button" class="link-button choose-dest" id="choose-destination">Choose destination</button></div>
       <div class="action-row"><button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-report" title="Something wrong? Opens a pre-filled GitHub issue">Report</button><button class="button light" id="live-pip">Pop-out window</button><label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest town scroll</label><label class="toggle" title="Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow"><input type="checkbox" id="live-townscrolls"> Town scrolls</label></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
 
@@ -1774,6 +1774,8 @@ function renderLive() {
   const html = destinationHtml() + liveHtml(liveModel()), planHtml = hudHtml();
   const card = $('#live-step'), plan = $('#live-plan');
   if (card && card.dataset.html !== html) { card.innerHTML = html; card.dataset.html = html; }
+  const offer = $('#guide-offer'), offerHtml = guideOfferHtml();
+  if (offer && offer.dataset.html !== offerHtml) { offer.innerHTML = offerHtml; offer.dataset.html = offerHtml; }
   if (plan && plan.dataset.html !== planHtml) { plan.innerHTML = planHtml; plan.dataset.html = planHtml; plan.closest('section')?.classList.toggle('hidden', !planHtml); setTimeout(fitLivePage, 0); }
   if (state.pipDoc) {
     const map = mapById(state.current), model = liveModel();
@@ -2822,11 +2824,19 @@ $('#plan-search').addEventListener('input', async () => {
   if (state.questCatalogStatus !== 'loaded') await loadQuestCatalog();
   const words = normalize($('#plan-search').value).split(' ').filter(Boolean);
   const found = words.length ? state.quests.filter(q => words.every(w => normalize(`${q.name} ${q.arc ?? ''} ${q.giver ?? ''}`).includes(w)) && !state.planQuests.includes(q.name)).slice(0, 8) : [];
-  $('#plan-suggest').innerHTML = found.map(q => `<button type="button" class="start-result" data-plan-add="${esc(q.name)}">${esc(q.arc && normalize(q.arc) !== normalize(q.name) ? `${q.arc} · ${q.name}` : q.name)} <small>Lv ${q.level ?? '?'}${q.giver ? ` · ${esc(q.giver)}` : ''}${state.questsFinished.includes(q.name) ? ' · finished' : ''}</small></button>`).join('');
+  $('#plan-suggest').innerHTML = found.map(q => `<button type="button" class="start-result" data-plan-add="${esc(q.name)}">${esc(q.arc && normalize(q.arc) !== normalize(q.name) ? `${q.arc} · ${q.name}` : q.name)} <small>Lv ${q.level ?? '?'}${q.giver ? ` · ${esc(q.giver)}` : ''}${planStatus(q.name)}</small></button>`).join('');
 });
+// Where a quest stands, so a missing one can be found and brought back (adding it undoes these).
+function planStatus(name) {
+  if (state.questsFinished.includes(name)) return ' · <b>marked finished</b>: add it to plan it again';
+  if (state.planSkip.includes(name)) return ' · <b>left out of the plan</b>: add it to plan it again';
+  if (state.activeQuests.includes(name)) return ' · started';
+  if (state.questsAvailable.includes(name)) return ' · on your Available tab';
+  return '';
+}
 document.addEventListener('click', event => {
   const add = event.target.closest('[data-plan-add]');
-  if (add) { if (!state.planQuests.includes(add.dataset.planAdd)) state.planQuests.push(add.dataset.planAdd); state.questsFinished = state.questsFinished.filter(name => name !== add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); renderQuestRecs(); applyObjective(); renderLive(); return; }
+  if (add) { if (!state.planQuests.includes(add.dataset.planAdd)) state.planQuests.push(add.dataset.planAdd); state.questsFinished = state.questsFinished.filter(name => name !== add.dataset.planAdd); state.planSkip = state.planSkip.filter(name => name !== add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); renderQuestRecs(); applyObjective(); renderLive(); return; }
   const remove = event.target.closest('[data-plan-remove]');
   if (remove) { state.planQuests = state.planQuests.filter(name => name !== remove.dataset.planRemove); state.allTripCache = null; persist(); renderPlanList(); applyObjective(); renderLive(); return; }
   if (event.target.closest('[data-reveal-plan]')) { event.preventDefault(); reveal('#questplan-title'); $('#plan-search').focus(); }
@@ -3649,13 +3659,21 @@ function applyObjective() {
   }
 }
 
+// No quest being guided: the quests you could guide, shown in the header beside Choose destination.
+// Started ones first, then ones your Available tab offers (not started yet).
+function guideOfferHtml() {
+  if (currentObjective()) return '';
+  const doing = [...new Set([...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests, ...state.planQuests].filter(name => name && questInProgress(name)))];
+  const offered = state.questsAvailable.filter(name => questInProgress(name) && !doing.includes(name));
+  const any = doing.length || offered.length;
+  const link = (name, later) => `<button type="button" class="link-button" data-guide="${esc(name)}">${esc(name)}</button>${later ? ' <small>(not started)</small>' : ''}`;
+  const shown = [...doing.map(name => link(name, false)), ...offered.slice(0, Math.max(0, 6 - doing.length)).map(name => link(name, true))];
+  return `<div class="objective offer">${shown.length ? `Guide a quest: ${shown.join(' · ')} · ` : ''}<button type="button" class="button secondary" data-all-together>Do all quests together</button>${any ? '' : ' <small>(add quests in My quest plan, or to the Quest Helper in game)</small>'}</div>`;
+}
 function objectiveHtml() {
   const objective = currentObjective();
-  if (!objective) {
-    const offer = [...new Set([...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests, ...state.planQuests].filter(name => name && questInProgress(name)))];
-    const any = offer.length || state.activeQuests.length || state.questsAvailable.length || state.planQuests.length;
-    return `<div class="objective offer">${offer.length ? `Guide a quest: ${offer.map(name => `<button type="button" class="link-button" data-guide="${esc(name)}">${esc(name)}</button>`).join(' · ')} · ` : ''}<button type="button" class="button secondary" data-all-together>Do all quests together</button>${any ? '' : ' <small>(add your quests to the Quest Helper in game first)</small>'}</div>`;
-  }
+  if (!objective) return '';
+
   // A quest in a line shows as the game names it: "Winston's Fossil Dig-up · Searching for Fossils".
   const arc = state.quests.find(q => q.name === objective.quest)?.arc, title = arc && normalize(arc) !== normalize(objective.quest) ? `${esc(arc)} <small>· ${esc(objective.quest)}</small>` : esc(objective.quest);
   const head = `<div class="objective-head"><span class="objective-tag">Quest</span> ${title} <button type="button" class="link-button" data-guide="">stop guiding</button></div>`;
@@ -3708,7 +3726,7 @@ function renderQuestHelper() {
 
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-guide]');
-  if (!button || !(button.closest('#quest-helper') || button.closest('#live-step') || button.closest('#live-plan'))) return;
+  if (!button || !(button.closest('#quest-helper') || button.closest('#live-step') || button.closest('#live-plan') || button.closest('#guide-offer'))) return;
   setGuide(button.dataset.guide || null);
   if (button.dataset.guide) reveal('#live-title');
 });
@@ -4015,7 +4033,7 @@ function liveCardClick(event) { if (event.target.closest('[data-share-now]')) { 
   const button = event.target.closest('[data-route]'); if (!button || !mapById(button.dataset.route)) return;
   routeToMap(button.dataset.route, button.dataset.routeNpc || null);
 }
-for (const id of ['#live-step', '#live-plan']) $(id).addEventListener('click', liveCardClick);
+for (const id of ['#live-step', '#live-plan', '#guide-offer']) $(id).addEventListener('click', liveCardClick);
 
 async function loadPublicData(force = false) {
   if (state.data.portals.length && state.data.targets.length && !force) return;
