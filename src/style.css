@@ -160,3 +160,8 @@ body.gps-page #mapview-note{line-height:1.3}
 .all-checklist .need-list small{margin-left:2px}
 .all-checklist details .need-list,.all-checklist > details .need-list{padding-left:22px}
 .all-checklist .need-list li.buy-note{color:#8a5a00;padding-left:20px}
+.plan-in{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;margin:2px 0 6px;font-size:.8rem}
+.plan-chip{display:inline-flex;align-items:center;gap:2px;padding:1px 2px 1px 8px;border-radius:999px;background:#e3f1dc;color:#1c4d39}
+.plan-chip .link-button{padding:0 5px;font-size:.95rem;line-height:1.2;text-decoration:none}.plan-chip.off{background:#eef1ef;color:#698074}
+.plan-out{width:100%}.plan-out summary{cursor:pointer;color:#698074}.plan-out .plan-chip{margin:2px 4px 0 0}
+

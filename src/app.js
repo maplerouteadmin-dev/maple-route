@@ -50,7 +50,7 @@ import './goals.css';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, questDetails: {}, questItemsReady: {} };
+const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], questDetails: {}, questItemsReady: {} };
 
 const LIVE_KEY = 'maple-route-live';
 // In-memory test log of what Live GPS read on each tick (window.__mapleRouteLog), for diagnosing
@@ -3134,7 +3134,9 @@ function allQuestsTrip() {
   const doing = [...new Set([state.guide.quest, ...(state.hud.quests ?? []).map(q => q.name), ...state.activeQuests].filter(Boolean))].filter(q => !state.questsFinished.includes(q));
   const offered = state.tripAvailable !== false ? state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)) : [];
   const planned = state.planQuests.filter(q => !doing.includes(q) && !state.questsFinished.includes(q));
-  const names = [...doing, ...planned, ...offered.filter(q => !planned.includes(q))].slice(0, 12);
+  // Everything that could be planned; the quests you left out (×) are listed but not planned.
+  const candidates = [...doing, ...planned, ...offered.filter(q => !planned.includes(q))];
+  const names = candidates.filter(q => !state.planSkip.includes(q)).slice(0, 12);
   const started = name => (state.hud.quests ?? []).some(q => q.name === name) || state.activeQuests.includes(name);
   const byName = new Map(), ends = new Map(), endQuests = new Map(), starts = [];
   const npcMapOf = npc => npc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(npc))?.locations[0]?.mapId ?? null : null;
@@ -3166,7 +3168,7 @@ function allQuestsTrip() {
   const goals = [...byName.values()];
   const key = JSON.stringify([goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], starts.map(st => st.quests[0]), state.current, state.useTaxis, state.useNearestScroll, state.useTownScrolls]);
   if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()].map(mapId => ({ mapId, quests: endQuests.get(mapId) ?? [] })), { via: craftStops(state.data, goals), starts }) };
-  return { goals, ends, quests: names, offered: offered.length, waiting: state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)).length, trip: state.allTripCache.trip };
+  return { goals, ends, quests: names, skipped: candidates.filter(q => state.planSkip.includes(q)), offered: offered.length, waiting: state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)).length, trip: state.allTripCache.trip };
 }
 // Every hunting and collecting need of every quest in the trip, with Quest Helper counts; tick one
 // off by hand and it drops out of the trip (counts the Quest Helper shows as done are ticked for you).
@@ -3224,7 +3226,10 @@ function allStepsHtml(all) {
   const head = steps.length ? `<p class="fine">${trip.hops} map${trip.hops === 1 ? '' : 's'} in all · tick what you have done</p>` : `<p class="fine">${all?.goals.some(g => g.pending) ? 'Looking up which monsters drop what you need…' : 'Nothing left to hunt.'}</p>`;
   const setup = `<div class="trip-setup"><strong>For the best plan:</strong> <span>Add quests by name in <a href="#quests" data-reveal-plan>My quest plan</a>${state.planQuests.length ? ` <small>(${state.planQuests.length} added)</small>` : ''}, or:</span> <span>1. In game, add all the quests you would like to complete to the Quest Helper so their counts are read.</span> <span>2. Open your quest window on the <b>In Progress</b> tab (adds every quest you have accepted) and then the <b>Available</b> tab, towns expanded, with Live GPS on; both are read by themselves. Or <button type="button" class="link-button" data-trip-read>read Available now</button>${state.questsAvailable.length ? ` <small>(${state.questsAvailable.length} read)</small>` : ''}.</span>
     <label class="toggle"><input type="checkbox" data-trip-available${state.tripAvailable !== false ? ' checked' : ''}> Include quests I haven't started${all.waiting ? ` (${all.waiting})` : ''}</label></div>`;
-  return `<div class="all-checklist">${setup}<ul class="live-steps all-steps">${steps.join('')}</ul>${head}${missing}${doneHtml}</div>`;
+  const label = name => { const q = state.quests.find(x => x.name === name); return q?.arc && normalize(q.arc) !== normalize(name) ? `${q.arc} · ${name}` : name; };
+  const chips = `<div class="plan-in"><b>In this plan:</b> ${all.quests.map(name => `<span class="plan-chip">${esc(label(name))}<button type="button" class="link-button" data-plan-skip="${esc(name)}" title="Leave this quest out of the plan" aria-label="Leave out ${esc(name)}">×</button></span>`).join('') || '<small>no quests</small>'}
+    ${all.skipped?.length ? `<details class="plan-out"><summary>Left out (${all.skipped.length})</summary>${all.skipped.map(name => `<span class="plan-chip off">${esc(label(name))}<button type="button" class="link-button" data-plan-unskip="${esc(name)}" title="Plan it again" aria-label="Plan ${esc(name)} again">↺</button></span>`).join('')}</details>` : ''}</div>`;
+  return `<div class="all-checklist">${setup}${chips}<ul class="live-steps all-steps">${steps.join('')}</ul>${head}${missing}${doneHtml}</div>`;
 }
 function allTripHtml(all) {
   const trip = all?.trip;
@@ -3614,6 +3619,15 @@ $('#live-step').addEventListener('click', event => { if (event.target.closest('[
     if (first) setGuide(first); else { $('#live-note').textContent = 'Add quests on the Quests page (My quest plan), add them to the Quest Helper in game, or read your Available tab, then press Do all quests together again.'; $('#live-note').classList.remove('hidden'); }
     applyObjective(); renderLive(); return;
   }
+  const skip = event.target.closest('[data-plan-skip]');
+  if (skip) {
+    const name = skip.dataset.planSkip; if (!state.planSkip.includes(name)) state.planSkip.push(name);
+    // Leaving out the quest the GPS is anchored on: anchor on the next one still planned.
+    if (state.guide.quest === name) { const next = allQuestsTrip().quests.find(q => q !== name); state.allTripCache = null; persist(); setGuide(next ?? null); }
+    state.allTripCache = null; persist(); applyObjective(); renderLive(); return;
+  }
+  const unskip = event.target.closest('[data-plan-unskip]');
+  if (unskip) { state.planSkip = state.planSkip.filter(name => name !== unskip.dataset.planUnskip); state.allTripCache = null; persist(); applyObjective(); renderLive(); return; }
   const needTick = event.target.closest('[data-need-tick]');
   if (needTick) {
     const quest = needTick.dataset.needTick, key = `need:${needTick.dataset.need}`, done = new Set(state.questDone[quest] ?? []);
@@ -3699,6 +3713,7 @@ try {
   state.questsAvailable = Array.isArray(saved?.questsAvailable) ? [...new Set(saved.questsAvailable.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   // My citizenship: { Henesys: 0-10, 'Kerning City': 0-10 }, or null when not set.
   state.citizenship = saved?.citizenship && typeof saved.citizenship === 'object' ? Object.fromEntries(['Henesys', 'Kerning City'].map(town => [town, Math.max(0, Math.min(10, Number(saved.citizenship[town]) || 0))])) : null;
+  state.planSkip = Array.isArray(saved?.planSkip) ? [...new Set(saved.planSkip.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 200) : [];
   state.planQuests = Array.isArray(saved?.planQuests) ? [...new Set(saved.planQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 20) : [];
   state.questsHidden = Array.isArray(saved?.questsHidden) ? [...new Set(saved.questsHidden.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   state.questsFinished = Array.isArray(saved?.questsFinished) ? [...new Set(saved.questsFinished.filter(name => typeof name === 'string' && name.length <= 180))].slice(-2000) : [];
