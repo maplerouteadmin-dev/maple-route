@@ -942,7 +942,8 @@ async function readQuestWindow(tab) {
     // The quest window found on screen: read just its list (and trust its open tab); else the whole frame.
     const win = findQuestWindow(regionImage(grabbed.source, { x: 0, y: 0, w: grabbed.width, h: grabbed.height }));
     const text = win ? await readRegion(worker, grabbed.source, win.list, { scale: 2, ink: inkQuestList }) : await readWholeFrame(worker, grabbed.source, grabbed.width, grabbed.height);
-    applyQuestWindow(win?.tab === 'available' || win?.tab === 'completed' || win?.tab === 'progress' ? win.tab : tab, text);
+    // You pressed the button for this tab: that beats our guess from the tab highlight.
+    applyQuestWindow(tab, text);
   } catch (error) { out.innerHTML = `<p class="fine">Could not read the screen: ${esc(error?.message ?? String(error))}</p>`; }
   finally { grabbed?.release(); worker?.terminate?.(); button.disabled = false; }
 }

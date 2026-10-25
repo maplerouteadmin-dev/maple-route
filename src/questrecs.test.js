@@ -100,3 +100,11 @@ test('hand-in guess follows who the action is aimed at, else the giver', async (
   assert.equal(guessTurnIn('Maria looked relieved after reading the reply from Lucas.', ['Maria', 'Lucas'], 'Lucas'), 'Maria');
   assert.equal(guessTurnIn("I couldn't get any answers from Manji, but I saw the battle he fought.", ['Manji', 'Grendel the Really Old'], 'Grendel the Really Old'), 'Grendel the Really Old');
 });
+
+test('quest lines with extra text after the name still match', async () => {
+  const { questsInText } = await import('./questrecs.js');
+  const names = ["Winston's Fossil Dig-up", 'Searching for Fossils', 'Luke the Security Guy'];
+  assert.deepEqual(questsInText("Winston's Fossil Dig-up  Lv. 25\nLuke the Security Guy (3/5)", names), ["Winston's Fossil Dig-up", 'Luke the Security Guy']);
+  assert.deepEqual(questsInText('Searching for Mushrooms', names), []);
+});
+

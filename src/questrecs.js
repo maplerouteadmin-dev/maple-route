@@ -65,7 +65,9 @@ export function questsInText(text, names) {
       const part = line.length >= 12 && n.length > line.length;
       const start = part ? 1 - editDistance(line, n.slice(0, line.length)) / line.length - .04 : 0;
       const end = part ? 1 - editDistance(line, n.slice(n.length - line.length)) / line.length - .04 : 0;
-      const score = Math.max(whole, start, end);
+      // Extra text after the name on the same line ("Winston's Fossil Dig-up  Lv. 25"): its start.
+      const lead = n.length >= 10 && line.length > n.length + 2 ? 1 - editDistance(line.slice(0, n.length), n) / n.length - .04 : 0;
+      const score = Math.max(whole, start, end, lead);
       if (score > bestScore || (score === bestScore && best && name.length < best.length)) { best = name; bestScore = score; }
     }
     if (bestScore >= .82) found.add(best);

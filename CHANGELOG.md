@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.15
+
+- Read my In Progress / Available / Completed tab now always reads the tab whose button you pressed, instead of guessing the open tab from its highlight (an In Progress read could be taken for Available and find nothing).
+- Quest window lines with extra text after the name (a level, a count) still match the quest.
+
 ## 1.0.14
 
 - Needs from the same monster are hunted on the same map: Searching for Fossils' Axe Stump kills and Plant Fossils (which only Axe Stumps drop) no longer get split across two maps.
