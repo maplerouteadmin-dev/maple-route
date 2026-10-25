@@ -2834,6 +2834,9 @@ document.addEventListener('change', async event => {
   const pick = event.target.closest('[data-week-pick]');
   if (pick?.value) await sendNote({ kind: 'week', quest: pick.dataset.weekPick, item: pick.value });
 });
+document.addEventListener('toggle', event => { if (event.target.classList?.contains('week-set')) state.weekSetOpen = event.target.open; }, true);
+// A new pick folds the answered list away again.
+document.addEventListener('change', event => { if (event.target.closest('.week-set [data-week-pick]')) state.weekSetOpen = false; });
 document.addEventListener('click', async event => {
   const fill = event.target.closest('[data-note-fill]');
   if (fill) { event.preventDefault(); reveal('#notes-title'); $('#note-quest').value = fill.dataset.noteFill; $('#note-kind').value = fill.dataset.noteKind || 'need'; $('#note-item').value = fill.dataset.noteItem ?? ''; noteFields(); $(fill.dataset.noteItem ? '#note-value' : '#note-item').focus(); return; }
@@ -2863,17 +2866,23 @@ function dropsSaid(item) { const d = state.notes.drops[normalize(item)]; return 
 // Quests in the plan the game data can't plan: the weekly donation (pick this week's item) and quests
 // whose text asks for things but lists no needs.
 function unknownHtml(names) {
+  const known = [];
   const rows = names.map(name => {
     const q = state.quests.find(x => x.name === name); if (!q) return '';
     if (variantItems(q).length > 1) {
       if (q.week?.by === 'helper') return '';
       const said = q.week?.by ? ` <small>${esc(q.week.item)} ×${q.week.needs[0]?.count ?? '?'} (${esc(q.week.by === 'you' ? 'you picked it' : saidBy(q.week.players))})</small>` : ' <small>which item this week? Pick it, or add the quest to your Quest Helper</small>';
-      return `<li><label>${esc(name)}: <select data-week-pick="${esc(name)}"><option value="">choose…</option>${variantItems(q).map(item => `<option${q.week?.item === item ? ' selected' : ''}>${esc(item)}</option>`).join('')}</select></label>${said}</li>`;
+      const row = `<li><label>${esc(name)}: <select data-week-pick="${esc(name)}"><option value="">choose…</option>${variantItems(q).map(item => `<option${q.week?.item === item ? ' selected' : ''}>${esc(item)}</option>`).join('')}</select></label>${said}</li>`;
+      // Answered: folded away under "Weekly items", to change if it was picked wrong.
+      if (q.week?.by) { known.push(row); return ''; }
+      return row;
     }
-    if (!q.needs?.length && /\b(bring|collect|gather|hunt|defeat|eliminate|get me|obtain|donat)/i.test(q.text ?? '')) return `<li>${esc(name)} <small>lists no items in the game data. <a href="#quests" data-note-fill="${esc(name)}" data-note-kind="need">Tell us what it needs</a></small></li>`;
+    if (!q.needs?.length && /(bring|collect|gather|hunt|defeat|eliminate|get me|obtain|donat)/i.test(q.text ?? '')) return `<li>${esc(name)} <small>lists no items in the game data. <a href="#quests" data-note-fill="${esc(name)}" data-note-kind="need">Tell us what it needs</a></small></li>`;
     return '';
   }).filter(Boolean);
-  return rows.length ? `<div class="trip-setup"><strong>Missing info:</strong><ul class="need-list">${rows.join('')}</ul></div>` : '';
+  const open = rows.length ? `<div class="trip-setup"><strong>Missing info:</strong><ul class="need-list">${rows.join('')}</ul></div>` : '';
+  const done = known.length ? `<details class="plan-out week-set"${state.weekSetOpen ? ' open' : ''}><summary>Weekly items set (${known.length}): change</summary><ul class="need-list">${known.join('')}</ul></details>` : '';
+  return open + done;
 }
 
 // ---------- My citizenship ----------
