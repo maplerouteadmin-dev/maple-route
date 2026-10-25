@@ -159,3 +159,20 @@ export function guessTurnIn(doneText, npcNames, giver = '') {
   // A story line ("Maria looked relieved…", "Tamya heard…") is about the NPC it starts with.
   return first?.name ?? giver;
 }
+
+// What a quest is about, in one short line, so same-named quests can be told apart ("Test of
+// Qualification · Thief · from Thief Job Instructor · Dark Marble ×30"). `sameName` = how many quests
+// share its name: then the job or town comes first. Pure.
+export function questGoal(quest) {
+  const needs = (quest?.needs ?? []).map(n => n.type === 'mob' ? `defeat ${n.count ?? ''} ${n.name}`.replace('  ', ' ') : `${n.name}${n.count ? ` ×${n.count}` : ''}`);
+  if (needs.length) return needs.slice(0, 3).join(', ') + (needs.length > 3 ? ` +${needs.length - 3} more` : '');
+  if (quest?.variants?.length) return 'a different item each week';
+  return quest?.turnIn && quest.turnIn !== quest.giver ? `talk to ${quest.turnIn}` : 'talk / deliver';
+}
+export function questDetail(quest, { sameName = 1 } = {}) {
+  if (!quest) return '';
+  const which = [quest.job, quest.town].filter(Boolean).join(' · ');
+  const parts = [sameName > 1 && which ? which : '', quest.level ? `Lv ${quest.level}` : '', sameName <= 1 && which ? which : '', quest.giver ? `from ${quest.giver}` : '', questGoal(quest)];
+  return parts.filter(Boolean).join(' · ');
+}
+

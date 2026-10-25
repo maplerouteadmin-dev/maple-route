@@ -124,3 +124,14 @@ test('quest window rows match word by word (icons in front, cut off, misread let
   assert.deepEqual(questsInText("EX Cr Betty's Rezoarch an FI |", names), [], 'whole-screen reads stay strict');
   assert.deepEqual(questsInText('Research done\nPerion (1)', names, { min: .74 }), []);
 });
+
+test('same-named quests are told apart by job or town, giver and goal', async () => {
+  const { questDetail } = await import('./questrecs.js');
+  const thief = { name: 'Test of Qualification', job: 'Thief', level: 30, giver: 'Thief Job Instructor', needs: [{ type: 'item', name: 'Dark Marble', count: 30 }] };
+  assert.equal(questDetail(thief, { sameName: 4 }), 'Thief · Lv 30 · from Thief Job Instructor · Dark Marble ×30');
+  const kerning = { name: 'The Right to Own a Home', town: 'Kerning City', level: 17, giver: 'Roxy', needs: [] };
+  assert.equal(questDetail(kerning, { sameName: 2 }), 'Kerning City · Lv 17 · from Roxy · talk / deliver');
+  const fossils = { name: 'Searching for Fossils', level: 15, giver: 'Winston', needs: [{ type: 'mob', name: 'Green Mushroom', count: 25 }, { type: 'item', name: 'Plant Fossil', count: 12 }] };
+  assert.equal(questDetail(fossils), 'Lv 15 · from Winston · defeat 25 Green Mushroom, Plant Fossil ×12');
+});
+

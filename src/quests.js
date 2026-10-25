@@ -43,7 +43,7 @@ export function fromOsmsQuests(payload, wikiRows = [], wikiItemRows = []) {
   const order = new Map();
   for (const chain of payload?.chains ?? []) chain.quest_ids?.forEach((id, index) => order.set(String(id), { parent: chain.parent, index, ids: chain.quest_ids.map(String) }));
   const quests = list.filter(q => q?.name).map(q => {
-    const id = String(q.id), chain = order.get(id), extra = wikiRows.find(row => wikiQuestMatches({ name: q.name, job: JOB_REGIONS.has(q.region) ? q.region : '' }, row.name));
+    const id = String(q.id), chain = order.get(id), rows = wikiRows.filter(row => wikiQuestMatches({ name: q.name, job: JOB_REGIONS.has(q.region) ? q.region : '' }, row.name)), extra = rows.find(row => q.npc_name && normalize(row.giver) === normalize(q.npc_name)) ?? rows[0];
     const prerequisites = new Set();
     for (const match of String(q.requirements ?? '').matchAll(/Complete:\s*(.+?)\s*\(#0*(\d+)\)/g)) prerequisites.add(byId.get(String(Number(match[2])))?.name ?? byId.get(match[2])?.name ?? match[1]);
     if (chain && chain.index > 0) { const before = byId.get(chain.ids[chain.index - 1]); if (before) prerequisites.add(before.name); }
@@ -57,7 +57,8 @@ export function fromOsmsQuests(payload, wikiRows = [], wikiItemRows = []) {
       doneText: String(q.description ?? '').split('\n').map(line => line.trim()).filter(Boolean).pop() ?? '',
       rewards: { exp: q.rewards_exp ?? null, mesos: q.rewards_money ?? null, items: q.rewards_items ?? '' },
       rotation: q.rotation?.group ? String(q.rotation.group) : null,
-      grade: (q.requirements_list ?? []).find(r => r.type === 'citizenship')?.grade ?? null
+      grade: (q.requirements_list ?? []).find(r => r.type === 'citizenship')?.grade ?? null,
+      town: (q.requirements_list ?? []).find(r => r.type === 'citizenship')?.town_name ?? null
     };
   });
   const catalog = collapseRotations(quests);

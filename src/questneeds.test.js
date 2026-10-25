@@ -13,3 +13,10 @@ test('wiki quest-item suffixes and possessive spelling do not duplicate an objec
     [{ name: "Hero's Gladius (quest item)", quantity: 1 }, { name: "Lucas' Letter", quantity: 1 }]);
   assert.equal(needs.length, 2);
 });
+
+test('a job tag on the wiki item is the same item, not a second need', async () => {
+  const { completeQuestNeeds } = await import('./questneeds.js');
+  const needs = completeQuestNeeds({ needs: [{ type: 'item', name: 'Dark Marble', count: 30 }] }, [{ name: 'Dark Marble (Warrior)', quantity: 30 }]);
+  assert.deepEqual(needs.map(n => [n.name, n.count]), [['Dark Marble', 30]]);
+});
+

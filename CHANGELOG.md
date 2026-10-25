@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.18
+
+- Quest searches show what each quest is about: job or town, level, who gives it and its goal ("Thief · Lv 30 · from Thief Job Instructor · Dark Marble ×30"), so same-named quests (job tests, Henesys / Kerning City citizenship quests) can be told apart; the version you pick is remembered.
+- Fixed: job tests asked for their item twice (Dark Marble and Dark Marble (Warrior)); Kerning City citizenship quests showed the Henesys hand-in NPC.
+- Fixed: My quest plan, My citizenship and Ticked by hand looked empty after reloading the app.
+- The Hunt & trade tab is hidden for now.
+
 ## 1.0.17
 
 - The quest window is found at any game window size, up to 4K (its tab line gets thicker the bigger the window), and its rows match word by word when icons, cut-off names or misread letters get in the way.

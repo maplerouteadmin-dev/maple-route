@@ -32,7 +32,7 @@ import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOU
 // As a public website, keep OSMS pictures in the player's browser (public/sw.js). On this PC the local
 // server already saves them.
 if (!isLocalHost() && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
-import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn } from './questrecs.js';
+import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn, questDetail } from './questrecs.js';
 import { buildSteps, currentStep, stepCoversNeed } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
 import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines, fixCounts } from './hud.js';
@@ -54,11 +54,14 @@ import './goals.css';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], acceptedQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], tripTicks: [], questDetails: {}, questItemsReady: {} };
+const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], acceptedQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], tripTicks: [], questPick: {}, questDetails: {}, questItemsReady: {} };
 function questByName(name) {
   const matches = state.quests.filter(quest => quest.name === name);
-  return matches.find(quest => state.job !== 'Any' && quest.job === state.job) ?? matches.find(quest => !quest.job) ?? matches[0] ?? null;
+  const picked = state.questPick?.[name];
+  return (picked && matches.find(quest => quest.id === picked)) ?? matches.find(quest => state.job !== 'Any' && quest.job === state.job) ?? matches.find(quest => !quest.job && !quest.town) ?? matches[0] ?? null;
 }
+// How many catalog quests share a name (job tests, Henesys/Kerning citizenship quests).
+const sameNameCount = name => state.quests.filter(quest => quest.name === name).length;
 const questInProgress = name => questVisible(name, state.questsFinished);
 
 const LIVE_KEY = 'maple-route-live';
@@ -85,7 +88,7 @@ const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ u
 // Parts not yet checked in real play carry this label, so players know to double-check them.
 const UNTESTED = '<span class="untested" title="Not checked in real play yet: it may misread or miss things. Please report what you see.">Untested</span>';
 $('#app').innerHTML = `
-  <header class="top"><div class="top-inner"><div class="brand"><span class="brand-mark">✦</span> Maple Route</div><nav class="top-nav" aria-label="Sections" role="tablist"><a class="top-link" role="tab" href="#navigate">Live GPS</a><a class="top-link" role="tab" href="#goto">Go to</a><a class="top-link" role="tab" href="#world">World map</a><a class="top-link" role="tab" href="#quests">Quests</a><a class="top-link" role="tab" href="#market">Market</a><a class="top-link" role="tab" href="#hunt">Hunt &amp; trade</a><a class="top-link" role="tab" href="#settings">Settings</a><button type="button" class="top-link top-report" id="live-report" title="Something wrong? Report a problem">Report</button></nav></div></header>
+  <header class="top"><div class="top-inner"><div class="brand"><span class="brand-mark">✦</span> Maple Route</div><nav class="top-nav" aria-label="Sections" role="tablist"><a class="top-link" role="tab" href="#navigate">Live GPS</a><a class="top-link" role="tab" href="#goto">Go to</a><a class="top-link" role="tab" href="#world">World map</a><a class="top-link" role="tab" href="#quests">Quests</a><a class="top-link" role="tab" href="#market">Market</a><a class="top-link hidden" role="tab" href="#hunt" hidden>Hunt &amp; trade</a><a class="top-link" role="tab" href="#settings">Settings</a><button type="button" class="top-link top-report" id="live-report" title="Something wrong? Report a problem">Report</button></nav></div></header>
   <main class="shell">
     <section class="hero"><div><div class="eyebrow">Classic World companion</div><h1>Your next map, clearly.</h1><p>Turn-by-turn portal directions. Share your game window once and Live GPS follows you from map to map.</p></div><span class="safety">Never touches the game</span></section>
     <section class="card live-card" aria-labelledby="live-title"><div class="live-head"><div><div class="eyebrow">Live GPS</div><h2 id="live-title">Next move</h2></div><span class="pill" id="live-state">Off</span></div>
@@ -534,7 +537,7 @@ async function loadQuestCatalog() {
   loadCrafting(); loadShops();
   state.questCatalogStatus = 'loading'; renderQuestResults();
   try {
-    const QUESTS_KEY = 'maple-route-quests-v5'; // v5: full wiki required-item catalog joined to game objectives
+    const QUESTS_KEY = 'maple-route-quests-v7'; // v5: full wiki required-item catalog joined to game objectives; v6: citizenship town; v7: wiki rows matched by giver, job-tagged items merged
     let cached = null; try { cached = JSON.parse(localStorage.getItem(QUESTS_KEY) || 'null'); } catch { cached = null; }
     const fresh = cached?.quests?.length && Date.now() - cached.savedAt < 24 * 60 * 60 * 1000;
     try {
@@ -569,8 +572,8 @@ function renderQuestResults() {
   for (const quest of matches) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'quest-option';
     const name = document.createElement('strong'); name.textContent = quest.name;
-    const meta = document.createElement('span'); meta.textContent = `${quest.level ? `Lv. ${quest.level} · ` : ''}${quest.giver || quest.start || 'Check wiki for starting point'}`;
-    button.append(name, meta); button.addEventListener('click', () => selectQuest(quest)); panel.append(button);
+    const meta = document.createElement('span'); meta.textContent = questDetail(quest, { sameName: sameNameCount(quest.name) }) || quest.start || 'Check wiki for starting point';
+    button.append(name, meta); button.addEventListener('click', () => { if (sameNameCount(quest.name) > 1) { state.questPick = { ...state.questPick, [quest.name]: quest.id }; persist(); } selectQuest(quest); }); panel.append(button);
   }
 }
 
@@ -2879,14 +2882,14 @@ document.addEventListener('click', async event => {
 // ---------- My quest plan (quests picked by hand for Do all quests together) ----------
 function renderPlanList() {
   const box = $('#plan-list'); if (!box) return;
-  box.innerHTML = state.planQuests.length ? `<ul class="plan-chips">${state.planQuests.map(name => { const q = state.quests.find(x => x.name === name); return `<li><span>${esc(q?.arc && normalize(q.arc) !== normalize(name) ? `${q.arc} · ${name}` : name)}${q?.level ? ` <small>Lv ${q.level}</small>` : ''}${state.questsFinished.includes(name) ? ' <small>(finished)</small>' : ''}</span><button type="button" class="link-button" data-plan-remove="${esc(name)}" aria-label="Remove ${esc(name)}">×</button></li>`; }).join('')}</ul>`
+  box.innerHTML = state.planQuests.length ? `<ul class="plan-chips">${state.planQuests.map(name => { const q = questByName(name); return `<li><span>${esc(q?.arc && normalize(q.arc) !== normalize(name) ? `${q.arc} · ${name}` : name)}${q ? ` <small>${esc(questDetail(q, { sameName: sameNameCount(name) }))}</small>` : ''}${state.questsFinished.includes(name) ? ' <small>(finished)</small>' : ''}</span><button type="button" class="link-button" data-plan-remove="${esc(name)}" aria-label="Remove ${esc(name)}">×</button></li>`; }).join('')}</ul>`
     : '<p class="fine">Nothing added yet.</p>';
 }
 $('#plan-search').addEventListener('input', async () => {
   if (state.questCatalogStatus !== 'loaded') await loadQuestCatalog();
   const words = normalize($('#plan-search').value).split(' ').filter(Boolean);
-  const found = words.length ? state.quests.filter(q => words.every(w => normalize(`${q.name} ${q.arc ?? ''} ${q.giver ?? ''}`).includes(w)) && !state.planQuests.includes(q.name)).slice(0, 8) : [];
-  $('#plan-suggest').innerHTML = found.map(q => `<button type="button" class="start-result" data-plan-add="${esc(q.name)}">${esc(q.arc && normalize(q.arc) !== normalize(q.name) ? `${q.arc} · ${q.name}` : q.name)} <small>Lv ${q.level ?? '?'}${q.giver ? ` · ${esc(q.giver)}` : ''}${planStatus(q.name)}</small></button>`).join('');
+  const found = words.length ? state.quests.filter(q => words.every(w => normalize(`${q.name} ${q.arc ?? ''} ${q.giver ?? ''} ${q.job ?? ''} ${q.town ?? ''}`).includes(w)) && !(state.planQuests.includes(q.name) && sameNameCount(q.name) === 1)).slice(0, 10) : [];
+  $('#plan-suggest').innerHTML = found.map(q => `<button type="button" class="start-result" data-plan-add="${esc(q.name)}" data-plan-id="${esc(q.id)}">${esc(q.arc && normalize(q.arc) !== normalize(q.name) ? `${q.arc} · ${q.name}` : q.name)} <small>${esc(questDetail(q, { sameName: sameNameCount(q.name) }))}${planStatus(q.name)}</small></button>`).join('');
 });
 // Where a quest stands, so a missing one can be found and brought back (adding it undoes these).
 function planStatus(name) {
@@ -2898,7 +2901,7 @@ function planStatus(name) {
 }
 document.addEventListener('click', event => {
   const add = event.target.closest('[data-plan-add]');
-  if (add) { if (!state.planQuests.includes(add.dataset.planAdd)) state.planQuests.push(add.dataset.planAdd); state.questsFinished = state.questsFinished.filter(name => name !== add.dataset.planAdd); state.planSkip = state.planSkip.filter(name => name !== add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); renderQuestRecs(); applyObjective(); renderLive(); return; }
+  if (add) { if (add.dataset.planId && sameNameCount(add.dataset.planAdd) > 1) state.questPick = { ...state.questPick, [add.dataset.planAdd]: add.dataset.planId }; if (!state.planQuests.includes(add.dataset.planAdd)) state.planQuests.push(add.dataset.planAdd); state.questsFinished = state.questsFinished.filter(name => name !== add.dataset.planAdd); state.planSkip = state.planSkip.filter(name => name !== add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); renderQuestRecs(); applyObjective(); renderLive(); return; }
   const remove = event.target.closest('[data-plan-remove]');
   if (remove) { state.planQuests = state.planQuests.filter(name => name !== remove.dataset.planRemove); state.allTripCache = null; persist(); renderPlanList(); applyObjective(); renderLive(); return; }
   if (event.target.closest('[data-reveal-plan]')) { event.preventDefault(); reveal('#questplan-title'); $('#plan-search').focus(); }
@@ -4164,6 +4167,7 @@ try {
   state.questsAvailable = Array.isArray(saved?.questsAvailable) ? [...new Set(saved.questsAvailable.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   // My citizenship: { Henesys: 0-10, 'Kerning City': 0-10 }, or null when not set.
   state.citizenship = saved?.citizenship && typeof saved.citizenship === 'object' ? Object.fromEntries(['Henesys', 'Kerning City'].map(town => [town, Math.max(0, Math.min(10, Number(saved.citizenship[town]) || 0))])) : null;
+  state.questPick = saved?.questPick && typeof saved.questPick === 'object' && !Array.isArray(saved.questPick) ? Object.fromEntries(Object.entries(saved.questPick).filter(([k, v]) => typeof k === 'string' && typeof v === 'string').slice(0, 50)) : {};
   state.planSkip = Array.isArray(saved?.planSkip) ? [...new Set(saved.planSkip.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 200) : [];
   state.planQuests = Array.isArray(saved?.planQuests) ? [...new Set(saved.planQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 20) : [];
   state.questsHidden = Array.isArray(saved?.questsHidden) ? [...new Set(saved.questsHidden.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
@@ -4184,6 +4188,8 @@ try {
   if (!legacy?.data || (state.data.source === 'https://osmsdataexplorer.com/' && (!state.data.targets.length || !state.data.portals.some(portal => portal.x !== null && portal.y !== null) || !state.data.portals.some(portal => portal.kind !== 'visible') || !state.data.portals.some(portal => portal.npc) || !state.data.portals.some(portal => portal.boat) || !state.data.maps.some(map => map.mobSpots?.length) || !state.data.maps.some(map => map.returnTo) || !state.data.maps.some(map => map.picture) || !state.data.maps.some(map => map.capacity) || Date.now() - state.dataFetchedAt > 24 * 60 * 60 * 1000))) loadPublicData(true);
 } catch { populateMaps(); loadPublicData(true); }
 bootstrapping = false;
+// Cards drawn before the saved profile loaded: draw them again with it.
+renderPlanList(); renderCitizenship(); renderTicks();
 persist();
 
 // Dev server only: stream new test-log entries to fixtures/live/session.jsonl on this computer so a
