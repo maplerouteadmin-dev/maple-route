@@ -470,11 +470,13 @@ async function loadCrafting() {
 }
 
 // NPC shop stock from the wiki (what quest items can simply be bought, where, for how much), saved for a day.
-// The shops this character can buy from (My citizenship); every shop when it is not set.
+// The shops this character can buy from (My citizenship). Not set = no citizenship assumed, so plans
+// only use shops open to anyone, and buy steps prompt to set it (town hall shops may be closer).
+const NO_CITIZENSHIP = { Henesys: 0, 'Kerning City': 0 };
 let usableCache = { shops: null, key: '', value: null };
 function myShops() {
   const key = JSON.stringify(state.citizenship);
-  if (usableCache.shops !== state.shops || usableCache.key !== key) usableCache = { shops: state.shops, key, value: usableShops(state.shops, state.citizenship) };
+  if (usableCache.shops !== state.shops || usableCache.key !== key) usableCache = { shops: state.shops, key, value: usableShops(state.shops, state.citizenship ?? NO_CITIZENSHIP) };
   return usableCache.value;
 }
 async function loadShops() {
@@ -2720,9 +2722,9 @@ renderPlanList();
 
 // ---------- My citizenship ----------
 function renderCitizenship() {
-  const options = ['<option value="">Not set (plan any shop)</option>', '<option value="0">Not a resident</option>', ...CITIZEN_GRADES.map((name, i) => `<option value="${i + 1}">${i + 1}. ${name}</option>`)].join('');
+  const options = ['<option value="">Not set (shops open to anyone)</option>', '<option value="0">Not a resident</option>', ...CITIZEN_GRADES.map((name, i) => `<option value="${i + 1}">${i + 1}. ${name}</option>`)].join('');
   for (const [id, town] of [['#citizen-henesys', 'Henesys'], ['#citizen-kerning', 'Kerning City']]) { $(id).innerHTML = options; $(id).value = state.citizenship ? String(state.citizenship[town] ?? 0) : ''; }
-  $('#citizen-note').textContent = state.citizenship ? `Plans use shops open to you: Henesys ${state.citizenship.Henesys ? `grade ${state.citizenship.Henesys}` : 'not a resident'}, Kerning City ${state.citizenship['Kerning City'] ? `grade ${state.citizenship['Kerning City']}` : 'not a resident'}.` : 'Not set: plans use the nearest shop and warn when it needs citizenship.';
+  $('#citizen-note').textContent = state.citizenship ? `Plans use shops open to you: Henesys ${state.citizenship.Henesys ? `grade ${state.citizenship.Henesys}` : 'not a resident'}, Kerning City ${state.citizenship['Kerning City'] ? `grade ${state.citizenship['Kerning City']}` : 'not a resident'}.` : 'Not set: plans only use shops open to anyone, and tell you when a town hall shop would be nearer.';
 }
 for (const id of ['#citizen-henesys', '#citizen-kerning']) $(id).addEventListener('change', () => {
   const h = $('#citizen-henesys').value, k = $('#citizen-kerning').value;
@@ -3190,7 +3192,7 @@ function allStepsHtml(all) {
       }));
       return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hunt on ${mapName}</strong>${now} <small>(${esc(step.quests.join(', '))})</small><ul class="need-list">${needs.join('')}</ul></li>`;
     }
-    if (step.type === 'buy') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Buy at ${mapName}</strong>${now}<ul class="need-list">${(step.quests.length ? step.quests : ['']).map(q => `<li><label><input type="checkbox" data-need-tick="${esc(q)}" data-need="${esc(step.item)}"> ${esc(step.item)} ×${step.count} <small>${esc(needCount(q, step.item))} · from ${esc(step.npc)}${step.price ? `, ${step.price.toLocaleString()} mesos each` : ''}</small></label></li>`).join('')}${step.grade && !state.citizenship ? `<li class="buy-note"><small>⚠ ${esc(citizenshipNote(step))}.${step.open.length ? ` Anyone can buy it from ${esc(step.open.map(o => `${o.npc}${o.map ? ` (${o.map})` : ''}`).join(' or '))}.` : ''} <a href="#settings" data-reveal-citizen>Set my citizenship</a> and the plan only uses shops you can buy from.</small></li>` : ''}</ul></li>`;
+    if (step.type === 'buy') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Buy at ${mapName}</strong>${now}<ul class="need-list">${(step.quests.length ? step.quests : ['']).map(q => `<li><label><input type="checkbox" data-need-tick="${esc(q)}" data-need="${esc(step.item)}"> ${esc(step.item)} ×${step.count} <small>${esc(needCount(q, step.item))} · from ${esc(step.npc)}${step.price ? `, ${step.price.toLocaleString()} mesos each` : ''}</small></label></li>`).join('')}${!state.citizenship ? (() => { const halls = (state.shops?.[step.item.toLowerCase()] ?? []).filter(x => x.grade); return halls.length ? `<li class="buy-note"><small>Citizen? ${esc(halls.map(x => `${x.npc} (${x.map}) sells it to ${x.town} residents of grade ${x.grade}`).join('; '))}. <a href="#settings" data-reveal-citizen>Set my citizenship</a> and the plan can use the nearer shop.</small></li>` : ''; })() : ''}</ul></li>`;
     if (step.type === 'start') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Start at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', '))} <small>from ${esc(step.npc ?? 'the quest NPC')} (ticks itself once it is in your Quest Helper)</small></label></li></ul></li>`;
     if (step.type === 'craft') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Craft at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> Made it</label></li></ul></li>`;
     return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hand in at ${mapName}</strong>${now}${step.noRoute ? ' <small>(no walking route there)</small>' : ''}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', ') || 'your quest')} <small>to ${esc(npcsAt(step.mapId) || 'the quest NPC')}</small></label></li></ul></li>`;
