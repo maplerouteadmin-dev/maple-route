@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 (unreleased)
+
+- Added an Electron/Linux AppImage wrapper around the same `src/` app, with user-selected screen capture, a compact always-on-top Live GPS window, and a Linux speech fallback.
+- The production relay remains loopback-only and caches OSMS files in the Linux user data directory. Windows serving and shortcut behavior are unchanged.
+- Added Linux packaging workflow and Steam Deck Desktop Mode instructions. Hardware capture, 1280×800 OCR, and Gaming Mode are still unverified; no release has been published.
+
 ## 1.0.18
 
 - Quest searches show what each quest is about: job or town, level, who gives it and its goal ("Thief · Lv 30 · from Thief Job Instructor · Dark Marble ×30"), so same-named quests (job tests, Henesys / Kerning City citizenship quests) can be told apart; the version you pick is remembered.

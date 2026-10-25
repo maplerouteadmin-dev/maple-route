@@ -1,4 +1,5 @@
 import { createWorker, OEM, PSM } from 'tesseract.js';
+import './deck.css';
 import { STORAGE_KEY, validateDataset, shortestRoute, matchMap, normalize, portalPosition } from './core.js';
 import { starterData } from './starter-data.js';
 import { fetchOsms } from './osms.js';
@@ -457,6 +458,12 @@ function voiceOn(part) { return state.voice && (state.voiceParts?.[part] ?? !VOI
 function sayPart(part, words) { if (words && voiceOn(part)) say(words); }
 
 function say(words) {
+  if (window.mapleDesktop && !voices().length) {
+    window.mapleDesktop.speak(spoken(words), state.voiceRate ?? 1).then(ok => {
+      if (!ok) status('Install espeak-ng or speech-dispatcher for voice on Linux.', true);
+    });
+    return;
+  }
   if (!('speechSynthesis' in window)) return;
   const line = new SpeechSynthesisUtterance(spoken(words)), voice = chosenVoice();
   if (voice) { line.voice = voice; line.lang = voice.lang; }
@@ -472,7 +479,7 @@ function renderVoicePicker() {
 }
 
 function speak(step) {
-  if (!('speechSynthesis' in window)) { status('Voice playback is not available in this browser.', true); return; }
+  if (!('speechSynthesis' in window) && !window.mapleDesktop) { status('Voice playback is not available in this browser.', true); return; }
   const index = state.route?.indexOf(step) ?? -1;
   say(spokenStep(state.data, step, index >= 0 ? state.route[index + 1] : null, { level: state.level }));
 }
@@ -2501,6 +2508,10 @@ function fitPip(fromClick = false) {
 }
 
 async function openPip() {
+  if (window.mapleDesktop) {
+    await window.mapleDesktop.toggleCompact(!document.body.classList.contains('electron-compact'));
+    return;
+  }
   if (state.pipDoc) return;
   const note = text => { $('#live-note').textContent = text; $('#live-note').classList.toggle('hidden', !text); };
   note('');
@@ -3169,6 +3180,12 @@ function lastShareText() {
 }
 $('#live-stop').addEventListener('click', stopLive);
 $('#live-pip').addEventListener('click', openPip);
+if (window.mapleDesktop) window.mapleDesktop.onCompactChange(compact => {
+  document.body.classList.toggle('electron-compact', compact);
+  $('#live-pip').textContent = compact ? 'Full view' : 'Compact mode';
+  if (compact && location.hash !== '#navigate') location.hash = '#navigate';
+  setTimeout(fitLivePage, 0);
+});
 $('#live-voice').addEventListener('change', event => { state.voice = event.target.checked; saveLive(); if (!state.voice) speechSynthesis?.cancel?.(); });
 setLiveUi(); liveState('Off');
 

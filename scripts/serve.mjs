@@ -26,9 +26,12 @@ export function staticPath(base, urlPath) {
   return full.startsWith(base) ? full : null;
 }
 
-async function handle(req, res) {
+async function handle(req, res, { enableAutostart = process.platform === 'win32' } = {}) {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/__autostart') { handleAutostart(req, res, port); return; }
+  if (url.pathname === '/__autostart') {
+    if (!enableAutostart) { res.writeHead(404); res.end(); return; }
+    handleAutostart(req, res, Number(req.socket.localPort)); return;
+  }
   if (req.method === 'POST' && url.pathname === '/__live-log') { req.resume(); res.end('ok'); return; } // dev-only logger: ignore
   if (await handleRelay(req, res)) return; // OSMS pictures/renders/lists, saved on this PC
   let file = staticPath(root, url.pathname);
@@ -41,7 +44,22 @@ async function handle(req, res) {
   } catch { res.writeHead(404); res.end('Not found'); }
 }
 
+export function startServer({ port: listenPort = port, host = '127.0.0.1', enableAutostart = process.platform === 'win32' } = {}) {
+  const server = createServer((req, res) => {
+    handle(req, res, { enableAutostart }).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); });
+  });
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(listenPort, host, () => {
+      server.off('error', reject);
+      const address = server.address();
+      resolve({ server, url: `http://${host}:${address.port}` });
+    });
+  });
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  createServer((req, res) => { handle(req, res).catch(() => { res.writeHead(500); res.end(); }); })
-    .listen(port, '127.0.0.1', () => console.log(`Maple Route on http://localhost:${port}`));
+  startServer().then(({ url }) => console.log(`Maple Route on ${url}`)).catch(error => {
+    console.error(error); process.exitCode = 1;
+  });
 }

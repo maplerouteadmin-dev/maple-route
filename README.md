@@ -25,6 +25,7 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - [What it does](#what-it-does)
 - [What it never does](#what-it-never-does)
 - [Setup](#setup)
+- [Steam Deck / Linux](#steam-deck--linux)
 - [Using it](#using-it)
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
@@ -33,6 +34,21 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - [How this was made](#how-this-was-made)
 - [Data and credits](#data-and-credits)
 - [Feedback](#feedback)
+
+## Steam Deck / Linux
+
+The Linux AppImage is an **unverified Desktop Mode preview**. It uses the same route and screen-reader code as Windows, but needs a real Steam Deck test before anyone should rely on its map reads. It does not hook MapleStory or press buttons for you.
+
+After an AppImage has been attached to an approved GitHub release:
+
+1. Switch the Deck to Desktop Mode and download the `Maple-Route-*-linux-x64.AppImage` file from that release.
+2. In a terminal, run `chmod +x` on the downloaded AppImage, then open it. You may optionally add that AppImage as a non-Steam game in Steam's Desktop Mode Library.
+3. Start MapleStory Classic World through Proton at 1280×800. In Maple Route, choose **Start live GPS** and select the MapleStory window in the screen-sharing picker. You must grant the share yourself; nothing reads the game until you do.
+4. Use **Compact mode** to keep a small, resizable, always-on-top directions/map/checklist window in a corner. Use **Full view** or Ctrl+Shift+C to switch back.
+
+Voice is enabled by default. If Electron has no built-in Linux voice, install `espeak-ng` or `speech-dispatcher` for the fallback. The OSMS map/image cache is kept at `~/.local/share/MapleRoute/cache` (or `$XDG_DATA_HOME/MapleRoute/cache`); no third-party map dataset is bundled. The existing Windows browser + shortcut setup is unchanged.
+
+KDE Wayland, X11, Proton window capture, 1280×800 OCR, and Gaming Mode remain device test gates. Gaming Mode capture and Decky are **not shipped**; see [Steam Deck investigation](docs/STEAM_DECK.md). If the picker shows no live game window, do not assume GPS has a reliable position; use the manual map selector until a private Deck screenshot can be tested.
 
 ## What it does
 

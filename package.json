@@ -1,8 +1,9 @@
 {
   "name": "maple-route-companion",
   "private": true,
-  "version": "1.0.18",
+  "version": "1.1.0",
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "node scripts/copy-ocr.mjs && vite build",
@@ -10,15 +11,38 @@
     "scan:titles": "node scripts/scan-titles.mjs",
     "audit:handins": "node scripts/audit-handins.mjs",
     "audit:quests": "node scripts/audit-quests.mjs",
-    "audit:droppers": "node scripts/audit-droppers.mjs"
+    "audit:droppers": "node scripts/audit-droppers.mjs",
+    "desktop": "npm run build && electron .",
+    "desktop:linux": "npm run build && electron-builder --linux AppImage --x64",
+    "test:deck-fixtures": "node scripts/make-deck-fixtures.mjs && node --test desktop/deck-fixtures.test.mjs"
   },
   "dependencies": {
     "@tesseract.js-data/eng": "^1.0.0",
     "tesseract.js": "7.0.0"
   },
   "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
     "vite": "^7.1.0"
   },
   "license": "MIT",
-  "description": "Free second-screen GPS companion for MapleStory Classic World (unofficial; reads only the shared window)."
+  "description": "Free second-screen GPS companion for MapleStory Classic World (unofficial; reads only the shared window).",
+  "build": {
+    "appId": "dev.mapleroute.companion",
+    "productName": "Maple Route",
+    "directories": { "output": "release" },
+    "files": [
+      "dist/**",
+      "desktop/**",
+      "scripts/serve.mjs",
+      "scripts/osmscache.mjs",
+      "scripts/autostart.mjs",
+      "package.json"
+    ],
+    "linux": {
+      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "category": "Utility",
+      "artifactName": "Maple-Route-${version}-linux-${arch}.${ext}"
+    }
+  }
 }

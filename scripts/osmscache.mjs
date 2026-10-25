@@ -4,8 +4,11 @@
 // This is a private cache on the player's own PC, not a copy that is shared or republished.
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
+import { homedir } from 'node:os';
 
-export const cacheDir = () => join(process.env.LOCALAPPDATA ?? process.env.HOME ?? '.', 'MapleRoute', 'cache');
+export const cacheDir = (platform = process.platform, env = process.env) => platform === 'win32'
+  ? join(env.LOCALAPPDATA ?? env.HOME ?? '.', 'MapleRoute', 'cache')
+  : join(env.XDG_DATA_HOME ?? join(env.HOME ?? homedir(), '.local', 'share'), 'MapleRoute', 'cache');
 const DAY = 24 * 60 * 60 * 1000;
 const TYPES = { '.png': 'image/png', '.webp': 'image/webp', '.json': 'application/json', '.jpg': 'image/jpeg', '.gif': 'image/gif' };
 
