@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.13
+
+- EXP per hour sits on the "On <map>" line of the Live GPS page (EXP %, EXP/h, %/h and time to level) with a reset button to start counting again from now.
+
 ## 1.0.12
 
 - The voice says what to do when you get to a stop: "Talk to Luke to start Luke the Security Guy", "Buy 1 Salad from 24 Hr Mobile Store", "Hunt here for Jr. Necki", "Talk to Roxy to hand in Donating to Kerning City", and again when you reach the NPC. Turn it off in Settings → Voice → What to do there.

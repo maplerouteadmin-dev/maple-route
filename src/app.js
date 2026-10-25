@@ -1710,7 +1710,7 @@ function hudHtml() {
   const bits = [];
   const tracker = state.hud.tracker;
   if (tracker?.last) { const s = expSummary(tracker); bits.push(`EXP ${s.percent.toFixed(2)}%`); if (s.minutes >= 2) bits.push(`${Math.round(s.perHour).toLocaleString()} EXP/h`); }
-  if (bits.length) parts.push(`<div class="hud-strip">${bits.map(esc).join(' · ')}</div>`);
+  void bits; // EXP now sits in the directions header (expChipHtml)
   return parts.join('');
 }
 
@@ -1782,10 +1782,26 @@ function cancelDestination() {
   destinationSelect.value = ''; saveLive(); persist(); renderRoute(); renderTargets(); renderWorldMap(); renderLive();
 }
 
+// EXP per hour on the "On <map>" line, with a reset that starts the count again from now.
+function expChipHtml() {
+  const tracker = state.hud.tracker;
+  if (!state.live || !tracker?.last) return '';
+  const s = expSummary(tracker), measuring = s.minutes < 2;
+  const left = s.minutesToLevel == null ? '' : s.minutesToLevel >= 120 ? ` · level in ${Math.round(s.minutesToLevel / 60)} h` : ` · level in ${Math.round(s.minutesToLevel)} min`;
+  return `<div class="exp-chip" title="From your status bar since ${new Date(tracker.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}">EXP ${s.percent.toFixed(2)}% · ${measuring ? 'measuring EXP/h…' : `<b>${Math.round(s.perHour).toLocaleString()}</b> EXP/h · ${s.percentPerHour.toFixed(1)}%/h${left}`} <button type="button" class="link-button" data-exp-reset>reset</button></div>`;
+}
+document.addEventListener('click', event => {
+  if (!event.target.closest('[data-exp-reset]') || !state.live) return;
+  // Start counting again from the current reading (kept, so the % shows straight away).
+  const last = state.live.tracker?.last;
+  state.live.tracker = createExpTracker(Date.now());
+  if (last) state.live.tracker = addExpReading(state.live.tracker, { value: last.value, percent: last.percent, level: last.level ?? null, mapId: state.current }, Date.now()).tracker;
+  state.hud.tracker = state.live.tracker; renderLiveExp(); renderLive();
+});
 const CHOOSE_DEST = '<button type="button" class="link-button choose-dest" data-choose-dest>Choose destination</button>';
 function renderLive() {
   // Directions above the map (the map's header); quests, checklist and EXP in the card below it.
-  const html = destinationHtml() + liveHtml(liveModel()) + CHOOSE_DEST, planHtml = hudHtml();
+  const html = destinationHtml() + expChipHtml() + liveHtml(liveModel()) + CHOOSE_DEST, planHtml = hudHtml();
   const card = $('#live-step'), plan = $('#live-plan');
   if (card && card.dataset.html !== html) { card.innerHTML = html; card.dataset.html = html; }
   const offer = $('#guide-offer'), offerHtml = guideOfferHtml();
