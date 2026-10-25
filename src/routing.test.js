@@ -43,3 +43,16 @@ test('town scrolls go to each town from anywhere', async () => {
   const names = travelGraph(data, { nearest: true, towns: true }).portals.filter(p => p.from === 'f').map(p => p.name).sort();
   assert.deepEqual(names, ['Return Scroll - Nearest Town', 'Return Scroll to Perion']);
 });
+
+test('the VIP Cab has its own switch, apart from regular taxis', async () => {
+  const { travelGraph } = await import('./routing.js');
+  const data = { maps: [{ id: 'l', name: 'Lith' }, { id: 'h', name: 'Henesys' }, { id: 'a', name: 'Ant Tunnel Park' }], portals: [
+    { from: 'l', to: 'h', name: 'Phil', kind: 'taxi', npc: 'Phil', cost: 3 },
+    { from: 'l', to: 'a', name: 'VIP Cab', kind: 'taxi', npc: 'VIP Cab', cost: 8 }
+  ] };
+  const names = options => travelGraph(data, options).portals.map(p => p.npc).sort();
+  assert.deepEqual(names({ taxis: true, vip: false }), ['Phil']);
+  assert.deepEqual(names({ taxis: false, vip: true }), ['VIP Cab']);
+  assert.deepEqual(names({ taxis: true }), ['Phil', 'VIP Cab']);
+});
+

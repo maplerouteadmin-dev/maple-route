@@ -12,13 +12,14 @@ export function uncertainPortal(portal) {
 const TOWN_SCROLLS = ['Henesys', 'Ellinia', 'Perion', 'Kerning City', 'Lith Harbor', 'Sleepywood', 'Forgotten Hollow'];
 const travelCache = new WeakMap();
 // `nearest`: Return Scroll - Nearest Town; `towns`: the town scrolls (each a separate choice).
-export function travelGraph(data, { taxis = true, nearest = false, towns: townScrolls = false, scrolls = false } = {}) {
+// `taxis` = Regular Cabs and Phil; `vip` = the VIP Cab (10,000 mesos) on its own switch. Boats always count.
+export function travelGraph(data, { taxis = true, vip = taxis, nearest = false, towns: townScrolls = false, scrolls = false } = {}) {
   if (scrolls) { nearest = true; townScrolls = true; }
-  const key = `${taxis}|${nearest}|${townScrolls}`, byData = travelCache.get(data) ?? new Map();
+  const key = `${taxis}|${vip}|${nearest}|${townScrolls}`, byData = travelCache.get(data) ?? new Map();
   travelCache.set(data, byData);
   if (byData.has(key)) return byData.get(key);
   const known = new Set(data.maps.map(m => m.id));
-  const portals = data.portals.filter(p => taxis || p.kind !== 'taxi' || p.boat);
+  const portals = data.portals.filter(p => p.kind !== 'taxi' || p.boat || (p.npc === 'VIP Cab' ? vip : taxis));
   if (nearest || townScrolls) {
     // Return Scroll - Nearest Town (to the map's own return town) and the town scrolls Classic sells
     // (Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow).
