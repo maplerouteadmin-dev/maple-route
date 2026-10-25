@@ -23,7 +23,7 @@ import { mapInfo, mobInfo, npcInfo } from './mapinfo.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
 import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, suggestPrice, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
-import { spoken } from './speech.js';
+import { spoken, taskWords } from './speech.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -448,7 +448,7 @@ function chosenVoice() {
 }
 // Which kinds of spoken lines are on (Settings → Voice). Directions = which portal and where it
 // leads on each new map; monsters = what spawns there and how many; quests = quest progress lines.
-const VOICE_PARTS = { directions: 'Which portal to take and where it leads', monstersDest: 'Monsters at your destination, with counts', monstersAll: 'Monsters on every map you enter (not just the destination)', arrival: 'Arriving at your destination', npc: 'Reaching the NPC you are going to', quests: 'Quest steps and progress', warnings: 'Warnings (mini map hidden, share stopped)' };
+const VOICE_PARTS = { directions: 'Which portal to take and where it leads', monstersDest: 'Monsters at your destination, with counts', monstersAll: 'Monsters on every map you enter (not just the destination)', arrival: 'Arriving at your destination', tasks: 'What to do there (talk to an NPC, buy an item, hunt, hand in)', npc: 'Reaching the NPC you are going to', quests: 'Quest steps and progress', warnings: 'Warnings (mini map hidden, share stopped)' };
 const VOICE_DEFAULT_OFF = new Set(['monstersAll']);
 function voiceOn(part) { return state.voice && (state.voiceParts?.[part] ?? !VOICE_DEFAULT_OFF.has(part)) === true; }
 function sayPart(part, words) { if (words && voiceOn(part)) say(words); }
@@ -1747,6 +1747,13 @@ function goalSpot() {
   return npc && Number.isFinite(Number(npc.x)) ? { name: npc.name, x: Number(npc.x), y: Number(npc.y), mapId: map.id } : null;
 }
 
+// The quest task at this map: the first stop of the plan being guided (all quests, or one quest).
+function taskHere(mapId) {
+  if (!state.guide.quest) return state.goalNpc && goalSpot()?.mapId === mapId ? `Talk to ${state.goalNpc}.` : '';
+  const all = state.tripAll ? allQuestsTrip() : allQuestsTrip(state.guide.quest), first = all.trip?.order?.[0];
+  if (!first || first.mapId !== mapId) return '';
+  return taskWords(first, { npc: first.type === 'handin' ? all.ends.get(first.mapId)?.[0] : null });
+}
 function nearText(kind, npc = null) {
   if (kind === 'npc') return `You are at ${npc ?? 'the NPC'}. Double-click them to talk.`;
   return kind === 'walk' ? 'You are at the exit. Walk into it.' : kind === 'taxi' ? 'You are at the taxi stand. Talk to the driver.' : 'You are at the portal. Press ↑.';
@@ -2242,7 +2249,12 @@ function updatePosition(found, mapId) {
   if (!state.live) renderLive(); // the live loop renders once at the end of its tick
   const next = state.route?.[0];
   const goal = !next && live && state.voice && state.position ? goalSpot() : null;
-  if (goal && goal.mapId === mapId && guidance(state.position, goal)?.near && live.nearSpoken !== `npc:${goal.name}`) { live.nearSpoken = `npc:${goal.name}`; sayPart('npc', nearText('npc', goal.name)); }
+  if (goal && goal.mapId === mapId && guidance(state.position, goal)?.near && live.nearSpoken !== `npc:${goal.name}`) {
+    live.nearSpoken = `npc:${goal.name}`;
+    // At the NPC: say what to do with them (start, buy, hand in) when that voice part is on.
+    const task = voiceOn('tasks') ? taskHere(mapId) : '';
+    if (voiceOn('npc') || task) say(`You are at ${goal.name}.${task ? ` ${task}` : ' Double-click them to talk.'}`);
+  }
   if (!live || !state.voice || !next || !state.position || next.from !== mapId) return;
   const hint = guidance(state.position, { x: Number(next.x), y: Number(next.y) }), key = `${next.from}>${next.to}`;
   // (No spoken "you are at the portal": the screen shows it.)
@@ -2273,7 +2285,7 @@ function onLiveMap(id) {
   if (spot) { state.position = { mapId: id, x: spot.x, y: spot.y, at: Date.now(), estimated: true }; renderLive(); }
   if (!state.voice) return;
   const next = !arrived && state.route?.[0]?.from === id ? state.route[0] : null;
-  const words = [arrived && voiceOn('arrival') ? 'You have arrived.' : '', next && voiceOn('directions') ? spokenStep(state.data, next, state.route[1], { level: state.level }) : '', (arrived ? voiceOn('monstersDest') : voiceOn('monstersAll')) ? mobsSpoken(id) : ''].filter(Boolean).join(' ');
+  const words = [arrived && voiceOn('arrival') ? 'You have arrived.' : '', arrived && voiceOn('tasks') ? taskHere(id) : '', next && voiceOn('directions') ? spokenStep(state.data, next, state.route[1], { level: state.level }) : '', (arrived ? voiceOn('monstersDest') : voiceOn('monstersAll')) ? mobsSpoken(id) : ''].filter(Boolean).join(' ');
   if (words) say(words);
 }
 
