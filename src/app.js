@@ -16,7 +16,7 @@ import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMa
 import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
 import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
-import { fetchShops, citizenshipNote } from './shops.js';
+import { fetchShops, citizenshipNote, usableShops, CITIZEN_GRADES } from './shops.js';
 import { mapInfo, mobInfo, npcInfo } from './mapinfo.js';
 import { issueUrl, problemReport, dropReport } from './report.js';
 import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, suggestPrice, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
@@ -50,7 +50,7 @@ import './goals.css';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], questDetails: {}, questItemsReady: {} };
+const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, questDetails: {}, questItemsReady: {} };
 
 const LIVE_KEY = 'maple-route-live';
 // In-memory test log of what Live GPS read on each tick (window.__mapleRouteLog), for diagnosing
@@ -142,6 +142,8 @@ $('#app').innerHTML = `
       <div class="divider"></div><h3 class="sub-title">Saw a drop?</h3><p class="fine">Drop tables are not in the game files, so player reports are how the drop data gets better.</p>
       <div class="sell-fields"><label class="field">Item<input id="drop-item" maxlength="80" placeholder="e.g. Diamond Ore"></label><label class="field">Monster<input id="drop-monster" maxlength="80" placeholder="e.g. Stone Golem"></label></div>
       <div class="action-row"><button type="button" class="button secondary" id="report-drop">Report this drop</button></div></section>
+<section class="card" aria-labelledby="citizen-title"><h2 id="citizen-title">My citizenship</h2><p class="muted">Town hall shopkeepers sell only to their own town's residents of a high enough grade (a Salad from Raymond needs Henesys, grade 2). Set yours and quest plans only use shops you can buy from. Henesys comes first (Arthur starts it at level 12), then Kerning City; you can hold both.</p>
+      <div class="sell-fields"><label class="field">Henesys<select id="citizen-henesys"></select></label><label class="field">Kerning City<select id="citizen-kerning"></select></label></div><p class="fine" id="citizen-note"></p></section>
 <section class="card" aria-labelledby="characters-title"><h2 id="characters-title">Characters</h2><p class="muted">Each character keeps its own level, quests and progress.</p><div id="characters"></div></section>
 <section class="card" aria-labelledby="settings-title"><h2 id="settings-title">Live tools</h2><p class="muted">What Live GPS reads besides the mini map.</p><div class="tool-grid">
         <label class="toggle"><input type="checkbox" id="tool-exp"> EXP tracker</label>
@@ -195,7 +197,7 @@ const VIEWS = {
   quests: ['quest-helper-title', 'questplan-title', 'questlog-title', 'next-title', 'trip-title', 'goals-title', 'party-title'],
   hunt: ['live-exp-title', 'session-title', 'sell-title', 'prices-title', 'gear-title'],
   market: ['market-title', 'market-post-title'],
-  settings: ['voice-title', 'autostart-title', 'characters-title', 'settings-title', 'feedback-title', 'data-title', 'privacy-title']
+  settings: ['voice-title', 'autostart-title', 'characters-title', 'citizen-title', 'settings-title', 'feedback-title', 'data-title', 'privacy-title']
 };
 {
   const container = document.createElement('div'); container.className = 'views';
@@ -468,6 +470,13 @@ async function loadCrafting() {
 }
 
 // NPC shop stock from the wiki (what quest items can simply be bought, where, for how much), saved for a day.
+// The shops this character can buy from (My citizenship); every shop when it is not set.
+let usableCache = { shops: null, key: '', value: null };
+function myShops() {
+  const key = JSON.stringify(state.citizenship);
+  if (usableCache.shops !== state.shops || usableCache.key !== key) usableCache = { shops: state.shops, key, value: usableShops(state.shops, state.citizenship) };
+  return usableCache.value;
+}
 async function loadShops() {
   if (state.shops || state.shopsLoading) return;
   state.shopsLoading = true;
@@ -2709,6 +2718,20 @@ document.addEventListener('click', event => {
 });
 renderPlanList();
 
+// ---------- My citizenship ----------
+function renderCitizenship() {
+  const options = ['<option value="">Not set (plan any shop)</option>', '<option value="0">Not a resident</option>', ...CITIZEN_GRADES.map((name, i) => `<option value="${i + 1}">${i + 1}. ${name}</option>`)].join('');
+  for (const [id, town] of [['#citizen-henesys', 'Henesys'], ['#citizen-kerning', 'Kerning City']]) { $(id).innerHTML = options; $(id).value = state.citizenship ? String(state.citizenship[town] ?? 0) : ''; }
+  $('#citizen-note').textContent = state.citizenship ? `Plans use shops open to you: Henesys ${state.citizenship.Henesys ? `grade ${state.citizenship.Henesys}` : 'not a resident'}, Kerning City ${state.citizenship['Kerning City'] ? `grade ${state.citizenship['Kerning City']}` : 'not a resident'}.` : 'Not set: plans use the nearest shop and warn when it needs citizenship.';
+}
+for (const id of ['#citizen-henesys', '#citizen-kerning']) $(id).addEventListener('change', () => {
+  const h = $('#citizen-henesys').value, k = $('#citizen-kerning').value;
+  state.citizenship = h === '' && k === '' ? null : { Henesys: Number(h) || 0, 'Kerning City': Number(k) || 0 };
+  state.tripCache = null; state.allTripCache = null; persist(); renderCitizenship(); applyObjective(); renderLive();
+});
+document.addEventListener('click', event => { if (event.target.closest('[data-reveal-citizen]')) { event.preventDefault(); reveal('#citizen-title'); } });
+renderCitizenship();
+
 $('#live-start').addEventListener('click', startLive);
 function renderCharacters() {
   const panel = $('#characters'); if (!panel) return;
@@ -3005,7 +3028,7 @@ function currentObjective() {
   if (!quest) return null;
   const helperQuest = (state.hud.quests ?? []).find(q => q.name === quest) ?? null;
   const catalogQuest = state.quests.find(q => q.name === quest) ?? null;
-  const objective = questObjective(travel(), { quest, helperQuest, catalogQuest, itemSources: state.itemSources, crafting: state.crafting, shops: state.shops, currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
+  const objective = questObjective(travel(), { quest, helperQuest, catalogQuest, itemSources: state.itemSources, crafting: state.crafting, shops: myShops(), currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
   if (objective.stage === 'hunt') loadItemSources(objective.goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
   return objective;
 }
@@ -3077,7 +3100,7 @@ function huntOptions(g) {
     progress.push({ name: need.name, have: seen?.have ?? 0, need: count, done: Boolean(seen && believableDone({ ...seen, need: count, done: (seen.have ?? 0) >= count })) });
   }
   if (!progress.length) return null;
-  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting, state.shops);
+  const goals = huntGoals(state.data, progress, state.itemSources, g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting, myShops());
   loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.lookup ?? goal.name));
   // The trip ends where the quest is handed in, so stops on the way there are preferred.
   const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(endNpc))?.locations[0]?.mapId ?? null : null;
@@ -3110,7 +3133,7 @@ function allQuestsTrip() {
     if (name === state.guide.quest && !notStarted) goals = (huntOptions(guideSteps())?.goals ?? []).filter(goal => !isTicked(goal));
     else {
       const progress = quest.needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: seen?.have ?? 0, need: n.count ?? seen?.need, done: Boolean(seen && believableDone(seen)) || ticked.has(normalize(n.name)) }; });
-      goals = huntGoals(state.data, progress, state.itemSources, quest.text, quest.needs.map(n => n.name), state.crafting, state.shops);
+      goals = huntGoals(state.data, progress, state.itemSources, quest.text, quest.needs.map(n => n.name), state.crafting, myShops());
       loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
     }
     for (const goal of goals) {
@@ -3167,7 +3190,7 @@ function allStepsHtml(all) {
       }));
       return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hunt on ${mapName}</strong>${now} <small>(${esc(step.quests.join(', '))})</small><ul class="need-list">${needs.join('')}</ul></li>`;
     }
-    if (step.type === 'buy') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Buy at ${mapName}</strong>${now}<ul class="need-list">${(step.quests.length ? step.quests : ['']).map(q => `<li><label><input type="checkbox" data-need-tick="${esc(q)}" data-need="${esc(step.item)}"> ${esc(step.item)} ×${step.count} <small>${esc(needCount(q, step.item))} · from ${esc(step.npc)}${step.price ? `, ${step.price.toLocaleString()} mesos each` : ''}</small></label></li>`).join('')}${step.grade ? `<li class="buy-note"><small>⚠ ${esc(citizenshipNote(step))}.${step.open.length ? ` Anyone can buy it from ${esc(step.open.map(o => `${o.npc}${o.map ? ` (${o.map})` : ''}`).join(' or '))}.` : ''}</small></li>` : ''}</ul></li>`;
+    if (step.type === 'buy') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Buy at ${mapName}</strong>${now}<ul class="need-list">${(step.quests.length ? step.quests : ['']).map(q => `<li><label><input type="checkbox" data-need-tick="${esc(q)}" data-need="${esc(step.item)}"> ${esc(step.item)} ×${step.count} <small>${esc(needCount(q, step.item))} · from ${esc(step.npc)}${step.price ? `, ${step.price.toLocaleString()} mesos each` : ''}</small></label></li>`).join('')}${step.grade && !state.citizenship ? `<li class="buy-note"><small>⚠ ${esc(citizenshipNote(step))}.${step.open.length ? ` Anyone can buy it from ${esc(step.open.map(o => `${o.npc}${o.map ? ` (${o.map})` : ''}`).join(' or '))}.` : ''} <a href="#settings" data-reveal-citizen>Set my citizenship</a> and the plan only uses shops you can buy from.</small></li>` : ''}</ul></li>`;
     if (step.type === 'start') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Start at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', '))} <small>from ${esc(step.npc ?? 'the quest NPC')} (ticks itself once it is in your Quest Helper)</small></label></li></ul></li>`;
     if (step.type === 'craft') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Craft at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> Made it</label></li></ul></li>`;
     return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hand in at ${mapName}</strong>${now}${step.noRoute ? ' <small>(no walking route there)</small>' : ''}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', ') || 'your quest')} <small>to ${esc(npcsAt(step.mapId) || 'the quest NPC')}</small></label></li></ul></li>`;
@@ -3657,6 +3680,8 @@ try {
   state.activeQuests = Array.isArray(saved?.activeQuests) ? [...new Set(saved.activeQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 8) : [];
   state.questItemsReady = saved?.questItemsReady && typeof saved.questItemsReady === 'object' && !Array.isArray(saved.questItemsReady) ? saved.questItemsReady : {};
   state.questsAvailable = Array.isArray(saved?.questsAvailable) ? [...new Set(saved.questsAvailable.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
+  // My citizenship: { Henesys: 0-10, 'Kerning City': 0-10 }, or null when not set.
+  state.citizenship = saved?.citizenship && typeof saved.citizenship === 'object' ? Object.fromEntries(['Henesys', 'Kerning City'].map(town => [town, Math.max(0, Math.min(10, Number(saved.citizenship[town]) || 0))])) : null;
   state.planQuests = Array.isArray(saved?.planQuests) ? [...new Set(saved.planQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 20) : [];
   state.questsHidden = Array.isArray(saved?.questsHidden) ? [...new Set(saved.questsHidden.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   state.questsFinished = Array.isArray(saved?.questsFinished) ? [...new Set(saved.questsFinished.filter(name => typeof name === 'string' && name.length <= 180))].slice(-2000) : [];

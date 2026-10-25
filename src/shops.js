@@ -23,6 +23,18 @@ export function fromWikiShops(shopRows, itemRows) {
 export const CITIZEN_GRADES = ['Traveler', 'Visitor', 'Helpful Stranger', 'Recognized Guest', 'Town Resident', 'Trusted Neighbor', 'Distinguished Citizen', 'Town Patron', 'Guardian of the Village', 'Citizen of Honor'];
 export const citizenshipNote = seller => seller?.grade ? `needs ${seller.town || 'town'} citizenship, grade ${seller.grade} (${CITIZEN_GRADES[seller.grade - 1] ?? '?'})` : '';
 
+// The shops a character can use: `citizenship` = { Henesys: grade, 'Kerning City': grade } (0 = not a
+// resident). Not set = every shop (the plan then warns where citizenship is needed).
+export function usableShops(shops, citizenship) {
+  if (!shops || !citizenship) return shops;
+  const out = {};
+  for (const [item, sellers] of Object.entries(shops)) {
+    const open = sellers.filter(s => !s.grade || (citizenship[s.town] ?? 0) >= s.grade);
+    if (open.length) out[item] = open;
+  }
+  return out;
+}
+
 export const sellersOf = (shops, itemName) => shops?.[String(itemName ?? '').trim().toLowerCase()] ?? [];
 
 async function cargo(table, fields) {
