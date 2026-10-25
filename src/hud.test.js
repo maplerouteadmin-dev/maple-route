@@ -198,3 +198,13 @@ test('needed counts come from the game data, not the OCR ("0 / 12" read as "0 / 
   assert.equal(quests[0].complete, false);
 });
 
+test('Quest Helper lines show the game names, even when the OCR is garbled', async () => {
+  const { fixCounts } = await import('./hud.js');
+  const needs = { 'Searching for Fossils': [{ name: 'Plant Fossil', count: 12 }, { name: 'Animal Fossil', count: 12 }, { name: 'Green Mushroom', count: 25 }, { name: 'Axe Stump', count: 25 }] };
+  const quests = [{ name: 'Searching for Fossils', progress: [
+    { name: 'Plant Foz i', have: 0, need: 12 }, { name: 'Lrimal Fossil', have: 0, need: 12 }, { name: 'Green Mushroom', have: 1, need: 25 }, { name: 'xe tump', have: 0, need: 25 }
+  ] }];
+  fixCounts(quests, name => needs[name]);
+  assert.deepEqual(quests[0].progress.map(p => `${p.have}/${p.need} ${p.name}`), ['0/12 Plant Fossil', '0/12 Animal Fossil', '1/25 Green Mushroom', '0/25 Axe Stump']);
+});
+

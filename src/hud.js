@@ -246,9 +246,15 @@ export function fixCounts(quests, needsOf) {
   for (const q of quests ?? []) {
     const needs = q.name ? needsOf(q.name) ?? [] : [];
     if (!needs.length) continue;
-    for (const p of q.progress ?? []) {
-      const need = needs.find(n => looksLike(p.name, n.name));
+    // Each line gets the game's own name ("Plant Foz i" → Plant Fossil): the closest need, or, when the
+    // text is too garbled, the need in the same position (the Quest Helper lists them in quest order).
+    const sameOrder = q.progress.length === needs.length, used = new Set();
+    const score = (a, b) => { const x = normalize(a), y = normalize(b); return x && y ? 1 - editDistance(x, y) / Math.max(x.length, y.length) : 0; };
+    for (const [i, p] of (q.progress ?? []).entries()) {
+      const ranked = needs.map(n => ({ n, s: score(p.name, n.name) })).filter(c => !used.has(c.n)).sort((a, b) => b.s - a.s);
+      const need = looksLike(p.name, ranked[0]?.n?.name ?? '') || ranked[0]?.s >= .5 ? ranked[0].n : sameOrder && !used.has(needs[i]) ? needs[i] : null;
       if (!need?.count) continue;
+      used.add(need); p.name = need.name;
       p.need = need.count;
       if (p.have != null && p.have > need.count * 2) {
         const text = String(p.have), trimmed = /^[17]\d+$/.test(text) ? Number(text.slice(1)) : null;
