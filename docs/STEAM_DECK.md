@@ -1,5 +1,9 @@
 # Steam Deck investigation and test gate
 
+## Current beta 12 GPS recovery
+
+The optional Decky panel can confirm the displayed map or choose a connected/likely map when OCR gets stuck. A manual correction holds until the visible mini-map title changes; it never sends input to the game. The local API accepts only a map in the current short recovery list. The private replay test and its limits are described in [DECK_REPLAY.md](DECK_REPLAY.md). The controls have unit/build coverage, but their Gaming Mode interaction on a real Deck still needs a player check after installation.
+
 The Linux desktop wrapper uses exactly the same `src/` app as Windows. It serves `dist/` on `127.0.0.1`, keeps OSMS cache files under `$XDG_DATA_HOME/MapleRoute/cache` (normally `~/.local/share/MapleRoute/cache`), and requests a user-selected screen/window. It never reads game memory, hooks a process, sends game input, or intercepts game traffic.
 
 ## Desktop Mode

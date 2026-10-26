@@ -21,12 +21,13 @@ export function chatMessage(text) {
   return body;
 }
 
-export function visibleMessages(messages, { blocked = [], mutedWords = [], hideRepeats = true } = {}) {
+export function visibleMessages(messages, { blocked = [], hiddenIds = [], mutedWords = [], hideRepeats = true } = {}) {
   const blockedSet = new Set(blocked);
+  const hiddenSet = new Set(hiddenIds);
   const words = mutedWords.map(word => word.toLowerCase().trim()).filter(Boolean);
   const seen = new Map();
   return messages.filter(message => {
-    if (blockedSet.has(message.owner) || words.some(word => message.body.toLowerCase().includes(word))) return false;
+    if (hiddenSet.has(message.id) || blockedSet.has(message.owner) || words.some(word => message.body.toLowerCase().includes(word))) return false;
     const key = `${message.owner}:${message.body.toLowerCase()}`;
     const time = Date.parse(message.created_at);
     const previous = seen.get(key);

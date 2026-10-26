@@ -66,7 +66,8 @@ Play in **Gaming Mode** with a small Maple Route map over the game and the full 
   goes away and reading stops.
 
 **Optional Decky panel:** if Decky Loader is installed, the Maple Route panel can start or stop reading,
-show the next direction and quest step, tick or undo a step, and move the pop-up without using your phone.
+show the next direction and quest step, tick or undo a step, confirm or choose a nearby map when GPS gets stuck,
+and move the pop-up without using your phone.
 Its source is in [`deck/decky-plugin/`](deck/decky-plugin/). It only talks to Maple Route on the Deck;
 it does not control MapleStory. The phone remains available for the full app and settings.
 
@@ -215,7 +216,7 @@ looking.
 
 The optional Chat tab connects Maple Route players to Here (map and channel), Map (all channels on that map), Channel (all maps in that channel), and World rooms. Choose your world and channel yourself; the app cannot verify another person's location. This chat is separate from MapleStory's chat and cannot remove spam inside the game.
 
-Messages are visible to other app users in the same room. Chat has its own anonymous account, separate from Market, so your Market listings are not linked to your chat pseudonym. You can mute words, hide repeated messages, block a sender on your device, and report a message. Basic posting limits and a link ban reduce spam, but this is an open beta without a dedicated moderation team. Do not share personal information. See [chat setup and safety](docs/CHAT.md).
+Rooms are filters, not private spaces: any signed-in app user could query another room. Chat has its own anonymous account, separate from Market, so your Market listings are not linked to your chat pseudonym. You can mute words, hide repeated messages, block a sender on your device, and report a message; a reported message is hidden on your device. Basic posting limits and a link ban reduce spam, but this is an open beta without a dedicated moderation team. Do not share personal information. See [chat setup and safety](docs/CHAT.md).
 
 ## Run it on your own PC (optional)
 

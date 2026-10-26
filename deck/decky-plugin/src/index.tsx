@@ -10,6 +10,7 @@ const API = "http://127.0.0.1:5179";
 
 type Status = {
   state?: string; error?: string | null; map?: string; next?: string; here?: string; step?: string;
+  mapId?: string; mapUncertain?: boolean; mapChoices?: { id: string; label: string }[];
   canUndo?: boolean; overlay?: boolean; overlayPosition?: string;
 };
 
@@ -82,6 +83,16 @@ function Content() {
           />
         </PanelSectionRow>
       </PanelSection>
+      {reading && !!status.mapChoices?.length && <PanelSection title="GPS map recovery">
+        {status.mapUncertain && <PanelSectionRow><div style={{ fontSize: "12px" }}>Checking your new map. Directions are paused.</div></PanelSectionRow>}
+        <PanelSectionRow>
+          <ButtonItem layout="below" disabled={busy || !status.mapId} onClick={() => act("/map-recover", { mapId: status.mapId })}>Confirm {status.map || "current map"}</ButtonItem>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <DropdownItem label="Or choose a nearby map" rgOptions={status.mapChoices.map(choice => ({ data: choice.id, label: choice.label }))}
+            selectedOption={status.mapId} disabled={busy} onChange={option => act("/map-recover", { mapId: option.data })} />
+        </PanelSectionRow>
+      </PanelSection>}
     </>
   );
 }

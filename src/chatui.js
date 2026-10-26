@@ -5,9 +5,9 @@ function savedSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS
 
 export function mountChat(root, { store, getMap }) {
   const saved = savedSettings();
-  const state = { active: false, loading: false, kind: CHAT_KINDS.includes(saved.kind) ? saved.kind : 'here', blocked: Array.isArray(saved.blocked) ? saved.blocked : [], me: null, rows: [], lastRoom: '' };
+  const state = { active: false, loading: false, kind: CHAT_KINDS.includes(saved.kind) ? saved.kind : 'here', blocked: Array.isArray(saved.blocked) ? saved.blocked : [], reported: Array.isArray(saved.reported) ? saved.reported.slice(-200) : [], me: null, rows: [], lastRoom: '' };
   root.innerHTML = `
-    <p class="muted">Opt-in Maple Route chat between people using this app. It does not read, filter, or send messages in MapleStory. No screenshot or character name is posted automatically. Other app users may see what you write.</p>
+    <p class="muted">Opt-in Maple Route chat between people using this app. It does not read, filter, or send messages in MapleStory. No screenshot or character name is posted automatically. Rooms are filters, not private spaces: any signed-in app user could read your message.</p>
     <div id="chat-panel">
       <div class="chat-fields"><label class="field">World <input id="chat-world" type="text" maxlength="30" autocomplete="off" placeholder="Your world" value=""></label><label class="field">Channel <input id="chat-channel" type="number" min="1" max="40" inputmode="numeric" placeholder="1–40" value=""></label></div>
       <p class="fine">Choose your world and channel yourself. “Here” and “Map” follow the map shown by Live GPS; you can also choose a map manually in the route planner.</p>
@@ -24,7 +24,7 @@ export function mountChat(root, { store, getMap }) {
   $('#chat-repeats').checked = saved.hideRepeats !== false;
   const status = message => { $('#chat-status').textContent = message; };
   function persist() {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ world: $('#chat-world').value, channel: $('#chat-channel').value, kind: state.kind, muted: $('#chat-muted').value, blocked: state.blocked, hideRepeats: $('#chat-repeats').checked })); } catch { /* local filtering is optional */ }
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ world: $('#chat-world').value, channel: $('#chat-channel').value, kind: state.kind, muted: $('#chat-muted').value, blocked: state.blocked, reported: state.reported, hideRepeats: $('#chat-repeats').checked })); } catch { /* local filtering is optional */ }
   }
   function currentRoom() { return chatRoom(state.kind, $('#chat-world').value, $('#chat-channel').value, getMap()?.id); }
   function label() {
@@ -45,7 +45,7 @@ export function mountChat(root, { store, getMap }) {
   }
   function renderMessages() {
     const box = $('#chat-messages'); box.replaceChildren();
-    const rows = visibleMessages([...state.rows].reverse(), { blocked: state.blocked, mutedWords: $('#chat-muted').value.split(','), hideRepeats: $('#chat-repeats').checked });
+    const rows = visibleMessages([...state.rows].reverse(), { blocked: state.blocked, hiddenIds: state.reported, mutedWords: $('#chat-muted').value.split(','), hideRepeats: $('#chat-repeats').checked });
     if (!rows.length) { const empty = document.createElement('p'); empty.className = 'fine'; empty.textContent = 'No messages in this room yet.'; box.append(empty); return; }
     for (const row of rows) {
       const item = document.createElement('article'); item.className = 'chat-message';
@@ -100,7 +100,7 @@ export function mountChat(root, { store, getMap }) {
     const unblock = event.target.closest('[data-chat-unblock]')?.dataset.chatUnblock;
     if (unblock) { state.blocked = state.blocked.filter(id => id !== unblock); persist(); renderBlocked(); renderMessages(); return; }
     const id = event.target.closest('[data-chat-report]')?.dataset.chatReport;
-    if (id) { try { await store.report(id, $('#chat-report-reason').value); status('Report saved for review.'); } catch (error) { status(error.message); } }
+    if (id) { try { await store.report(id, $('#chat-report-reason').value); state.reported = [...new Set([...state.reported, id])].slice(-200); persist(); renderMessages(); status('Report saved for review. Message hidden on this device.'); } catch (error) { status(error.message); } }
   });
   for (const id of ['#chat-world', '#chat-channel']) $(id).addEventListener('change', () => { persist(); label(); refresh(); });
   for (const id of ['#chat-muted', '#chat-repeats']) $(id).addEventListener('input', () => { persist(); renderMessages(); });

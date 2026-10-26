@@ -1,10 +1,12 @@
 {
   "name": "maple-route-decky",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Maple Route panel for Decky Loader",
   "type": "module",
   "private": true,
-  "scripts": { "build": "rollup -c" },
+  "scripts": {
+    "build": "rollup -c"
+  },
   "license": "MIT",
   "devDependencies": {
     "@decky/rollup": "^1.0.1",

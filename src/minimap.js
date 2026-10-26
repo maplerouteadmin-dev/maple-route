@@ -54,6 +54,9 @@ export function findTitleBand(image, side = 'left', { regionW: shareW = .35, reg
     // The blue run is the text area; the square region emblem (not blue) sits just left of it.
     const textX = left + cols[0], right = left + cols[1];
     const x = Math.max(left, textX - Math.round(bandH * .97));
+    // Inventory and other windows can have a pale-blue strip, but it is far wider
+    // than a mini-map title. Reject it instead of OCRing a covered mini map.
+    if (right - x + 1 > bandH * 12) continue;
     return { x, y: y0, w: right - x + 1, h: bandH, textX };
   }
   return null;

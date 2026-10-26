@@ -31,7 +31,7 @@ let normalBounds;
 let speaking;
 let phone;
 let deckApi;
-let deckSummary = { map: null, destination: null, next: null, quest: null, here: null, step: null, canUndo: false };
+let deckSummary = { map: null, mapId: null, mapUncertain: false, mapChoices: [], destination: null, next: null, quest: null, here: null, step: null, canUndo: false };
 let overlayWindow;
 let overlayPosition = 'bottom-left';
 let overlayWanted = true;
@@ -257,7 +257,12 @@ async function start() {
     });
     ipcMain.on('deck:summary', (event, summary) => {
       if (!isLocalRequest(event.sender) || !summary || typeof summary !== 'object') return;
-      deckSummary = { ...Object.fromEntries(['map', 'destination', 'next', 'quest', 'here', 'step'].map(key => [key, String(summary[key] ?? '').slice(0, 240)])), canUndo: Boolean(summary.canUndo) };
+      deckSummary = {
+        ...Object.fromEntries(['map', 'destination', 'next', 'quest', 'here', 'step'].map(key => [key, String(summary[key] ?? '').slice(0, 240)])),
+        mapId: String(summary.mapId ?? '').slice(0, 80), mapUncertain: Boolean(summary.mapUncertain),
+        mapChoices: Array.isArray(summary.mapChoices) ? summary.mapChoices.slice(0, 12).filter(choice => typeof choice?.id === 'string' && typeof choice?.label === 'string').map(choice => ({ id: choice.id.slice(0, 80), label: choice.label.slice(0, 180) })) : [],
+        canUndo: Boolean(summary.canUndo)
+      };
     });
     ipcMain.on('deck:overlay-update', (event, snapshot) => {
       if (!isLocalRequest(event.sender) || typeof snapshot?.next !== 'string' || typeof snapshot?.map !== 'string' || snapshot.map.length > 500_000) return;
@@ -311,7 +316,12 @@ async function start() {
       stop: explicitStop,
       overlay: setDeckOverlay,
       nextStep: () => mainWindow.webContents.send('deck:next-step'),
-      undo: () => mainWindow.webContents.send('deck:undo')
+      undo: () => mainWindow.webContents.send('deck:undo'),
+      recoverMap: mapId => {
+        if (!deckSummary.mapChoices.some(choice => choice.id === mapId)) return false;
+        mainWindow.webContents.send('deck:map-recover', mapId);
+        return true;
+      }
     });
   }
   if (deckMode && process.argv.includes('--lan')) {

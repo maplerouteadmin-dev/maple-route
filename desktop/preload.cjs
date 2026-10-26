@@ -31,6 +31,7 @@ if (process.argv.includes('--maple-deck')) contextBridge.exposeInMainWorld('mapl
   onPhoneStart: callback => ipcRenderer.on('deck:phone-start', callback),
   onNextStep: callback => ipcRenderer.on('deck:next-step', callback),
   onUndo: callback => ipcRenderer.on('deck:undo', callback),
+  onMapRecover: callback => ipcRenderer.on('deck:map-recover', (_event, mapId) => callback(mapId)),
   onPhoneStop: callback => ipcRenderer.on('deck:phone-stop', callback),
   onPhoneOverlay: callback => ipcRenderer.on('deck:phone-overlay', (_event, enabled) => callback(enabled)),
   onPhoneAction: callback => ipcRenderer.on('deck:phone-action', (_event, action) => callback(action))

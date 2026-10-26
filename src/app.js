@@ -13,6 +13,7 @@ import { describeStep, spokenStep } from './directions.js';
 import { guidance, rememberScale, recallScale, findMarkers, minimapLayout } from './minimap.js';
 import { locateMinimap, readTitle, titleSignature, signatureChanged, locatePlayer, regionImage, readRegion, createOcrWorker, readWholeFrame } from './screen.js';
 import { resolveMapHandoff } from './maphandoff.js';
+import { mapRecoveryChoices, advanceManualMapLock } from './maprecovery.js';
 import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { arrivalDetails } from './arrival.js';
@@ -2403,6 +2404,22 @@ function onLiveMap(id) {
   if (words) say(words);
 }
 
+function recoverMapFromDeck(id) {
+  const choices = mapRecoveryChoices(state.data, state.current, state.live?.pendingMap, state.live?.lastMatches ?? []);
+  if (!choices.some(choice => choice.id === id)) return;
+  setCurrent(id);
+  applyObjective();
+  if (state.live) {
+    const observed = state.live.misses === 0 && Date.now() - (state.live.lastObservedAt ?? 0) < 1500 ? state.live.lastObservedSignature : null;
+    Object.assign(state.live, {
+      mapId: id, pendingMap: null, mapUncertain: false, misses: 0,
+      signature: observed ?? state.live.signature,
+      manualMapLock: { mapId: id, signature: observed ?? null }
+    });
+  }
+  renderLive();
+}
+
 async function liveTick() {
   const live = state.live;
   if (!live || live.paused) return;
@@ -2419,11 +2436,25 @@ async function liveTick() {
     if (!found) { coveredReminder(Date.now() - (live.minimapSeenAt ?? 0) < 60_000); logTest('no-minimap', { frame: `${grabbed.width}x${grabbed.height}`, misses: live.misses + 1 }); if (live.misses === 2) snapshotCorner(grabbed.source, grabbed.width, grabbed.height, 'no mini map found', true); if (++live.misses >= 3) { live.mapUncertain = true; liveState('Can’t see the mini map: is a game window covering it?', true); renderLive(); } return; }
     live.misses = 0; live.side = found.side; live.minimapSeenAt = Date.now();
     const signature = titleSignature(found), since = Date.now() - live.lastOcr, changed = signatureChanged(signature, live.signature);
+    live.lastObservedSignature = signature;
+    live.lastObservedAt = Date.now();
+    live.manualMapLock = advanceManualMapLock(live.manualMapLock, signature,
+      Boolean(live.manualMapLock?.signature && signatureChanged(signature, live.manualMapLock.signature)));
+    if (live.manualMapLock) {
+      live.mapId = live.manualMapLock.mapId;
+      live.signature = signature;
+      live.mapUncertain = false;
+      updatePosition(found, live.mapId);
+      liveState(`Map confirmed by you · ${mapById(live.mapId)?.name ?? ''}`);
+      renderLive();
+      return;
+    }
     // Re-read on a title change (title text first: ~0.3 s), and every 5 s regardless as a safety net.
     if ((changed && since > 750) || (!live.mapId && since > 1500) || since > 5000) {
       live.lastOcr = Date.now();
       const titleText = await readTitle(live.worker, grabbed.source, found, $('#scan-crop'));
       const matches = matchMap(titleText, state.data.maps, state.current);
+      live.lastMatches = matches.slice(0, 3).map(match => match.map.id);
       logTest('title', { text: titleText, side: found.side, band: found.band, frame: `${grabbed.width}x${grabbed.height}`, matches: matches.slice(0, 3).map(m => `${m.map.name} ${m.score.toFixed(2)}`), accepted: confident(matches) ? matches[0].map.name : null });
       if (!confident(matches)) snapshotCorner(grabbed.source, grabbed.width, grabbed.height, `title not matched: ${titleText.slice(0, 40)}`);
       // A failed OCR read must not make the new title signature look confirmed. Include the old
@@ -4314,6 +4345,7 @@ if (window.mapleDeck) {
   // The Decky panel: Next step and Undo, the same as the app's buttons.
   window.mapleDeck.onNextStep?.(() => completeNextStep());
   window.mapleDeck.onUndo?.(() => document.querySelector('[data-undo-last]')?.click());
+  window.mapleDeck.onMapRecover?.(recoverMapFromDeck);
   window.mapleDeck.onPhoneStop(() => stopLive());
   window.mapleDeck.onStatus(status => {
     if (status.error && state.live && !state.live.paused) pauseLive('capture-error');
@@ -4375,6 +4407,9 @@ if (window.mapleDeck) {
     }
     window.mapleDeck.publishSummary({
       map: mapById(state.current)?.name ?? '',
+      mapId: state.current ?? '',
+      mapUncertain: Boolean(state.live?.mapUncertain),
+      mapChoices: mapRecoveryChoices(state.data, state.current, state.live?.pendingMap, state.live?.lastMatches ?? []),
       destination: mapById(state.destination)?.name ?? '',
       next: overlay.next,
       quest: $('#live-plan .live-steps li')?.textContent?.trim() ?? '',

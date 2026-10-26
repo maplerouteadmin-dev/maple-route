@@ -26,5 +26,6 @@ test('blocks, muted words and duplicate filtering work locally', () => {
     { owner: 'c', body: 'Hello', created_at: '2026-01-01T00:00:12Z' }
   ];
   assert.deepEqual(visibleMessages(messages, { blocked: ['c'], mutedWords: ['MESOS'] }).map(m => m.body), ['Looking for party']);
+  assert.deepEqual(visibleMessages([{ ...messages[0], id: 'reported' }], { hiddenIds: ['reported'] }), []);
   assert.equal(travelerName('abc-def'), 'Traveler ABCDEF');
 });

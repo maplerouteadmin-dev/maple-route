@@ -1,6 +1,6 @@
 const { createServer } = require('node:http');
 
-async function startDeckApi({ status, start, stop, overlay, nextStep = () => {}, undo = () => {}, port = 5179 }) {
+async function startDeckApi({ status, start, stop, overlay, nextStep = () => {}, undo = () => {}, recoverMap = () => false, port = 5179 }) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://127.0.0.1').pathname;
     res.setHeader('cache-control', 'no-store');
@@ -17,6 +17,13 @@ async function startDeckApi({ status, start, stop, overlay, nextStep = () => {},
       // The Decky panel's Next step / Undo: the same as the buttons in the app.
       if (req.method === 'POST' && path === '/next-step') { nextStep(); res.end(JSON.stringify({ ok: true })); return; }
       if (req.method === 'POST' && path === '/undo') { undo(); res.end(JSON.stringify({ ok: true })); return; }
+      if (req.method === 'POST' && path === '/map-recover') {
+        let body = '';
+        for await (const chunk of req) { body += chunk; if (body.length > 256) { res.writeHead(413); res.end('{}'); return; } }
+        const value = JSON.parse(body || '{}');
+        if (typeof value.mapId !== 'string' || !recoverMap(value.mapId)) { res.writeHead(400); res.end('{}'); return; }
+        res.end(JSON.stringify({ ok: true })); return;
+      }
       if (req.method === 'POST' && path === '/overlay') {
         let body = '';
         for await (const chunk of req) { body += chunk; if (body.length > 1024) { res.writeHead(413); res.end('{}'); return; } }

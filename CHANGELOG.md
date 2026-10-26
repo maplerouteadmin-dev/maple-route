@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0-beta.12
+
+- Steam Deck: recover a stuck GPS map from the Decky panel by confirming the current map or choosing a nearby one; manual correction holds until the visible mini-map title changes.
+- Test Deck map handoffs against private, consented screenshots. Reject a wide inventory strip that could be mistaken for the mini-map title; private images are not published.
+- Chat: hide reported messages locally, clarify that rooms are filters rather than private spaces, and add database access checks and an owner report-review/retention runbook. The local database policy suite still needs to be run before claiming full verification.
+
 ## 1.1.0-beta.11
 
 - Steam Deck: keep the map and pop-up aligned during transitions, pause directions while a new map is uncertain, and improve recognition using neighboring maps.
