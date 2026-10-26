@@ -3526,7 +3526,7 @@ function currentObjective() {
   const catalog = questByName(quest);
   const catalogQuest = catalog ? { ...catalog, needs: completeQuestNeeds(catalog, state.questDetails[quest]?.items) } : null;
   const countsOnly = helperQuest ? { ...helperQuest, complete: false, progress: helperQuest.progress.map(line => ({ ...line, done: false })) } : null;
-  const objective = questObjective(travel(), { quest, helperQuest: countsOnly, catalogQuest, itemSources: planSources(), crafting: state.crafting, shops: myShops(), currentMapId: state.current, handIn: state.guide.handIn === quest && !helperQuest });
+  const objective = questObjective(travel(), { quest, helperQuest: countsOnly, catalogQuest, itemSources: planSources(), crafting: state.crafting, shops: myShops(), currentMapId: state.current, playerLevel: state.level, handIn: state.guide.handIn === quest && !helperQuest });
   if (objective.stage === 'hunt') loadItemSources(objective.goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
   return objective;
 }
@@ -3603,9 +3603,9 @@ function huntOptions(g) {
   loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.lookup ?? goal.name));
   // The trip ends where the quest is handed in, so stops on the way there are preferred.
   const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(endNpc))?.locations[0]?.mapId ?? null : null;
-  const key = JSON.stringify([goals.map(goal => [goal.name, goal.monsters]), state.current, endMapId, state.useTaxis, state.useVip, state.useNearestScroll, state.useTownScrolls]);
-  if (state.tripCache?.key !== key) state.tripCache = { key, trip: planHuntTrip(travel(), goals, state.current, endMapId, { via: craftStops(state.data, goals) }), endNpc };
-  return { goals, maps: rankObjectiveMaps(travel(), goals, state.current).slice(0, 4), trip: state.tripCache.trip, endNpc };
+  const key = JSON.stringify([goals.map(goal => [goal.name, goal.monsters]), state.current, state.level, endMapId, state.useTaxis, state.useVip, state.useNearestScroll, state.useTownScrolls]);
+  if (state.tripCache?.key !== key) state.tripCache = { key, trip: planHuntTrip(travel(), goals, state.current, endMapId, { via: craftStops(state.data, goals), playerLevel: state.level }), endNpc };
+  return { goals, maps: rankObjectiveMaps(travel(), goals, state.current, { playerLevel: state.level }).slice(0, 4), trip: state.tripCache.trip, endNpc };
 }
 // "Plan all my quests together": every quest you are doing (guided, in the Quest Helper, or on your
 // list) in one hunting trip, then each hand-in. The guided quest respects its ticked steps; others
@@ -3650,8 +3650,8 @@ function allQuestsTrip(onlyQuest = null) {
     if (mapId && !(quest.variants?.length && !quest.week?.by)) { ends.set(mapId, [...(ends.get(mapId) ?? []), npc]); endQuests.set(mapId, [...(endQuests.get(mapId) ?? []), name]); }
   }
   const goals = [...byName.values()];
-  const key = JSON.stringify([onlyQuest, goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], starts.map(st => st.quests[0]), state.current, state.useTaxis, state.useVip, state.useNearestScroll, state.useTownScrolls]);
-  if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()].map(mapId => ({ mapId, quests: endQuests.get(mapId) ?? [] })), { via: craftStops(state.data, goals), starts }) };
+  const key = JSON.stringify([onlyQuest, goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], starts.map(st => st.quests[0]), state.current, state.level, state.useTaxis, state.useVip, state.useNearestScroll, state.useTownScrolls]);
+  if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()].map(mapId => ({ mapId, quests: endQuests.get(mapId) ?? [] })), { via: craftStops(state.data, goals), starts, playerLevel: state.level }) };
   return { goals, ends, quests: names, skipped: onlyQuest ? [] : candidates.filter(q => state.planSkip.includes(q)), offered: offered.length, waiting: state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)).length, trip: state.allTripCache.trip };
 }
 let questStepsExpanded = false;
