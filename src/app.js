@@ -1,7 +1,7 @@
 import { createWorker, OEM, PSM } from 'tesseract.js';
 import './deck.css';
 import { STORAGE_KEY, validateDataset, shortestRoute, matchMap, normalize, portalPosition } from './core.js';
-import { plausibleNeighborTitle } from './mapconfidence.js';
+import { plausibleNeighborTitle, uniqueNeighborPrefix } from './mapconfidence.js';
 import { deckDirectionSummary } from './decksummary.js';
 import { starterData } from './starter-data.js';
 import { fetchOsms } from './osms.js';
@@ -2463,7 +2463,9 @@ async function liveTick() {
       // map in picture comparisons so a poor crop cannot falsely "recognize" a neighbor.
       const clearTitle = confident(matches);
       const fuzzyNeighbor = !clearTitle && plausibleNeighborTitle(matches, live.mapId, neighborIds(live.mapId));
-      const recognized = clearTitle || fuzzyNeighbor ? preferredMatch(matches) : null;
+      const prefixNeighbor = !clearTitle && !fuzzyNeighbor ? uniqueNeighborPrefix(titleText, state.data.maps, live.mapId, neighborIds(live.mapId)) : null;
+      const recognized = clearTitle || fuzzyNeighbor ? preferredMatch(matches) : prefixNeighbor?.id ?? null;
+      if (prefixNeighbor) logTest('title-prefix', { text: titleText.slice(0, 80), map: prefixNeighbor.name });
       const hit = changed && live.mapId && (!recognized || recognized === live.mapId) ? identifyByPicture(found, [live.mapId, ...neighborIds(live.mapId)]) : null;
       if (hit) logTest('picture-identify', { map: mapById(hit.id)?.name, score: +hit.score.toFixed(3) });
       const areaOnly = recognized && titleText.trim().split(/\r?\n/).filter(Boolean).length < 2 && state.data.maps.some(m => (m.aliases ?? []).some(a => normalize(a).startsWith(`${normalize(mapById(recognized)?.name ?? '')} `)));
