@@ -27,6 +27,8 @@ test('a changed title does not let stale old-map OCR or picture matching resume 
   assert.deepEqual(resolveMapHandoff({ current: 'old', picture: 'old', titleChanged: true }),
     { mapId: 'old', pending: null, settling: true, rememberTitle: false });
   assert.deepEqual(resolveMapHandoff({ current: 'old', pending: 'old', recognized: 'old', titleChanged: true }),
+    { mapId: 'old', pending: 'old', settling: true, rememberTitle: false });
+  assert.deepEqual(resolveMapHandoff({ current: 'old', pending: 'old', recognized: 'old', titleChanged: false }),
     { mapId: 'old', pending: null, settling: false, rememberTitle: true });
   assert.equal(resolveMapHandoff({ current: 'old', recognized: 'old', picture: 'new', titleChanged: true }).mapId, 'new');
 });

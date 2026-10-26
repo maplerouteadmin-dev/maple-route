@@ -6,6 +6,7 @@
 - Let players type the map name shown in MapleStory, including West Street Corner of Perion, and what GPS got wrong. No screenshot, chat, character name or raw OCR text is submitted automatically.
 - Prefer hunt maps without known, unrelated monsters more than three levels above the player's level; a dense Dark Stump map with Wild Boars now loses to a viable safer map. If no safer mapped spot exists, still show the available one.
 - For long mini-map titles cut off by OCR, accept a unique neighboring-map prefix only after a second consistent read; West Street Corner of Perion is the regression case.
+- Keep GPS unsettled when a changed title is repeatedly misread as the old map (for example East Rocky Mountain II read as I), rather than drawing the player on the wrong map.
 
 ## 1.1.0-beta.12
 

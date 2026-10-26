@@ -6,8 +6,9 @@ export function resolveMapHandoff({ current, pending = null, recognized = null, 
     return { mapId: picture, pending: null, settling: false, rememberTitle: true };
   if (recognized) {
     // A changed title is evidence of a portal transition. One stale OCR read of the old title
-    // must not resume movement on the old map; confirm it on a second read first.
-    if (recognized === current && titleChanged && pending !== current)
+    // must not resume movement on the old map. Repeated OCR can make the same mistake (II as I),
+    // so only a return to the original title picture, a new-map match, or a manual correction settles it.
+    if (recognized === current && titleChanged)
       return { mapId: current, pending: current, settling: true, rememberTitle: false };
     if (!current || recognized === current || pending === recognized || (neighbor && !areaOnly))
       return { mapId: recognized, pending: null, settling: false, rememberTitle: true };

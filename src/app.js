@@ -2472,7 +2472,9 @@ async function liveTick() {
       // A fuzzy title must agree on two separate reads, even when its candidate is next door.
       const decision = resolveMapHandoff({ current: live.mapId, pending: live.pendingMap, recognized, neighbor: clearTitle && recognized && neighborIds(live.mapId).includes(recognized), areaOnly, picture: hit?.id, titleChanged: changed });
       live.mapId = decision.mapId; live.pendingMap = decision.pending; live.mapUncertain = decision.settling;
-      live.signature = decision.rememberTitle ? signature : null;
+      // Retain the last trusted title while unsettled. If a temporary obstruction clears, its
+      // original signature can settle again; a genuinely different title stays visibly different.
+      if (decision.rememberTitle) live.signature = signature;
       if (decision.pending) logTest('pending', { map: mapById(decision.pending)?.name });
       if (live.mapId && live.mapId !== state.current) onLiveMap(live.mapId);
     }
