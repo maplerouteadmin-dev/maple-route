@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0-beta.13 (pending review)
+
+- Add a map/GPS report form and private administrator inbox. The phone's Report map button opens the form, and submission no longer depends on opening a browser window on the hidden Deck.
+- Let players type the map name shown in MapleStory, including West Street Corner of Perion, and what GPS got wrong. No screenshot, chat, character name or raw OCR text is submitted automatically.
+
 ## 1.1.0-beta.12
 
 - Steam Deck: recover a stuck GPS map from the Decky panel by confirming the current map or choosing a nearby one; manual correction holds until the visible mini-map title changes.

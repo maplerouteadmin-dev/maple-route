@@ -61,7 +61,7 @@ Play in **Gaming Mode** with a small Maple Route map over the game and the full 
 - The box then shows the map around you, your dot, the next exit and the route line, plus what to do on
   the map you are on. Move it to another corner from your phone.
 - Your phone has the whole app: directions, the map, **Do all quests together** with its checklist,
-  **Next step ✓**, and every setting. Bookmark the page; the link keeps working on your Wi-Fi.
+  **Next step ✓**, map/GPS reporting, and every setting. Bookmark the page; the link keeps working on your Wi-Fi.
 - **Stop** on your phone stops reading until you press Start again. When you close MapleStory, the box
   goes away and reading stops.
 
@@ -70,6 +70,10 @@ show the next direction and quest step, tick or undo a step, confirm or choose a
 and move the pop-up without using your phone.
 Its source is in [`deck/decky-plugin/`](deck/decky-plugin/). It only talks to Maple Route on the Deck;
 it does not control MapleStory. The phone remains available for the full app and settings.
+
+If the GPS stays on the wrong map, tap **Report map** on the phone. Enter the name shown in MapleStory
+and what happened. The report goes to a private administrator inbox, without screenshots or chat.
+See [map report setup and review](docs/MAP_REPORTS.md).
 
 **Voice:** natural voices from [Piper](https://github.com/rhasspy/piper), running on the Deck (no internet while
 you play). It downloads once in the background, about 90 MB, the first time Maple Route runs; pick another voice
@@ -101,7 +105,7 @@ the MapleStory window. Details and what was tested:
   what's still needed), buy what shops sell, hand in. Tick what's done and the trip plans again.
 - **Market**: buy and sell listings for any tradeable item, with real stats, slots left, filters, offers,
   a 🔔 for anything that needs you, and trade-chat prices. Trades happen in game, in mesos.
-- **Report a problem or a drop**: opens a pre-filled GitHub issue you check and submit yourself.
+- **Report a map/GPS problem**: name the real map and send a short report to the private admin inbox. Drop reports still open a pre-filled GitHub issue.
 - **Voice**: optional spoken directions, monsters at your destination, quest steps. You pick what it says.
 - **More**: world map, leveling guide, EXP-per-hour tracker, crafting recipes and where to craft, a
   "sell to shop or players?" check, and separate progress per character.
@@ -205,6 +209,7 @@ looking.
 ## Privacy
 
 - Screenshots and OCR text stay on your device. If you opt into Community chat, the current map ID is sent to the chat service to select a Here or Map room; your image and character name are not sent.
+- If you send a map report, its typed map name and description, Maple Route's believed map, app version and platform go to a private administrator inbox. No screenshot or raw OCR text is attached automatically. Reports use a separate anonymous account; see [map report privacy and review](docs/MAP_REPORTS.md).
 - Progress, settings and saved map pictures are stored in your browser (clearing site data removes them).
 - The public site counts, anonymously and without cookies ([GoatCounter](https://www.goatcounter.com/)),
   only two things: that the app was opened and that Live GPS was started. No game data, map names or
@@ -268,12 +273,12 @@ MapleStory is a trademark of NEXON. This project is not affiliated with NEXON.
 ## Feedback
 
 Bugs and ideas are welcome in [Issues](https://github.com/maplerouteadmin-dev/maple-route/issues) and
-[Discussions](https://github.com/maplerouteadmin-dev/maple-route/discussions). The easiest way is
-**Settings → Report a problem or a drop** (or **Report** on the Live GPS card): it opens an issue already
-filled in with what the app saw (map names, its last mini map reads, your screen size; never chat or
-player names), and **Copy mini map picture** puts the mini map on your clipboard to paste in. Nothing is
-sent until you press Submit on GitHub. **Saw a drop?** Report it there too: drop tables aren't in the
-game files, so player reports are how the drop data improves.
+[Discussions](https://github.com/maplerouteadmin-dev/maple-route/discussions). For a wrong or stuck map,
+use **Report map** on your phone or **Report** in the app: enter the map shown in MapleStory and what
+went wrong. That sends a short report to the private administrator inbox, without a screenshot or chat.
+**Copy mini map picture** is optional and stays on your clipboard until you choose to share it.
+**Saw a drop?** The separate drop button still opens a GitHub issue for you to review and submit;
+player reports help improve drop data that is not in the game files.
 
 ## License
 

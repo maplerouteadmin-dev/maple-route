@@ -25,7 +25,8 @@ import { osmsUrl, isLocalHost } from './sources.js';
 import { OSMS_CRAFTING, fromOsmsCrafting } from './refine.js';
 import { fetchShops, citizenshipNote, usableShops, CITIZEN_GRADES } from './shops.js';
 import { mapInfo, mobInfo, npcInfo } from './mapinfo.js';
-import { issueUrl, problemReport, dropReport } from './report.js';
+import { issueUrl, dropReport } from './report.js';
+import { createMapReportStore } from './mapreports.js';
 import { OSMS_ITEMS as MARKET_ITEMS, OSMS_CASH as MARKET_CASH, parseTooltip, marketAlerts, suggestPrice, STATS, CATEGORIES, JOBS, SORTS, fromOsmsItems, catalogFacets, sortListings, customItem, daysLeft, isExpired, relistCopy, checkOffer, offerTerms, checkListing, statLines, equipSummary, filterListings, priceBook, findCommand, searchItems, parseMesos } from './market.js';
 import { createMarketStore } from './marketstore.js';
 import { createChatStore } from './chatstore.js';
@@ -177,9 +178,10 @@ $('#app').innerHTML = `
       <div id="market-offer-settings" class="market-offer-settings"><label class="toggle"><input type="checkbox" id="market-offers" checked> Accept offers</label><label class="field">Lowest offer I'll consider (optional)<input id="market-min-offer" inputmode="numeric" placeholder="e.g. 1.2m"></label></div>
       <p class="fine">By posting you agree the trade happens in game, in mesos, between you and the other player. Your character name and channel are shown to everyone.</p><div class="action-row"><button type="button" class="button" id="market-post">Post listing</button></div><p class="fine" id="market-post-note" role="status"></p>
       <div class="divider"></div><h3 class="sub-title">My listings</h3><div id="market-mine"></div><h3 class="sub-title">My offers</h3><div id="market-my-offers"></div></section>
-<section class="card" aria-labelledby="feedback-title"><h2 id="feedback-title">Report a problem or a drop</h2><p class="muted">Opens a GitHub issue already filled in with what Maple Route saw (map names, the last mini map reads, your screen size). You read it and press Submit yourself; nothing is sent before that. Chat, character names and other players are never included.</p>
-      <label class="field">What went wrong (optional)<input id="report-what" maxlength="300" placeholder="e.g. it thought I was on Henesys Hunting Ground II"></label>
-      <div class="action-row"><button type="button" class="button secondary" id="report-problem">Report a problem</button><button type="button" class="button light" id="report-copy">Copy mini map picture</button><button type="button" class="button light" id="report-frame" title="Saves the whole shared game window, full size, to your Downloads folder (it shows your screen, chat and names: share it only where you mean to)">Save what Live GPS sees</button></div><p class="fine" id="report-note" role="status"></p>
+<section class="card" aria-labelledby="feedback-title"><h2 id="feedback-title">Report a map or GPS problem</h2><p class="muted">Tell us which map you are actually on, even if GPS shows another one. Reports go to the Maple Route administrator's private inbox for review. No screenshot, chat, character name, or raw screen text is sent. Please don't type personal details.</p>
+      <label class="field">Map shown in MapleStory<input id="report-map" maxlength="120" placeholder="e.g. West Street Corner of Perion"></label>
+      <label class="field">What went wrong<input id="report-what" maxlength="500" placeholder="e.g. GPS stayed on Perion after I took the portal"></label>
+      <div class="action-row"><button type="button" class="button secondary" id="report-problem">Send map report</button><button type="button" class="button light" id="report-copy">Copy mini map picture</button><button type="button" class="button light" id="report-frame" title="Saves the whole shared game window, full size, to your Downloads folder (it shows your screen, chat and names: share it only where you mean to)">Save what Live GPS sees</button></div><p class="fine" id="report-note" role="status"></p>
       <div class="divider"></div><h3 class="sub-title">Saw a drop?</h3><p class="fine">Drop tables are not in the game files, so player reports are how the drop data gets better.</p>
       <div class="sell-fields"><label class="field">Item<input id="drop-item" maxlength="80" placeholder="e.g. Diamond Ore"></label><label class="field">Monster<input id="drop-monster" maxlength="80" placeholder="e.g. Stone Golem"></label></div>
       <div class="action-row"><button type="button" class="button secondary" id="report-drop">Report this drop</button></div></section>
@@ -2656,15 +2658,21 @@ async function openPip() {
 }
 
 // ---------- Feedback (pre-filled GitHub issues) ----------
-function reportContext() {
-  const g = state.guide.quest ? guideSteps() : null;
-  return { version: APP_VERSION, browser: (navigator.userAgentData?.brands ?? []).filter(b => !/not/i.test(b.brand)).map(b => `${b.brand} ${b.version}`).join(', ') || navigator.userAgent.slice(0, 80),
-    frame: state.live?.frameW ? `${state.live.frameW} px wide` : '', live: Boolean(state.live), current: mapById(state.current)?.name ?? '', destination: mapById(state.destination)?.name ?? '',
-    quest: state.guide.quest ?? '', step: g?.step?.title ?? '', log: testLog };
-}
 function openIssue(report) { window.open(issueUrl(report), '_blank', 'noopener'); }
-$('#report-problem').addEventListener('click', () => openIssue(problemReport({ ...reportContext(), what: $('#report-what').value.trim() })));
-$('#live-report').addEventListener('click', () => { showView('settings'); $('#feedback-title').scrollIntoView({ block: 'start' }); $('#report-what').focus(); });
+const mapReportStore = createMapReportStore();
+$('#report-problem').addEventListener('click', async () => {
+  const button = $('#report-problem'), note = $('#report-note');
+  if (button.disabled) return;
+  button.disabled = true; note.textContent = 'Sending map report…';
+  try {
+    await mapReportStore.submit({ mapName: $('#report-map').value, description: $('#report-what').value,
+      observedMap: mapById(state.current)?.name ?? '', version: APP_VERSION, platform: window.mapleDeck ? 'deck' : 'web' });
+    note.textContent = 'Map report sent. Thank you—we can review it in the admin inbox.';
+    $('#report-what').value = '';
+  } catch (error) { note.textContent = error.message; }
+  finally { button.disabled = false; }
+});
+$('#live-report').addEventListener('click', () => { showView('settings'); $('#report-map').value ||= mapById(state.current)?.name ?? ''; $('#feedback-title').scrollIntoView({ block: 'start' }); $('#report-map').focus(); });
 $('#report-drop').addEventListener('click', () => {
   const item = $('#drop-item').value.trim(), monster = $('#drop-monster').value.trim();
   if (!item || !monster) { $('#report-note').textContent = 'Type the item and the monster first.'; return; }

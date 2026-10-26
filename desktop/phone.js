@@ -10,6 +10,7 @@ let lastWords = '';
 let wakeLock;
 let currentHtml = '';
 let mapUserAt = 0;
+let pendingReport = false;
 app.addEventListener('wheel', event => { if (event.target.closest('#mapview .mv-picture')) mapUserAt = Date.now(); }, { passive: true });
 for (const type of ['pointerdown', 'touchstart', 'keydown'])
   app.addEventListener(type, event => { if (event.target.closest('#mapview .mv-picture')) mapUserAt = Date.now(); }, { passive: true });
@@ -65,6 +66,14 @@ app.addEventListener('click', async event => {
   if (element.tagName === 'A' && !element.getAttribute('href')?.startsWith('#')) return;
   if (element.tagName === 'INPUT' && !['checkbox', 'radio'].includes(element.type)) return;
   event.preventDefault();
+  if (element.id === 'live-report') pendingReport = true;
+  if (element.id === 'report-problem') {
+    clearTimeout(typingTimer);
+    for (const id of ['#report-map', '#report-what']) {
+      const input = app.querySelector(id);
+      if (input) await forward('input', input);
+    }
+  }
   if (element.closest('#chat-root')) {
     clearTimeout(typingTimer);
     for (const id of ['#chat-world', '#chat-channel', '#chat-text', '#chat-muted']) {
@@ -104,6 +113,10 @@ function applySnapshot(snapshot) {
   const selection = focusPath && 'selectionStart' in focused ? [focused.selectionStart, focused.selectionEnd] : null;
   currentHtml = snapshot.html;
   app.innerHTML = currentHtml;
+  if (pendingReport && app.querySelector('#feedback-title')) {
+    pendingReport = false;
+    requestAnimationFrame(() => app.querySelector('#feedback-title')?.scrollIntoView({ block: 'start' }));
+  }
   requestAnimationFrame(() => followMap(previous));
   setTimeout(() => followMap(), 150);
   if (focusPath) {
@@ -135,6 +148,11 @@ document.querySelector('#phone-position').onchange = event => action('/overlay',
 document.querySelector('#phone-voice').onclick = event => {
   voice = !voice; event.target.textContent = voice ? 'Phone voice on' : 'Phone voice off';
   if (!voice) window.speechSynthesis?.cancel?.();
+};
+document.querySelector('#phone-report').onclick = () => {
+  pendingReport = true;
+  const button = app.querySelector('#live-report');
+  if (button) forward('click', button);
 };
 document.addEventListener('click', async () => {
   if (!wakeLock && navigator.wakeLock) try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
