@@ -11,9 +11,28 @@ function findGamescopeNode(dump) {
   return Number.isInteger(node?.id) && node.id >= 0 ? node.id : null;
 }
 
+function findGamescopeSize(dump) {
+  if (!Array.isArray(dump)) return null;
+  const node = dump.find(item => item?.type === 'PipeWire:Interface:Node' &&
+    item.info?.props?.['node.name'] === 'gamescope' &&
+    item.info?.props?.['media.class'] === 'Video/Source');
+  const formats = node?.info?.params?.EnumFormat;
+  for (const format of Array.isArray(formats) ? formats : []) {
+    const { width, height } = format?.size ?? {};
+    if (Number.isInteger(width) && Number.isInteger(height) && width >= 640 && height >= 480 &&
+        width <= 4096 && height <= 4096) return { width, height };
+  }
+  return null;
+}
+
 async function lookupGamescopeNode() {
   const { stdout } = await execFileAsync('pw-dump', [], { timeout: 4000, maxBuffer: 16 * 1024 * 1024 });
   return findGamescopeNode(JSON.parse(stdout));
+}
+
+async function lookupGamescopeSize() {
+  const { stdout } = await execFileAsync('pw-dump', [], { timeout: 4000, maxBuffer: 16 * 1024 * 1024 });
+  return findGamescopeSize(JSON.parse(stdout));
 }
 
 function parseFrames(onFrame) {
@@ -86,4 +105,4 @@ class DeckStream {
   status() { return { state: this.state, error: this.error, frames: this.frames, width: this.frame?.width ?? null, height: this.frame?.height ?? null }; }
 }
 
-module.exports = { findGamescopeNode, parseFrames, DeckStream };
+module.exports = { findGamescopeNode, findGamescopeSize, lookupGamescopeSize, parseFrames, DeckStream };

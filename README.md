@@ -65,6 +65,11 @@ Play in **Gaming Mode** with a small Maple Route map over the game and the full 
 - **Stop** on your phone stops reading until you press Start again. When you close MapleStory, the box
   goes away and reading stops.
 
+**Optional Decky panel:** if Decky Loader is installed, the Maple Route panel can start or stop reading,
+show the next direction and quest step, tick or undo a step, and move the pop-up without using your phone.
+Its source is in [`deck/decky-plugin/`](deck/decky-plugin/). It only talks to Maple Route on the Deck;
+it does not control MapleStory. The phone remains available for the full app and settings.
+
 **Voice:** natural voices from [Piper](https://github.com/rhasspy/piper), running on the Deck (no internet while
 you play). It downloads once in the background, about 90 MB, the first time Maple Route runs; pick another voice
 in Settings → Voice. Until it's ready, the basic built-in voice (`espeak-ng`) speaks.

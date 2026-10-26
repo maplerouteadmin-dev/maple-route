@@ -147,6 +147,7 @@ export function matchMap(text, maps, current = null) {
   // A roman-numeral I is often read as a bar glued to the word before it ("L Forest|" = L Forest I).
   const seen = numerals(normalize(String(text).replace(/(\S)(\|+)/g, '$1 $2').replace(/\|/g, 'I'))), compact = seen.replaceAll(' ', '');
   if (!seen || !maps.length) return [];
+  const lines = String(text).split(/\r?\n/).map(line => numerals(normalize(line.replace(/(\S)(\|+)/g, '$1 $2').replace(/\|/g, 'I')))).filter(Boolean);
   // A numeral glued to the last word ("L Forestll", "Ant Tunnell"): the last word may end in an l
   // itself, so try every split of the trailing l/1/| run (1-3 numeral letters) as a separate word.
   const glued = [];
@@ -164,7 +165,7 @@ export function matchMap(text, maps, current = null) {
       const target = numerals(normalize(alias)), merged = target.replaceAll(' ', '');
       if (target.length < 3) continue;
       // Numeral glued to the last word ("L Forestll" = L Forest II): compare with the trailing l/1/| run as i's.
-      if (seen === target || compact === merged || glued.includes(target)) score = Math.max(score, 1);
+      if (seen === target || compact === merged || glued.includes(target) || lines.at(-1) === target) score = Math.max(score, 1);
       // Whole words only, so "ground i" does not match inside "ground ii".
       else if (containsWords(seen, target) || glued.some(g => containsWords(g, target))) score = Math.max(score, .96);
       else {
@@ -181,7 +182,6 @@ export function matchMap(text, maps, current = null) {
   }
   // The title is "area / map name": with a map line present, the area line alone is not the map
   // ("Victoria Road" is both an area and a map; a cut-off second line must not fall back to it).
-  const lines = String(text).split(/\r?\n/).map(line => normalize(line)).filter(Boolean);
   // One-line title bars ("Victoria Road : Ellinia Department Store") put the area first: a map whose
   // whole name is just the leading words, with more words after it, is the area, not the map.
   const leadingArea = c => {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0-beta.11
+
+- Steam Deck: keep the map and pop-up aligned during transitions, pause directions while a new map is uncertain, and improve recognition using neighboring maps.
+- Steam Deck: natural offline voice selection, clearer Stop wording, and a correct arrival message when a route is complete.
+- Restore the optional Decky Loader panel source for Start/Stop, next quest step, Undo, and pop-up position.
+
 ## 1.1.0-beta.10
 
 - Add open, opt-in Maple Route chat with Here, Map, Channel and World rooms, local filters, and reporting. Chat uses a separate anonymous identity from Market and never interacts with MapleStory chat.

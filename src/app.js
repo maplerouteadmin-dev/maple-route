@@ -1,6 +1,8 @@
 import { createWorker, OEM, PSM } from 'tesseract.js';
 import './deck.css';
 import { STORAGE_KEY, validateDataset, shortestRoute, matchMap, normalize, portalPosition } from './core.js';
+import { plausibleNeighborTitle } from './mapconfidence.js';
+import { deckDirectionSummary } from './decksummary.js';
 import { starterData } from './starter-data.js';
 import { fetchOsms } from './osms.js';
 import { rankGrindMaps } from './guide.js';
@@ -10,6 +12,7 @@ import { travelGraph, routeWithPreference, routeTradeoff, explainNoRoute } from 
 import { describeStep, spokenStep } from './directions.js';
 import { guidance, rememberScale, recallScale, findMarkers, minimapLayout } from './minimap.js';
 import { locateMinimap, readTitle, titleSignature, signatureChanged, locatePlayer, regionImage, readRegion, createOcrWorker, readWholeFrame } from './screen.js';
+import { resolveMapHandoff } from './maphandoff.js';
 import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { arrivalDetails } from './arrival.js';
@@ -27,6 +30,7 @@ import { createMarketStore } from './marketstore.js';
 import { createChatStore } from './chatstore.js';
 import { mountChat } from './chatui.js';
 import { spoken, taskWords } from './speech.js';
+import { usesLocalVoice } from './voiceplatform.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
@@ -138,7 +142,7 @@ $('#app').innerHTML = `
       <div id="sell-result" aria-live="polite"></div><div id="sell-opportunities"></div></section>
 <section class="card" aria-labelledby="autostart-title" id="autostart-card" hidden><h2 id="autostart-title">Open with MapleStory</h2><label class="toggle"><input type="checkbox" id="autostart"> Open Maple Route by itself when MapleStory starts</label><p class="fine">A small watcher started with Windows checks every few seconds whether MapleStory is running. It only looks at running program names; the game is never touched.</p></section>
 <section class="card" aria-labelledby="mapstyle-title"><h2 id="mapstyle-title">Map</h2><p class="muted">The detailed render is the full map picture (it can show monsters). Off, the map shows the clean mini map art.</p><label class="toggle"><input type="checkbox" id="map-detailed"> Detailed render</label></section>
-<section class="card" aria-labelledby="voice-title"><h2 id="voice-title">Voice</h2><p class="muted">Pick the voice that reads directions. Voices marked <b>natural</b> are Microsoft's free neural voices built into Edge. Korean voices are listed first (they read English with a Korean accent), then Asian English voices such as Singapore, Hong Kong, Philippines and India.</p>
+<section class="card" aria-labelledby="voice-title"><h2 id="voice-title">Voice</h2><p class="muted">${usesLocalVoice(window.mapleDesktop?.platform) ? 'Pick a natural offline voice for directions. Maple Route downloads each Piper voice once; speech stays on your Deck.' : "Pick the voice that reads directions. Voices marked <b>natural</b> are Microsoft's free neural voices built into Edge. Korean voices are listed first (they read English with a Korean accent), then Asian English voices such as Singapore, Hong Kong, Philippines and India."}</p>
       <label class="field">Voice<select id="voice-name"></select></label><label class="field">Speed<select id="voice-rate"><option value="0.85">Slower</option><option value="1">Normal</option><option value="1.15">Faster</option></select></label>
       <fieldset class="voice-parts"><legend>Say out loud</legend><div id="voice-parts"></div></fieldset>
       <div class="action-row"><button type="button" class="button secondary" id="voice-test">Test voice</button></div></section>
@@ -469,9 +473,11 @@ function voiceOn(part) { return state.voice && (state.voiceParts?.[part] ?? !VOI
 function sayPart(part, words) { if (words && voiceOn(part)) say(words); }
 
 function say(words) {
-  if (window.mapleDesktop && !voices().length) {
+  // Linux Chromium may report a basic browser voice even though Piper is available. Always use
+  // the selected natural offline voice there; Windows keeps its Edge voice choice unchanged.
+  if (usesLocalVoice(window.mapleDesktop?.platform)) {
     window.mapleDesktop.speak(spoken(words), state.voiceRate ?? 1, state.voiceName?.startsWith('piper:') ? state.voiceName.slice(6) : undefined).then(ok => {
-      if (!ok) status('Install espeak-ng or speech-dispatcher for voice on Linux.', true);
+      if (!ok) status('Voice is unavailable. Check the Deck audio and voice download.', true);
     });
     return;
   }
@@ -484,7 +490,7 @@ function say(words) {
 function renderVoicePicker() {
   const select = $('#voice-name'); if (!select) return;
   // Steam Deck / Linux app: Piper's natural voices (downloaded on first use), then the basic one.
-  if (window.mapleDesktop?.voices && !voices().length) {
+  if (usesLocalVoice(window.mapleDesktop?.platform) && window.mapleDesktop.voices) {
     window.mapleDesktop.voices().then(list => {
       if (!list?.length) return;
       const current = state.voiceName?.startsWith('piper:') ? state.voiceName.slice(6) : 'kristin';
@@ -1715,6 +1721,7 @@ function setLiveUi() {
 }
 
 function liveModel() {
+  if (state.live?.mapUncertain) return { title: 'Checking your new map…', body: 'Directions paused until the mini map is recognized.' };
   if (!state.destination) return { title: 'Choose a destination', body: 'Tap “Choose destination” to pick a map, quest, NPC, monster or training spot.', note: state.live && !livePosition() ? state.positionNote : null };
   if (!state.current) return { title: 'Where are you?', body: state.live ? 'Looking for the mini map title…' : 'Start Live GPS, or pick your current map under “Plan your route”.' };
   const route = state.route;
@@ -2108,6 +2115,7 @@ function identifyByPicture(found, ids) {
 
 function renderMapView() {
   const target = $('#mapview'); if (!target) return;
+  if (state.live?.mapUncertain) { target.innerHTML = '<div class="empty">Checking your new map…</div>'; $('#mapview-note').textContent = ''; return; }
   const map = state.current ? mapById(state.current) : null;
   if (!map) { target.innerHTML = '<div class="empty">Pick your current map or start Live GPS to see it here.</div>'; $('#mapview-note').textContent = ''; return; }
   const goal = goalSpot();
@@ -2382,7 +2390,7 @@ function coveredReminder(covered) {
 
 function onLiveMap(id) {
   // Each map's mini map is a different size: a new map is not "something covering the mini map".
-  if (state.live) Object.assign(state.live, { mapChangedAt: Date.now(), trustedLayout: null, resizedSince: null, pendingJump: null, coveredSince: null });
+  if (state.live) Object.assign(state.live, { mapChangedAt: Date.now(), trustedLayout: null, resizedSince: null, pendingJump: null, coveredSince: null, mapUncertain: false });
   const arrived = id === state.destination && state.current !== id;
   const step = state.route?.[0], spot = step?.to === id && step.arrive ? mapById(id)?.spots?.[step.arrive] : null;
   setCurrent(id, true);
@@ -2408,36 +2416,35 @@ async function liveTick() {
     live.frameW = grabbed.width;
     const found = locateMinimap(grabbed.source, grabbed.width, grabbed.height, live.side, live.lastFound);
     if (found) live.lastFound = { offsetX: found.offsetX, side: found.side, band: found.band };
-    if (!found) { coveredReminder(Date.now() - (live.minimapSeenAt ?? 0) < 60_000); logTest('no-minimap', { frame: `${grabbed.width}x${grabbed.height}`, misses: live.misses + 1 }); if (live.misses === 2) snapshotCorner(grabbed.source, grabbed.width, grabbed.height, 'no mini map found', true); if (++live.misses >= 3) liveState('Can’t see the mini map: is a game window covering it?', true); return; }
+    if (!found) { coveredReminder(Date.now() - (live.minimapSeenAt ?? 0) < 60_000); logTest('no-minimap', { frame: `${grabbed.width}x${grabbed.height}`, misses: live.misses + 1 }); if (live.misses === 2) snapshotCorner(grabbed.source, grabbed.width, grabbed.height, 'no mini map found', true); if (++live.misses >= 3) { live.mapUncertain = true; liveState('Can’t see the mini map: is a game window covering it?', true); renderLive(); } return; }
     live.misses = 0; live.side = found.side; live.minimapSeenAt = Date.now();
     const signature = titleSignature(found), since = Date.now() - live.lastOcr, changed = signatureChanged(signature, live.signature);
-    let titleRead = false;
     // Re-read on a title change (title text first: ~0.3 s), and every 5 s regardless as a safety net.
-    if ((changed && since > 350) || (!live.mapId && since > 1500) || since > 5000) {
-      live.lastOcr = Date.now(); live.signature = signature; titleRead = true;
+    if ((changed && since > 750) || (!live.mapId && since > 1500) || since > 5000) {
+      live.lastOcr = Date.now();
       const titleText = await readTitle(live.worker, grabbed.source, found, $('#scan-crop'));
       const matches = matchMap(titleText, state.data.maps, state.current);
       logTest('title', { text: titleText, side: found.side, band: found.band, frame: `${grabbed.width}x${grabbed.height}`, matches: matches.slice(0, 3).map(m => `${m.map.name} ${m.score.toFixed(2)}`), accepted: confident(matches) ? matches[0].map.name : null });
       if (!confident(matches)) snapshotCorner(grabbed.source, grabbed.width, grabbed.height, `title not matched: ${titleText.slice(0, 40)}`);
-      if (confident(matches)) {
-        // A different map must be read twice in a row before we switch, so one misread cannot pull you off your destination.
-        const id = preferredMatch(matches);
-        // Maps you can walk into from here are accepted on the first read; others must be read twice.
-        // A one-line read that is only an area name ("Victoria Road", seen while the mini map redraws)
-        // is never trusted on its own: it needs a second read like any far-away map.
-        const areaOnly = titleText.trim().split(/\r?\n/).filter(Boolean).length < 2 && state.data.maps.some(m => (m.aliases ?? []).some(a => normalize(a).startsWith(`${normalize(mapById(id)?.name ?? '')} `)));
-        if (!live.mapId || id === live.mapId || live.pendingMap === id || (!areaOnly && neighborIds(live.mapId).includes(id))) { live.mapId = id; live.pendingMap = null; }
-        else { live.pendingMap = id; live.signature = null; logTest('pending', { map: mapById(id)?.name }); }
-        if (live.mapId !== state.current) onLiveMap(live.mapId);
-      } else if (changed && live.mapId) {
-        // Title unreadable mid-transition: ask the preloaded pictures of the connected maps.
-        const hit = identifyByPicture(found, neighborIds(live.mapId));
-        if (hit) { logTest('picture-identify', { map: mapById(hit.id)?.name, score: +hit.score.toFixed(3) }); live.mapId = hit.id; live.pendingMap = null; onLiveMap(hit.id); }
-      }
+      // A failed OCR read must not make the new title signature look confirmed. Include the old
+      // map in picture comparisons so a poor crop cannot falsely "recognize" a neighbor.
+      const clearTitle = confident(matches);
+      const fuzzyNeighbor = !clearTitle && plausibleNeighborTitle(matches, live.mapId, neighborIds(live.mapId));
+      const recognized = clearTitle || fuzzyNeighbor ? preferredMatch(matches) : null;
+      const hit = changed && live.mapId && (!recognized || recognized === live.mapId) ? identifyByPicture(found, [live.mapId, ...neighborIds(live.mapId)]) : null;
+      if (hit) logTest('picture-identify', { map: mapById(hit.id)?.name, score: +hit.score.toFixed(3) });
+      const areaOnly = recognized && titleText.trim().split(/\r?\n/).filter(Boolean).length < 2 && state.data.maps.some(m => (m.aliases ?? []).some(a => normalize(a).startsWith(`${normalize(mapById(recognized)?.name ?? '')} `)));
+      // A fuzzy title must agree on two separate reads, even when its candidate is next door.
+      const decision = resolveMapHandoff({ current: live.mapId, pending: live.pendingMap, recognized, neighbor: clearTitle && recognized && neighborIds(live.mapId).includes(recognized), areaOnly, picture: hit?.id, titleChanged: changed });
+      live.mapId = decision.mapId; live.pendingMap = decision.pending; live.mapUncertain = decision.settling;
+      live.signature = decision.rememberTitle ? signature : null;
+      if (decision.pending) logTest('pending', { map: mapById(decision.pending)?.name });
+      if (live.mapId && live.mapId !== state.current) onLiveMap(live.mapId);
     }
     const t1 = performance.now();
     // The title changed but the new map is not confirmed yet: do not draw new movement on the old map.
-    const settling = signatureChanged(signature, live.signature);
+    const settling = live.mapUncertain || signatureChanged(signature, live.signature);
+    live.mapUncertain = settling;
     if (live.mapId && !settling) { updatePosition(found, live.mapId); liveState(`Live · ${mapById(live.mapId)?.name ?? ''}`); }
     else liveState('Reading the map name…');
     const t2 = performance.now(), t3 = t2; // HUD reading runs in its own loop (hudLoop)
@@ -4358,7 +4365,7 @@ if (window.mapleDeck) {
       window.mapleDeck.publish({ html: html.replaceAll(`${location.origin}/`, '/'), bodyClass: document.body.className });
     }
     const overlay = {
-      next: [$('#live-step .live-headline')?.textContent, $('#live-step .live-hint')?.textContent].filter(Boolean).join(' · ').slice(0, 180) || 'Waiting for a route',
+      next: deckDirectionSummary({ headline: $('#live-step .live-headline')?.textContent, hint: $('#live-step .live-hint')?.textContent, current: state.current, destination: state.destination, uncertain: state.live?.mapUncertain }),
       map: $('#mapview')?.innerHTML ?? '',
       note: (hereTask() ? `Here: ${hereTask()}` : $('#live-step .live-where')?.textContent?.trim() ?? '').slice(0, 120)
     };

@@ -23,6 +23,19 @@ win.set_accept_focus(False)
 win.move(0, 0)
 win.resize(screen.get_width() or 1280, screen.get_height() or 800)
 
+def report_display_size():
+    # Xwayland's screen size can differ from Electron's display size after docking.
+    print(json.dumps({'screen': {'width': screen.get_width() or 1280,
+                                 'height': screen.get_height() or 800}}), flush=True)
+
+def resize_for_display(_screen):
+    # The TV may advertise a different gamescope output after docking or changing resolution.
+    win.resize(screen.get_width() or 1280, screen.get_height() or 800)
+    win.queue_draw()
+    report_display_size()
+
+screen.connect('size-changed', resize_for_display)
+
 def draw(_widget, cr):
     cr.set_operator(cairo.OPERATOR_SOURCE)
     cr.set_source_rgba(0, 0, 0, 0)
@@ -50,6 +63,10 @@ def on_line(source, _condition):
         if msg.get('hide'):
             state['pixbuf'] = None
         else:
+            display = msg.get('display') or {}
+            width, height = display.get('width'), display.get('height')
+            if isinstance(width, int) and isinstance(height, int) and 640 <= width <= 4096 and 480 <= height <= 4096:
+                win.resize(width, height)
             state['x'], state['y'] = int(msg.get('x', 4)), int(msg.get('y', 548))
             if msg.get('png'):
                 loader = GdkPixbuf.PixbufLoader.new_with_type('png')
@@ -62,4 +79,5 @@ def on_line(source, _condition):
 
 GLib.io_add_watch(GLib.IOChannel.unix_new(sys.stdin.fileno()), GLib.IO_IN | GLib.IO_HUP, lambda ch, cond: on_line(sys.stdin, cond))
 win.show_all()
+report_display_size()
 Gtk.main()

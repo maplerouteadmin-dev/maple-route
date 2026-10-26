@@ -7,6 +7,7 @@ are sent to the parent as length-prefixed BGRx bytes, never written to disk.
 import struct
 import sys
 import time
+import signal
 
 import gi
 
@@ -29,8 +30,15 @@ def main():
         print("Could not start the gamescope stream", file=sys.stderr)
         return 2
     last_sent = 0.0
+    stopping = False
+
+    def request_stop(_signum, _frame):
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGTERM, request_stop)
     try:
-        while True:
+        while not stopping:
             msg = bus.timed_pop_filtered(0, Gst.MessageType.ERROR | Gst.MessageType.EOS)
             if msg:
                 if msg.type == Gst.MessageType.ERROR:
@@ -38,7 +46,7 @@ def main():
                     print(f"Capture stopped: {error.message}", file=sys.stderr)
                 return 3
             sample = sink.emit("try-pull-sample", 250 * Gst.MSECOND)
-            if sample is None:
+            if sample is None or stopping:
                 continue
             now = time.monotonic()
             if now - last_sent < 1 / 3:

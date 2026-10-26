@@ -1,10 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { findGamescopeNode, parseFrames } = require('./deck-stream.cjs');
+const { findGamescopeNode, findGamescopeSize, parseFrames } = require('./deck-stream.cjs');
 
 test('finds only the gamescope video source', () => {
   assert.equal(findGamescopeNode([{ id: 7, type: 'PipeWire:Interface:Node', info: { props: { 'node.name': 'gamescope', 'media.class': 'Video/Source' } } }]), 7);
   assert.equal(findGamescopeNode([{ id: 7, type: 'PipeWire:Interface:Node', info: { props: { 'node.name': 'gamescope', 'media.class': 'Audio/Source' } } }]), null);
+});
+test('uses the gamescope output dimensions, not Xwayland window dimensions', () => {
+  const node = { id: 7, type: 'PipeWire:Interface:Node', info: { props: { 'node.name': 'gamescope', 'media.class': 'Video/Source' }, params: { EnumFormat: [{ size: { width: 2560, height: 1440 } }] } } };
+  assert.deepEqual(findGamescopeSize([node]), { width: 2560, height: 1440 });
+  assert.equal(findGamescopeSize([{ ...node, info: { ...node.info, props: { 'node.name': 'Steam', 'media.class': 'Video/Source' } } }]), null);
 });
 test('parses split frames and rejects impossible sizes', () => {
   const frames = [];

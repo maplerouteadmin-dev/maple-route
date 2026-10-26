@@ -112,6 +112,16 @@ test('a near-complete longer name beats the shorter name it contains', () => {
   assert.equal(matchMap('Victoria Road\nEllinia', maps)[0].map.id, 'el');
 });
 
+test('exact map line beats a shorter map name inside it by enough for live GPS confirmation', () => {
+  const maps = validateDataset({ schemaVersion: 1, maps: [
+    { id: 'short', name: 'Deep Forest' },
+    { id: 'long', name: 'Swampy Land in a Deep Forest' }
+  ], portals: [] }).maps;
+  const matches = matchMap('Dungeon\nSwampy Land in a Deep Forest', maps);
+  assert.equal(matches[0].map.id, 'long');
+  assert.ok(matches[0].score - matches[1].score > .03);
+});
+
 test('a bar glued to the end of a map name is the roman numeral I', () => {
   const maps = validateDataset({ schemaVersion: 1, maps: [{ id: 'l1', name: 'L Forest I' }, { id: 'l2', name: 'L Forest II' }, { id: 'l3', name: 'L Forest III' }], portals: [] }).maps;
   assert.equal(matchMap('Victoria Road\nL Forest|', maps)[0].map.id, 'l1');

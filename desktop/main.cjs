@@ -1,11 +1,11 @@
 // Maple Route's Linux desktop shell. It captures only a window the user chooses
 // through Electron/xdg-desktop-portal; it never interacts with the game process.
-const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, session } = require('electron');
+const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, screen, session } = require('electron');
 const { join } = require('node:path');
 const { spawn } = require('node:child_process');
 const { readFileSync } = require('node:fs');
-const { DeckStream } = require('./deck-stream.cjs');
-const { overlayBounds, pairingBounds } = require('./deck-overlay.cjs');
+const { DeckStream, lookupGamescopeSize } = require('./deck-stream.cjs');
+const { overlayBounds, pairingBounds, displaySizeFromHelper } = require('./deck-overlay.cjs');
 
 const deckMode = process.platform === 'linux' && process.argv.includes('--deck-service');
 if (deckMode) {
@@ -36,6 +36,7 @@ let overlayWindow;
 let overlayPosition = 'bottom-left';
 let overlayWanted = true;
 let overlaySnapshot = null;
+let overlayDisplaySize = null;
 const deckStream = deckMode ? new DeckStream(status => {
   mainWindow?.webContents?.send('deck:status', status);
   phone?.publish({ status });
@@ -54,13 +55,14 @@ function explicitStop() { setKeepReading(false); deckStream.stop(); mainWindow.w
 function placeOverlayBox(window, position) {
   const b = boxBounds(position);
   if (!window.isDestroyed()) window.setSize(b.width, b.height);
-  overlayToHelper({ x: b.x, y: b.y });
-  window.webContents.executeJavaScript(`window.placeMapleBox(${JSON.stringify({ x: 0, y: 0, width: b.width, height: b.height })})`).catch(() => {});
+  overlayToHelper({ display: overlayViewport(), x: b.x, y: b.y });
+  window.webContents.executeJavaScript(`window.placeMapleBox(${JSON.stringify({ x: 0, y: 0, width: b.width, height: b.height, scale: Math.min(b.width / 258, b.height / (position === 'bottom-left' ? 208 : 142)) })})`).catch(() => {});
 }
 // QR code first: while no phone is connected, the pop-up shows the phone's QR code for the first
 // minute after the game opens (and whenever reading is off), then the map. A connected phone hides it.
 let gameOpenedAt = 0, pairingShown = false;
-const boxBounds = position => (pairingShown ? pairingBounds : overlayBounds)(position);
+const overlayViewport = () => overlayDisplaySize ?? screen.getPrimaryDisplay().size;
+const boxBounds = position => (pairingShown ? pairingBounds : overlayBounds)(position, overlayViewport());
 function showPairing() {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const noPhone = !phone?.clients?.size, early = Date.now() - gameOpenedAt < 60_000;
@@ -118,13 +120,16 @@ async function setDeckOverlay(enabled, position = 'bottom-left', { remember = tr
   if (!deckMode) return false;
   if (remember) overlayWanted = Boolean(enabled);
   overlayPosition = position;
-  const bounds = overlayBounds(position);
   if (!enabled) {
     overlayToHelper({ hide: true }); overlayHelper?.kill(); overlayHelper = null;
     overlayWindow?.destroy(); overlayWindow = null;
     phone?.publish({ overlay: false, overlayPosition });
     return false;
   }
+  // The PipeWire compositor image can be 2560x1440 while gamescope's Xwayland screen says
+  // 1920x1080. External overlays use the former coordinate space.
+  overlayDisplaySize = await lookupGamescopeSize().catch(() => null) ?? overlayDisplaySize;
+  const bounds = overlayBounds(position, overlayViewport());
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     placeOverlayBox(overlayWindow, position);
     phone?.publish({ overlay: true, overlayPosition });
@@ -141,9 +146,28 @@ async function setDeckOverlay(enabled, position = 'bottom-left', { remember = tr
   const html = readFileSync(join(__dirname, 'overlay.html'), 'utf8').replace('__BASE__', localOrigin + '/').replace('__CSS__', cssName ? `assets/${cssName}` : '');
   try {
     await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-    overlayHelper = spawn('python3', [require('./unpacked.cjs').unpacked(join(__dirname, 'deck-overlay-gtk.py'))], { stdio: ['pipe', 'ignore', 'pipe'], env: process.env });
-    overlayHelper.on('exit', () => { overlayHelper = null; });
+    overlayHelper = spawn('python3', [require('./unpacked.cjs').unpacked(join(__dirname, 'deck-overlay-gtk.py'))], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+    overlayHelper.on('exit', () => { overlayHelper = null; overlayDisplaySize = null; });
     overlayHelper.stdin.on('error', () => {});
+    // GTK owns the actual full-screen overlay. Its Xwayland geometry is authoritative on TVs,
+    // where Electron may still report the Deck's old 1280x800 viewport.
+    let displayLine = '';
+    overlayHelper.stdout.setEncoding('utf8');
+    overlayHelper.stdout.on('data', chunk => {
+      displayLine += chunk;
+      while (displayLine.includes('\n')) {
+        const end = displayLine.indexOf('\n');
+        const line = displayLine.slice(0, end); displayLine = displayLine.slice(end + 1);
+        const xwaylandSize = displaySizeFromHelper(line);
+        if (xwaylandSize) lookupGamescopeSize().then(size => {
+          size ??= xwaylandSize;
+          if (size.width !== overlayDisplaySize?.width || size.height !== overlayDisplaySize?.height) {
+            overlayDisplaySize = size;
+          }
+          if (overlayWindow && !overlayWindow.isDestroyed()) placeOverlayBox(overlayWindow, overlayPosition);
+        }).catch(() => {});
+      }
+    });
     overlayWindow = window;
     window.on('closed', () => { if (overlayWindow === window) overlayWindow = null; });
     // Hand over a new picture at most twice a second, only when the box changed.
@@ -188,6 +212,9 @@ async function speakWithFallback(text, rate, voice) {
 }
 
 async function start() {
+  if (deckMode) screen.on('display-metrics-changed', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) placeOverlayBox(overlayWindow, overlayPosition);
+  });
   const { startServer } = await import('../scripts/serve.mjs');
   const started = await startServer({ port: 0, host: '127.0.0.1', enableAutostart: false });
   localServer = started.server;
