@@ -15,6 +15,18 @@ test('quest guide routes NPC steps to their map', () => {
   assert.deepEqual(questStepMaps(data, { npc: 'Chrishrama', map: 'Sleepywood' }, '1').map(x => x.map.name), ['Sleepywood']);
 });
 
+test('an unreachable duplicate NPC cannot take the first quest route', () => {
+  const world = {
+    maps: [{ id: 'town', name: 'Kerning City' }, { id: 'start', name: 'Henesys' }, { id: 'pq', name: 'Party Quest Stage' }],
+    portals: [{ from: 'start', to: 'town', name: 'west' }],
+    targets: [
+      { kind: 'npc', name: 'Nella', locations: [{ mapId: 'pq', count: 50 }] },
+      { kind: 'npc', name: 'Nella', locations: [{ mapId: 'town', count: 1 }] }
+    ]
+  };
+  assert.equal(questStepMaps(world, { npc: 'Nella' }, 'start', 1)[0].map.id, 'town');
+});
+
 test('quest guide offers multiple mob maps with distance breaking spawn ties', () => {
   assert.deepEqual(questStepMaps(data, { monster: 'Dark Stump' }, '1').map(x => x.map.name), ['The Tree That Grew III', 'The Field South of Ellinia']);
 });
@@ -50,4 +62,17 @@ test('wiki required items join the correct job-specific quest even when its titl
   const quests = fromOsmsQuests(payload, [], [{ quest: 'Test of Qualification (Thief)', item: 'Dark Marble', quantity: 30 }]);
   assert.deepEqual(quests[0].needs, []);
   assert.deepEqual(quests[1].needs.map(need => [need.name, need.count]), [['Dark Marble', 30]]);
+});
+
+test('the two verified quest hand-ins survive missing community guide rows', () => {
+  const quests = fromOsmsQuests({ quests: [
+    { id: 10126, name: 'The Old Snail', npc_name: 'Pia', requirements_list: [{ type: 'item', name: 'The Snail Legend', count: 1 }] },
+    { id: 506105, name: 'First Greeting with Nella, the Town Resident', npc_name: 'Community Board', requirements_list: [] }
+  ] });
+  assert.deepEqual(quests.map(quest => quest.turnIn), ['Jay', 'Nella']);
+});
+
+test('the quest catalog preserves items given at acceptance', () => {
+  const quests = fromOsmsQuests({ quests: [{ id: 10409, name: 'Transporting Drake\'s Skull', npc_name: 'Anne', requirements_list: [{ type: 'item', id: 4030001, name: 'Stuffed Drake Skull', count: 1 }], start_items: [{ type: 'item', id: 4030001, name: 'Stuffed Drake Skull', count: 1 }] }] });
+  assert.deepEqual(quests[0].startItems, [{ id: 4030001, name: 'Stuffed Drake Skull', count: 1 }]);
 });

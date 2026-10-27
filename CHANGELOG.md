@@ -2,6 +2,10 @@
 
 ## 1.1.0-beta.13 (pending review)
 
+- Use the game quest catalog's items-given-at-start field so nine delivery items no longer turn into guessed monster hunts; the generated checklist now says to check the item from the quest giver.
+- Route the rainbow shell quest to Mano instead of ordinary Snails, and document the remaining quest-guide source and hand-in review cases.
+- Make the phone's Report map button show when it is opening the form or cannot reach Maple Route; scrolling to the form also works when Settings is already open.
+- Choose quest NPC locations by the quest's named map or a reachable portal route instead of the first same-name NPC; the quest guide also lets the player pick a location for Live GPS. This fixes Nella pointing into an isolated party-quest map and covers other duplicate-name NPCs.
 - Add a map/GPS report form and private administrator inbox. The phone's Report map button opens the form, and submission no longer depends on opening a browser window on the hidden Deck.
 - Let players type the map name shown in MapleStory, including West Street Corner of Perion, and what GPS got wrong. No screenshot, chat, character name or raw OCR text is submitted automatically.
 - Prefer hunt maps without known, unrelated monsters more than three levels above the player's level; a dense Dark Stump map with Wild Boars now loses to a viable safer map. If no safer mapped spot exists, still show the available one.

@@ -1,4 +1,5 @@
 import { normalize, shortestRoute, editDistance } from './core.js';
+import { npcMapId } from './npclocations.js';
 
 // Quest suggestions for the player's level and job, minus what they have finished or are doing,
 // nearest-to-level first, then closest quest giver. Pure.
@@ -31,8 +32,8 @@ export function recommendQuests(catalog, { level, job = 'Any', finished = [], ac
   const done = new Set(finished.map(normalize)), skip = new Set([...finished, ...active, ...hidden].map(normalize)), offered = new Set(available.map(normalize));
   const giverMap = name => {
     if (!data || !name) return null;
-    const npc = data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(name));
-    return npc?.locations[0] ? data.maps.find(m => m.id === npc.locations[0].mapId) ?? null : null;
+    const mapId = npcMapId(data, name, currentMapId);
+    return data.maps.find(m => m.id === mapId) ?? null;
   };
   const seen = new Set();
   return catalog

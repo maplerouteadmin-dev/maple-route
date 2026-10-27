@@ -1,4 +1,5 @@
 import { normalize } from './core.js';
+import { questItemGivenAtStart } from './questorigins.js';
 
 const words = value => normalize(value).split(' ').filter(Boolean).map(word => word.replace(/(es|s)$/, '')).join(' ');
 export function stepCoversNeed(step, need) {
@@ -7,9 +8,9 @@ export function stepCoversNeed(step, need) {
   return Boolean(wanted) && ` ${said} `.includes(` ${wanted} `);
 }
 
-const needStep = (need, number) => need.type === 'mob'
+const needStep = (need, number, quest) => need.type === 'mob'
   ? { number, title: `Defeat ${need.count} ${need.name}`, monster: need.name, count: need.count }
-  : { number, title: `Collect ${need.count} ${need.name}`, item: need.name, count: need.count };
+  : { number, title: questItemGivenAtStart(quest, need.name) ? `Check ${need.name} in your bag (given when you accepted the quest)` : `Collect ${need.count} ${need.name}`, item: need.name, count: need.count };
 
 // The steps of one quest for the Live card checklist: the wiki's step list when it has one, else
 // built from the game data (talk to the giver, each hunt/collect target, hand in). Pure.
@@ -22,14 +23,14 @@ export function buildSteps(quest, wikiSteps = []) {
     const last = steps.at(-1);
     const finalTalk = steps.length > 1 && turnIn && last?.npc && normalize(last.npc) === normalize(turnIn) && /hand|turn|return|deliver|talk|speak|finish/i.test(last.title);
     let number = Math.max(...steps.map(step => Number(step.number) || 0));
-    steps.splice(finalTalk ? steps.length - 1 : steps.length, 0, ...missing.map(need => needStep(need, ++number)));
+    steps.splice(finalTalk ? steps.length - 1 : steps.length, 0, ...missing.map(need => needStep(need, ++number, quest)));
     if (turnIn && !finalTalk) steps.push({ number: ++number, title: `Hand it in to ${turnIn}`, npc: turnIn, handIn: true });
     return steps;
   }
   if (!quest) return [];
   const steps = [];
   if (quest.giver) steps.push({ title: `Talk to ${quest.giver} to start`, npc: quest.giver, accept: true });
-  for (const need of quest.needs ?? []) steps.push(needStep(need, null));
+  for (const need of quest.needs ?? []) steps.push(needStep(need, null, quest));
   const turnIn = quest.turnIn || quest.giver;
   if (turnIn) steps.push({ title: `Hand it in to ${turnIn}${quest.turnInGuessed && quest.turnIn ? ' (best guess)' : ''}`, npc: turnIn, handIn: true });
   return steps.map((step, i) => ({ npc: null, monster: null, map: null, ...step, number: i + 1 }));

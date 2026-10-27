@@ -23,3 +23,10 @@ test('reports use a separate anonymous account and submit to the write-only inbo
   assert.equal(requests[1].headers.Authorization, 'Bearer token');
   assert.equal(JSON.parse(requests[1].body).map_name, 'West Street Corner of Perion');
 });
+
+test('an absent live inbox produces an actionable message instead of a silent failure', async () => {
+  const store = createMapReportStore({ url: 'https://example.supabase.co', key: 'public', storage: { get: () => null, set: () => {} }, fetchImpl: async url =>
+    url.endsWith('/signup') ? { ok: true, json: async () => ({ access_token: 'token', expires_in: 3600 }) } : { ok: false, status: 404 }
+  });
+  await assert.rejects(store.submit({ mapName: 'Perion', description: 'GPS shows another map' }), /not set up yet/i);
+});

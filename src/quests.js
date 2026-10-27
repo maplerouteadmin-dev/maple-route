@@ -1,6 +1,7 @@
 import { normalize, shortestRoute } from './core.js';
 import { completeQuestNeeds } from './questneeds.js';
 import { wikiQuestMatches } from './questidentity.js';
+import { verifiedQuestTurnIn } from './questorigins.js';
 
 const API = 'https://mapleclassic.wiki/api.php';
 const text = value => String(value ?? '').replace(/&quot;/g, '"').replace(/&#39;|&#039;/g, "'").replace(/&amp;/g, '&').trim();
@@ -48,11 +49,12 @@ export function fromOsmsQuests(payload, wikiRows = [], wikiItemRows = []) {
     for (const match of String(q.requirements ?? '').matchAll(/Complete:\s*(.+?)\s*\(#0*(\d+)\)/g)) prerequisites.add(byId.get(String(Number(match[2])))?.name ?? byId.get(match[2])?.name ?? match[1]);
     if (chain && chain.index > 0) { const before = byId.get(chain.ids[chain.index - 1]); if (before) prerequisites.add(before.name); }
     return {
-      id, name: String(q.name).trim(), giver: q.npc_name || extra?.giver || '', turnIn: extra?.turnIn || '', start: extra?.start || q.region || '',
+      id, name: String(q.name).trim(), giver: q.npc_name || extra?.giver || '', turnIn: verifiedQuestTurnIn(q) || extra?.turnIn || '', start: extra?.start || q.region || '',
       level: Number.isFinite(q.level_min) ? q.level_min : null, job: JOB_REGIONS.has(q.region) ? q.region : '', region: q.region ?? null,
       arc: q.parent || null, arcOrder: chain?.index ?? 0, prerequisites: [...prerequisites],
       type: q.region === 'Event' ? 'Event' : q.region === 'Citizenship' ? 'Citizenship' : q.region === 'Crafting' ? 'Crafting' : 'Normal',
       repeatable: Boolean(q.is_repeatable || q.is_daily || q.is_weekly), needs: (q.requirements_list ?? []).filter(r => r.type === 'mob' || r.type === 'item').map(r => ({ type: r.type, name: r.name, count: r.count })),
+      startItems: (q.start_items ?? []).filter(item => item.type === 'item' && item.name).map(item => ({ id: item.id, name: item.name, count: item.count })),
       text: String(q.description ?? '').slice(0, 1200),
       doneText: String(q.description ?? '').split('\n').map(line => line.trim()).filter(Boolean).pop() ?? '',
       rewards: { exp: q.rewards_exp ?? null, mesos: q.rewards_money ?? null, items: q.rewards_items ?? '' },
@@ -141,7 +143,7 @@ export function questStepMaps(data, step, currentMapId = null, limit = 6) {
     const route = currentMapId ? shortestRoute(data, currentMapId, id) : null;
     const spawns = matchingTargets.flatMap(target => target.locations).filter(location => location.mapId === id).reduce((sum, location) => sum + (location.count ?? 0), 0);
     return { map, hops: route?.length ?? null, spawns };
-  }).filter(Boolean).sort((a, b) => b.spawns - a.spawns || (a.hops === null) - (b.hops === null) || (a.hops ?? 0) - (b.hops ?? 0) || a.map.name.localeCompare(b.map.name)).slice(0, limit);
+  }).filter(Boolean).sort((a, b) => (a.hops === null) - (b.hops === null) || (step.npc ? 0 : b.spawns - a.spawns) || (a.hops ?? 0) - (b.hops ?? 0) || a.map.name.localeCompare(b.map.name)).slice(0, limit);
 }
 
 export function questUrl(name) { return `https://mapleclassic.wiki/wiki/${encodeURIComponent(name.replaceAll(' ', '_')).replaceAll("'", '%27')}`; }

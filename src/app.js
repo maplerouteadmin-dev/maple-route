@@ -18,6 +18,8 @@ import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { arrivalDetails } from './arrival.js';
 import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMaps, craftStops, matchCount, helperComplete, hops } from './objective.js';
+import { npcMapId, questNpcDestination } from './npclocations.js';
+import { verifiedQuestTurnIn } from './questorigins.js';
 import { completeQuestNeeds } from './questneeds.js';
 import { questVisible } from './questvisibility.js';
 import { worldMapModel, worldMapHtml, mobTally } from './worldmap.js';
@@ -64,7 +66,7 @@ import './goals.css';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], acceptedQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], tripTicks: [], questPick: {}, questDetails: {}, questItemsReady: {} };
+const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], acceptedQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], tripTicks: [], questPick: {}, questNpcMaps: {}, questDetails: {}, questItemsReady: {} };
 function questByName(name) {
   const matches = state.quests.filter(quest => quest.name === name);
   const picked = state.questPick?.[name];
@@ -585,7 +587,11 @@ async function loadQuestCatalog() {
     state.questCatalogStatus = 'loaded';
     // Fill missing hand-in NPCs from the game's quest text and the known NPC names.
     const npcNames = [...new Set(state.data.targets.filter(t => t.kind === 'npc').map(t => t.name))];
-    for (const quest of state.quests) if (!quest.turnIn) { quest.turnIn = guessTurnIn(quest.doneText, npcNames, quest.giver); quest.turnInGuessed = true; }
+    for (const quest of state.quests) {
+      const verified = verifiedQuestTurnIn(quest);
+      if (verified) { quest.turnIn = verified; quest.turnInGuessed = false; }
+      else if (!quest.turnIn) { quest.turnIn = guessTurnIn(quest.doneText, npcNames, quest.giver); quest.turnInGuessed = true; }
+    }
     applyNotes(state.quests, state.notes); resolveWeekly();
     if (state.selectedQuest?.name) {
       const match = questByName(state.selectedQuest.name);
@@ -619,7 +625,6 @@ async function ensureQuestDetails(name) {
   state.questDetails[name] = { status: 'loading', steps: [], items: [] };
   renderTripPlanner(); renderDashboard();
   const [steps, items] = await Promise.allSettled([fetchQuestSteps(name), fetchQuestItems(name)]);
-  queueMicrotask(() => { if (state.guide.quest === name) { applyObjective(); renderLive(); } });
   state.questDetails[name] = {
     status: steps.status === 'fulfilled' ? 'loaded' : 'error',
     steps: steps.status === 'fulfilled' ? steps.value : [],
@@ -627,6 +632,8 @@ async function ensureQuestDetails(name) {
     itemsStatus: items.status === 'fulfilled' || questByName(name)?.requiredItems?.length ? 'loaded' : 'error',
     error: steps.status === 'rejected' ? steps.reason?.message ?? 'Quest steps unavailable.' : null
   };
+  state.allTripCache = null;
+  queueMicrotask(() => { if (state.guide.quest === name) { applyObjective(); renderLive(); } });
   if (state.selectedQuest?.name === name) {
     state.questSteps = state.questDetails[name].steps;
     state.questStepStatus = state.questDetails[name].status;
@@ -718,9 +725,16 @@ function renderQuestGuide() {
       const choices = document.createElement('div'); choices.className = 'quest-map-choices';
       for (const option of maps) {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'quest-map-option';
+        if (step.npc) button.setAttribute('aria-pressed', String(state.questNpcMaps[`${quest.name}|${normalize(step.npc)}`] === option.map.id));
         const name = document.createElement('strong'); name.textContent = option.map.name;
         const detail = document.createElement('span'); detail.textContent = `${option.spawns ? `${option.spawns} listed spawns · ` : ''}${option.hops === null ? (state.current ? 'route not confirmed' : 'set your current map') : `${option.hops} portal${option.hops === 1 ? '' : 's'} away`}`;
-        button.append(name, detail); button.addEventListener('click', () => routeToMap(option.map.id, step.npc || null)); choices.append(button);
+        button.append(name, detail); button.addEventListener('click', () => {
+          if (!step.npc) { routeToMap(option.map.id); return; }
+          state.questNpcMaps[`${quest.name}|${normalize(step.npc)}`] = option.map.id;
+          state.allTripCache = null; persist();
+          if (state.guide.quest !== quest.name) setGuide(quest.name); else { applyObjective(); renderLive(); }
+          renderQuestGuide(); reveal('#live-title');
+        }); choices.append(button);
       }
       row.append(choices);
     } else if (step.item || /^collect\s+\d+\s+/i.test(step.title)) {
@@ -966,7 +980,7 @@ function applyQuestWindow(tab, text, { auto = false, list = false } = {}) {
     // single quest), its next quest, and Start: guide there and through it with Live GPS.
     const rows = seen.map(title => ({ title, name: questsForGameNames(state.quests, [title], { tab, finished: state.questsFinished })[0] })).filter(row => row.name && offered.includes(row.name));
     const startRow = ({ title, name }) => {
-      const quest = state.quests.find(q => q.name === name), mapId = quest?.giver ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(quest.giver))?.locations[0]?.mapId : null;
+      const quest = state.quests.find(q => q.name === name), mapId = quest?.giver ? npcMapId(travel(), quest.giver, state.current) : null;
       return `<li><span><strong>${esc(title)}</strong>${normalize(title) !== normalize(name) ? ` <small>first quest: ${esc(name)}</small>` : ''}<small>${quest?.giver ? `from ${esc(quest.giver)}` : ''}${mapId ? ` · ${esc(mapById(mapId)?.name ?? '')}` : ''}${quest?.level ? ` · Lv ${quest.level}` : ''}</small></span>
         <span class="wm-actions"><button type="button" class="button secondary wm-go" data-qr-go="${esc(mapId ?? '')}" data-qr-npc="${esc(quest?.giver ?? '')}" data-qr-quest="${esc(name)}">Start</button></span></li>`;
     };
@@ -3203,6 +3217,7 @@ function planSources() {
   return state.planSourcesCache.value;
 }
 function givenBy(item) { const g = state.notes.given[normalize(item)]; return g ? `from ${g.npc} (${saidBy(g.mine ? 'you' : g.players)})` : 'from an NPC'; }
+function givenGoalText(goal) { return goal.givenAtStart ? `${goal.givenAtStart.npc} gives this when you accept the quest${goal.givenAtStart.map ? ` in ${goal.givenAtStart.map}` : ''}` : givenBy(goal.name); }
 function dropsSaid(item) { const d = state.notes.drops[normalize(item)]; return d?.length && !state.itemSources[item]?.length ? ` (${saidBy(d[0].mine ? 'you' : d[0].players)})` : ''; }
 // Quests in the plan the game data can't plan: the weekly donation (pick this week's item) and quests
 // whose text asks for things but lists no needs.
@@ -3497,8 +3512,7 @@ async function syncQuestHelper(parsed) {
   state.hud.turnIn = null;
   if (ready) {
     const quest = state.quests.find(q => q.name === ready.name), npcName = quest?.turnIn || quest?.giver;
-    const npc = npcName && state.data.targets.find(target => target.kind === 'npc' && normalize(target.name) === normalize(npcName));
-    state.hud.turnIn = { quest: ready.name, npc: npcName || null, mapId: npc?.locations[0]?.mapId ?? null };
+    state.hud.turnIn = { quest: ready.name, npc: npcName || null, mapId: npcName ? questNpcMap(ready.name, npcName) : null };
     if (state.voice && state.hud.spokenTurnIn !== ready.name && state.guide.quest !== ready.name) { state.hud.spokenTurnIn = ready.name; sayPart('quests', `${ready.name} is ready to turn in${npcName ? ` to ${npcName}` : ''}.`); }
   }
   applyObjective();
@@ -3549,12 +3563,19 @@ function guideSteps() {
   const { step, done } = currentStep(steps, state.questDone[name] ?? [], { accepted, giver: quest?.giver, completedNeeds: completedNeedsFor(name) });
   return { name, quest, steps, step, done };
 }
+function questNpcMap(questName, npc, nearMapId = null) {
+  if (!npc) return null;
+  const chosen = state.questNpcMaps[`${questName}|${normalize(npc)}`];
+  return questNpcDestination(travel(), npc, state.current, { steps: state.questDetails[questName]?.steps, chosen, nearMapId });
+}
 // Where a step happens: its NPC, the best map for its monster, its named map, or (collecting an
 // item) the hunting map the objective picks.
 function stepTarget(step, guide) {
   if (!step) return null;
-  const npcMapId = name => state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(name))?.locations[0]?.mapId ?? null;
-  if (step.npc && npcMapId(step.npc) && !(state.tripAll && step.handIn)) return { mapId: npcMapId(step.npc), npc: step.npc };
+  const npcChoices = step.npc ? questStepMaps(travel(), step, state.current) : [];
+  const chosenNpcMap = step.npc && guide?.name ? questNpcMap(guide.name, step.npc) : null;
+  const npcChoice = npcChoices.find(choice => choice.map.id === chosenNpcMap && choice.hops !== null) ?? npcChoices.find(choice => choice.hops !== null);
+  if (npcChoice && !(state.tripAll && step.handIn)) return { mapId: npcChoice.map.id, npc: step.npc };
   if (state.guide.huntMap && mapById(state.guide.huntMap) && !step.npc) return { mapId: state.guide.huntMap, npc: null };
   const options = huntOptions(guide);
   const all = state.tripAll ? allQuestsTrip() : null;
@@ -3603,10 +3624,10 @@ function huntOptions(g) {
     progress.push({ name: need.name, have: 0, need: count, done: false });
   }
   if (!progress.length) return null;
-  const goals = huntGoals(state.data, progress, planSources(), g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting, myShops());
+  const goals = huntGoals(state.data, progress, planSources(), g.quest?.text, (g.quest?.needs ?? []).map(need => need.name), state.crafting, myShops(), g.quest);
   loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.lookup ?? goal.name));
   // The trip ends where the quest is handed in, so stops on the way there are preferred.
-  const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(endNpc))?.locations[0]?.mapId ?? null : null;
+  const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? questNpcMap(g.name, endNpc) : null;
   const key = JSON.stringify([goals.map(goal => [goal.name, goal.monsters]), state.current, state.level, endMapId, state.useTaxis, state.useVip, state.useNearestScroll, state.useTownScrolls]);
   if (state.tripCache?.key !== key) state.tripCache = { key, trip: planHuntTrip(travel(), goals, state.current, endMapId, { via: craftStops(state.data, goals), playerLevel: state.level }), endNpc };
   return { goals, maps: rankObjectiveMaps(travel(), goals, state.current, { playerLevel: state.level }).slice(0, 4), trip: state.tripCache.trip, endNpc };
@@ -3626,11 +3647,7 @@ function allQuestsTrip(onlyQuest = null) {
   const started = name => (state.hud.quests ?? []).some(q => q.name === name) || state.acceptedQuests.includes(name);
   const byName = new Map(), ends = new Map(), endQuests = new Map(), starts = [];
   // An NPC name on several maps (each town's Community Board): the one nearest `near` (the hand-in).
-  const npcMapOf = (npc, near = null) => {
-    const spots = npc ? state.data.targets.filter(t => t.kind === 'npc' && normalize(t.name) === normalize(npc)).flatMap(t => t.locations) : [];
-    if (near && spots.length > 1) return [...spots].sort((a, b) => (hops(state.data, a.mapId, near) ?? 99) - (hops(state.data, b.mapId, near) ?? 99))[0].mapId;
-    return spots[0]?.mapId ?? null;
-  };
+  const npcMapOf = (npc, questName, near = null) => questNpcMap(questName, npc, near);
   for (const name of names) {
     const quest = questByName(name);
     if (!quest || !questInProgress(name)) continue;
@@ -3639,9 +3656,9 @@ function allQuestsTrip(onlyQuest = null) {
     let goals;
     const ticked = new Set([...(state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))), ...(state.questItemsReady[name] ?? []).map(normalize)]);
     const notStarted = !started(name);
-    if (notStarted && quest.giver) starts.push({ mapId: npcMapOf(quest.giver, npcMapOf(quest.turnIn)), quests: [name], npc: quest.giver });
+    if (notStarted && quest.giver) starts.push({ mapId: npcMapOf(quest.giver, name, npcMapOf(quest.turnIn, name)), quests: [name], npc: quest.giver });
     const progress = needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: 0, need: n.count ?? seen?.need, done: ticked.has(normalize(n.name)) }; });
-    goals = huntGoals(state.data, progress, planSources(), quest.text, needs.map(n => n.name), state.crafting, myShops());
+    goals = huntGoals(state.data, progress, planSources(), quest.text, needs.map(n => n.name), state.crafting, myShops(), quest);
     loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
     for (const goal of goals) {
       const key = normalize(goal.name), seen = byName.get(key);
@@ -3649,7 +3666,7 @@ function allQuestsTrip(onlyQuest = null) {
       if (seen) { if (!seen.quests.includes(name)) { seen.need += Math.max(0, (goal.need ?? 0) - (goal.have ?? 0)); seen.quests.push(name); } }
       else byName.set(key, { ...goal, quests: [name] });
     }
-    const npc = quest.turnIn || quest.giver, mapId = npc ? state.data.targets.find(t => t.kind === 'npc' && normalize(t.name) === normalize(npc))?.locations[0]?.mapId : null;
+    const npc = quest.turnIn || quest.giver, mapId = npcMapOf(npc, name);
     // Hand-ins: quests with hunting left, finished ones, talk-and-deliver ones and ones to pick up.
     if (mapId && !(quest.variants?.length && !quest.week?.by)) { ends.set(mapId, [...(ends.get(mapId) ?? []), npc]); endQuests.set(mapId, [...(endQuests.get(mapId) ?? []), name]); }
   }
@@ -3680,7 +3697,7 @@ function allChecklistHtml(all, doneHtml = '') {
       const done = progress.done.has(step.number) || Boolean(need && ticked.has(normalize(need.name)));
       if (done) return '';
       const goal = need && all.goals.find(g => normalize(g.name) === normalize(need.name) || normalize(g.craft?.item ?? '') === normalize(need.name));
-      const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.given ? givenBy(need.name) : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `${sourceText(goal.monsters)}${goal.guess ? ' (best guess)' : dropsSaid(need.name)}` : '';
+      const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.givenAtStart || goal?.given ? givenGoalText(goal) : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `${sourceText(goal.monsters)}${goal.guess ? ' (best guess)' : dropsSaid(need.name)}` : '';
       const count = need ? `${seen?.have ?? 0}/${need.count}` : '';
       const map = step.npc ? questStepMaps(travel(), step, state.current, 1)[0]?.map : null;
       const route = map && !done ? ` <button type="button" class="link-button" data-route="${esc(map.id)}" data-route-npc="${esc(step.npc)}">Route to ${esc(step.npc)}</button>` : '';
@@ -3711,7 +3728,7 @@ function allStepsHtml(all, { single = false } = {}) {
     const now = i === 0 ? ' <span class="pill">now</span>' : '', mapName = esc(mapById(step.mapId)?.name ?? '?');
     if (step.type === 'hunt') {
       const needs = all.goals.filter(g => step.goals.includes(g.name)).flatMap(g => (g.quests ?? []).map(q => {
-        const where = g.craft ? `for ${g.craft.item}` : g.given ? givenBy(g.name) : g.monsters?.length && normalize(g.monsters[0]) !== normalize(g.name) ? `${sourceText(g.monsters)}${g.guess ? ' (best guess)' : dropsSaid(g.name)}` : '';
+        const where = g.craft ? `for ${g.craft.item}` : g.givenAtStart || g.given ? givenGoalText(g) : g.monsters?.length && normalize(g.monsters[0]) !== normalize(g.name) ? `${sourceText(g.monsters)}${g.guess ? ' (best guess)' : dropsSaid(g.name)}` : '';
         return line(q, g.name, where);
       }));
       return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hunt on ${mapName}</strong>${now} <small>(${esc(step.quests.join(', '))})</small><ul class="need-list">${needs.join('')}</ul></li>`;
@@ -3779,6 +3796,7 @@ function marketNote(itemName) {
 }
 function huntOptionsHtml(options) {
   if (!options) return '';
+  if (options.goals.length && options.goals.every(goal => goal.givenAtStart)) return `<p class="fine">${esc(options.goals.map(givenGoalText).join(' · '))}. Check your bag, then take it to ${esc(options.endNpc ?? 'the quest NPC')}.</p>`;
   if (!options.maps.length) return `<p class="fine">${options.goals.some(goal => goal.pending) ? 'Looking up which monsters drop what you need…' : 'No mapped hunting spot for these yet.'}</p>`;
   const trip = options.trip?.stops.length > 1 || (options.trip && options.goals.some(goal => goal.craft)) || (options.trip && options.trip.stops[0]?.mapId !== options.maps[0]?.mapId) ? options.trip : null;
   const tripHtml = trip ? `<div class="fine hunt-trip"><strong>Best trip:</strong> ${trip.stops.map(stop => `${esc(mapById(stop.mapId)?.name ?? '?')} <small>(${esc(stop.monsters.join(', '))})</small>`).join(' → ')}${[...new Set(options.goals.filter(goal => goal.craft?.npc).map(goal => goal.craft.npc))].map(npc => ` → ${esc(npc)} <small>(make ${esc([...new Set(options.goals.filter(goal => goal.craft?.npc === npc).map(goal => goal.craft.item))].join(', '))})</small>`).join('')}${options.endNpc ? ` → ${esc(options.endNpc)}` : ''} <small>· ${trip.hops} map${trip.hops === 1 ? '' : 's'} in all</small>${trip.stops[0].mapId !== state.destination ? ` <button type="button" class="button secondary wm-go" data-hunt-map="${esc(trip.stops[0].mapId)}">Go</button>` : ''}</div>` : '';
@@ -4325,6 +4343,7 @@ try {
   // My citizenship: { Henesys: 0-10, 'Kerning City': 0-10 }, or null when not set.
   state.citizenship = saved?.citizenship && typeof saved.citizenship === 'object' ? Object.fromEntries(['Henesys', 'Kerning City'].map(town => [town, Math.max(0, Math.min(10, Number(saved.citizenship[town]) || 0))])) : null;
   state.questPick = saved?.questPick && typeof saved.questPick === 'object' && !Array.isArray(saved.questPick) ? Object.fromEntries(Object.entries(saved.questPick).filter(([k, v]) => typeof k === 'string' && typeof v === 'string').slice(0, 50)) : {};
+  state.questNpcMaps = saved?.questNpcMaps && typeof saved.questNpcMaps === 'object' && !Array.isArray(saved.questNpcMaps) ? Object.fromEntries(Object.entries(saved.questNpcMaps).filter(([k, v]) => typeof k === 'string' && typeof v === 'string').slice(0, 100)) : {};
   state.planSkip = Array.isArray(saved?.planSkip) ? [...new Set(saved.planSkip.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 200) : [];
   state.planQuests = Array.isArray(saved?.planQuests) ? [...new Set(saved.planQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 20) : [];
   state.questsHidden = Array.isArray(saved?.questsHidden) ? [...new Set(saved.questsHidden.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];

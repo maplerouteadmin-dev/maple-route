@@ -2,6 +2,8 @@ import { editDistance, normalize, shortestRoute } from './core.js';
 import { craftRecipe, craftNeeds } from './refine.js';
 import { sellersOf } from './shops.js';
 import { huntRisk } from './huntsafety.js';
+import { npcMapId } from './npclocations.js';
+import { questItemGivenAtStart, verifiedQuestItemMonsters } from './questorigins.js';
 
 // What the player should be doing right now for one quest, from the live Quest Helper counts (or the
 // wiki steps when the quest is not on screen): hunt/collect on the best map, or hand the quest in.
@@ -11,7 +13,7 @@ import { huntRisk } from './huntsafety.js';
 // `itemSources`: { [itemName]: [monsterName, ...] } wiki drop records, filled in as they load.
 
 const mobByName = (data, name) => (data.targets ?? []).find(t => t.kind === 'mob' && normalize(t.name) === normalize(name));
-const npcMap = (data, npcName) => (data.targets ?? []).find(t => t.kind === 'npc' && normalize(t.name) === normalize(npcName))?.locations[0]?.mapId ?? null;
+const npcMap = npcMapId;
 
 // Each unfinished count becomes a goal with the monsters that satisfy it: the monster itself for a
 // kill count, or the monsters recorded as dropping the item.
@@ -39,8 +41,12 @@ export const helperComplete = (quest, expectedNeeds = null) => Boolean(quest?.pr
 
 // When the wiki has no drop record for an item, the quest's own text often names the monsters
 // ("I can get them by defeating Stump, Orange Mushroom, and Octopus"); those become `guess` goals.
-export function huntGoals(data, progress, itemSources = {}, questText = '', allNeeds = [], crafting = null, shops = null) {
+export function huntGoals(data, progress, itemSources = {}, questText = '', allNeeds = [], crafting = null, shops = null, quest = null) {
   const goals = progress.filter(p => !p.done).flatMap(p => {
+    const givenAtStart = questItemGivenAtStart(quest, p.name);
+    if (givenAtStart) return { ...p, kind: 'given', monsters: [], pending: false, givenAtStart };
+    const verifiedMonsters = verifiedQuestItemMonsters(quest, p.name);
+    if (verifiedMonsters) return { ...p, kind: 'collect', monsters: verifiedMonsters.filter(name => mobByName(data, name)), pending: false };
     const mob = mobByName(data, p.name);
     if (mob) return { ...p, kind: 'kill', monsters: [mob.name], pending: false };
     // Made, not dropped (a Garnet, an ingot, a Screw): each ingredient becomes a goal, and `craft`
@@ -56,14 +62,14 @@ export function huntGoals(data, progress, itemSources = {}, questText = '', allN
         if (mob) return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'kill', monsters: [mob.name], pending: false, craft }];
         // An ingredient a shop sells (dyes, thread…): buy it.
         const sellers = droppers?.length ? [] : sellersOf(shops, i.name);
-        if (sellers.length) return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'buy', monsters: [], pending: false, craft, buy: { sellers: sellers.map(x => ({ ...x, mapId: npcMap(data, x.npc) })).filter(x => x.mapId) } }];
+        if (sellers.length) return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'buy', monsters: [], pending: false, craft, buy: { sellers: sellers.map(x => ({ ...x, mapId: npcMap(data, x.npc, null, { mapName: x.map }) })).filter(x => x.mapId) } }];
         if (!droppers?.length) { const deeper = expand(i.name, i.count, depth + 1); if (deeper) return deeper; }
         return [{ name: i.name, have: 0, need: i.count, done: false, kind: 'collect', lookup: i.name, craft, monsters: (droppers ?? []).filter(mobName => mobByName(data, mobName)), pending: droppers === undefined }];
       });
     };
     // Sold by an NPC shop (a Salad at Raymond's): buy it, it is the sure way to get it.
     const sellers = sellersOf(shops, p.name);
-    if (sellers.length) return [{ ...p, kind: 'buy', monsters: [], pending: false, buy: { sellers: sellers.map(s => ({ ...s, mapId: npcMap(data, s.npc) })).filter(s => s.mapId) } }];
+    if (sellers.length) return [{ ...p, kind: 'buy', monsters: [], pending: false, buy: { sellers: sellers.map(s => ({ ...s, mapId: npcMap(data, s.npc, null, { mapName: s.map }) })).filter(s => s.mapId) } }];
     const crafted = expand(p.name, Math.max(1, (p.need ?? 1) - (p.have ?? 0)), 1);
     if (crafted) return crafted;
     const droppers = itemSources[p.name];
@@ -364,16 +370,18 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
 
 export function questObjective(data, { quest, helperQuest = null, catalogQuest = null, itemSources = {}, currentMapId = null, handIn = false, crafting = null, shops = null, playerLevel = null }) {
   const turnInNpc = catalogQuest?.turnIn || catalogQuest?.giver || null;
-  const turnIn = () => { const mapId = turnInNpc ? npcMap(data, turnInNpc) : null; return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId }; };
+  const turnInMapId = () => turnInNpc ? npcMap(data, turnInNpc, currentMapId) : null;
+  const turnIn = () => { const mapId = turnInMapId(); return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId }; };
   if (handIn) return turnIn();
   if (helperQuest?.progress?.length) {
     if (helperQuest.complete) {
-      const mapId = turnInNpc ? npcMap(data, turnInNpc) : null;
+      const mapId = turnInMapId();
       return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId };
     }
-    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name), crafting, shops);
+    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name), crafting, shops, catalogQuest);
+    if (goals.length && goals.every(goal => goal.kind === 'given')) return turnIn();
     const maps = rankObjectiveMaps(data, goals, currentMapId, { playerLevel });
-    const trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: craftStops(data, goals), playerLevel });
+    const trip = planHuntTrip(data, goals, currentMapId, turnInMapId(), { via: craftStops(data, goals), playerLevel });
     const best = trip?.stops[0] ?? maps[0] ?? null;
     const hereEntry = maps.find(m => m.mapId === currentMapId) ?? null;
     // Already on a map that covers something: stay and hunt rather than being sent elsewhere.
@@ -388,8 +396,9 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
   const needs = catalogQuest?.needs ?? null;
   if (Array.isArray(needs)) {
     if (!needs.length) return turnIn();
-    const goals = huntGoals(data, needs.map(n => ({ name: n.name, have: 0, need: n.count, done: false })), itemSources, catalogQuest?.text, needs.map(n => n.name), crafting, shops);
-    const maps = rankObjectiveMaps(data, goals, currentMapId, { playerLevel }), trip = planHuntTrip(data, goals, currentMapId, turnInNpc ? npcMap(data, turnInNpc) : null, { via: craftStops(data, goals), playerLevel });
+    const goals = huntGoals(data, needs.map(n => ({ name: n.name, have: 0, need: n.count, done: false })), itemSources, catalogQuest?.text, needs.map(n => n.name), crafting, shops, catalogQuest);
+    if (goals.length && goals.every(goal => goal.kind === 'given')) return turnIn();
+    const maps = rankObjectiveMaps(data, goals, currentMapId, { playerLevel }), trip = planHuntTrip(data, goals, currentMapId, turnInMapId(), { via: craftStops(data, goals), playerLevel });
     const hereEntry = maps.find(m => m.mapId === currentMapId) ?? null, target = hereEntry && (!hereEntry.risk.penalty || !maps.some(m => !m.risk.penalty)) ? hereEntry : trip?.stops[0] ?? maps[0] ?? null;
     return { quest, stage: 'hunt', goals, maps: maps.slice(0, 4), trip, mapId: target?.mapId ?? null, here: target?.mapId === currentMapId, done: [], pending: goals.some(g => g.pending), countsUnknown: true };
   }

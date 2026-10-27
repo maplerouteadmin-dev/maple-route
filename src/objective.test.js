@@ -21,6 +21,42 @@ test('unfinished counts become kill and collect goals', () => {
   assert.equal(huntGoals(data, helper.progress, {})[0].pending, true);
 });
 
+test('The Snail Legend comes from accepting The Old Snail, not from a Snail drop guess', () => {
+  const world = validateDataset({ schemaVersion: 1,
+    maps: [{ id: 'park', name: 'Henesys Park' }, { id: 'town', name: 'Henesys' }],
+    portals: [{ from: 'park', to: 'town', name: 'right' }],
+    targets: [
+      { id: 'snail', kind: 'mob', name: 'Snail', locations: [{ mapId: 'park', count: 10 }] },
+      { id: 'pia', kind: 'npc', name: 'Pia', locations: [{ mapId: 'park' }] },
+      { id: 'jay', kind: 'npc', name: 'Jay', locations: [{ mapId: 'town' }] }
+    ] });
+  const quest = { name: 'The Old Snail', giver: 'Pia', turnIn: 'Jay', needs: [{ type: 'item', name: 'The Snail Legend', count: 1 }] };
+  const sources = { 'The Snail Legend': ['Snail'] };
+  const goal = huntGoals(world, [{ name: 'The Snail Legend', have: 0, need: 1 }], sources, '', [], null, null, quest)[0];
+  assert.equal(goal.kind, 'given');
+  assert.deepEqual(goal.monsters, []);
+  assert.deepEqual(goal.givenAtStart, { npc: 'Pia', map: 'Henesys Park' });
+  const route = questObjective(world, { quest: quest.name, catalogQuest: quest, itemSources: sources, currentMapId: 'park' });
+  assert.equal(route.stage, 'turn-in');
+  assert.equal(route.mapId, 'town');
+});
+
+test('a starter item is never sent to an unrelated quest monster', () => {
+  const quest = { name: 'Getting Arcon\'s Blood', giver: 'Manji', startItems: [{ name: 'Arcon\'s Blood', count: 1 }], needs: [{ type: 'item', name: 'Arcon\'s Blood', count: 1 }] };
+  const world = { targets: [{ id: 'octopus', kind: 'mob', name: 'Octopus', locations: [{ mapId: 'm', count: 1 }] }] };
+  const goal = huntGoals(world, [{ name: 'Arcon\'s Blood', have: 0, need: 1 }], { 'Arcon\'s Blood': [] }, 'Fight Octopus', [], null, null, quest)[0];
+  assert.equal(goal.kind, 'given');
+  assert.deepEqual(goal.monsters, []);
+});
+
+test('the rainbow shell routes to Mano, not regular Snails', () => {
+  const quest = { name: 'A rainbow snail shell that makes wishes come true!?' };
+  const world = { targets: [{ id: 'snail', kind: 'mob', name: 'Snail', locations: [{ mapId: 'm', count: 10 }] }, { id: 'mano', kind: 'mob', name: 'Mano', locations: [{ mapId: 'boss', count: 1 }] }] };
+  const goal = huntGoals(world, [{ name: 'Rainbow-colored Snail Shell', have: 0, need: 1 }], { 'Rainbow-colored Snail Shell': [] }, 'Find Mano', [], null, null, quest)[0];
+  assert.deepEqual(goal.monsters, ['Mano']);
+  assert.equal(goal.guess, undefined);
+});
+
 test('the map covering every remaining goal ranks first', () => {
   const goals = huntGoals(data, helper.progress, { Leaf: ['Stump'] });
   const ranked = rankObjectiveMaps(data, goals, 'el');

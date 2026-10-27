@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSteps, currentStep } from './queststeps.js';
 
+test('The Old Snail asks for the book from Pia, never a Snail hunt', () => {
+  const quest = { name: 'The Old Snail', giver: 'Pia', turnIn: 'Jay', needs: [{ type: 'item', name: 'The Snail Legend', count: 1 }] };
+  const steps = buildSteps(quest);
+  assert.match(steps[1].title, /given when you accepted/);
+  assert.equal(steps[1].item, 'The Snail Legend');
+  assert.equal(steps[2].npc, 'Jay');
+});
+
 const pia = { name: 'Pia and the Blue Mushroom', giver: 'Pia', turnIn: 'Pia', needs: [{ type: 'mob', name: 'Blue Mushroom', count: 20 }, { type: 'item', name: 'Blue Mushroom Cap', count: 10 }] };
 
 test('steps come from the game data when the wiki has none', () => {

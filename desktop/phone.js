@@ -38,11 +38,15 @@ function followMap(previous = null) {
 }
 
 async function action(endpoint, value) {
-  const response = await fetch(endpoint, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(value ?? {})
-  });
-  if (!response.ok) statusText.textContent = `Could not send that action (${response.status})`;
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(value ?? {})
+    });
+    if (!response.ok) statusText.textContent = `Could not send that action (${response.status})`;
+  } catch {
+    statusText.textContent = 'Could not reach Maple Route. Reconnecting…';
+  }
 }
 function pathFor(element) {
   const path = [];
@@ -149,10 +153,19 @@ document.querySelector('#phone-voice').onclick = event => {
   voice = !voice; event.target.textContent = voice ? 'Phone voice on' : 'Phone voice off';
   if (!voice) window.speechSynthesis?.cancel?.();
 };
-document.querySelector('#phone-report').onclick = () => {
-  pendingReport = true;
+document.querySelector('#phone-report').onclick = async () => {
   const button = app.querySelector('#live-report');
-  if (button) forward('click', button);
+  if (!button) { statusText.textContent = 'Report form is still loading…'; return; }
+  pendingReport = true;
+  statusText.textContent = 'Opening report form…';
+  await forward('click', button);
+  // The host may already be on Settings, leaving its mirrored HTML unchanged.
+  // In that case the next snapshot will not trigger the usual pending scroll.
+  const heading = app.querySelector('#feedback-title');
+  if (heading?.getClientRects().length) {
+    heading.scrollIntoView({ block: 'start' });
+    pendingReport = false;
+  }
 };
 document.addEventListener('click', async () => {
   if (!wakeLock && navigator.wakeLock) try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
