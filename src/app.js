@@ -2521,12 +2521,16 @@ function mobsSpoken(mapId) {
   return kinds.length ? `This map has ${kinds.length > 1 ? `${kinds.slice(0, -1).join(', ')} and ${kinds.at(-1)}` : kinds[0]}.` : '';
 }
 
-// Said once when the mini map has been covered (or not found) for ~3 s; again only after it was seen.
+// Said once when the mini map has been covered (or not found) for 12 s with no map or screen change in
+// that time (portals, loading screens and a new map's mini map all look "covered" for a moment); again
+// only after it was seen.
+const COVERED_WARN_MS = 12_000;
 function coveredReminder(covered) {
   const live = state.live; if (!live) return;
   if (!covered) { live.coveredSince = null; live.coveredSaid = false; return; }
   live.coveredSince ??= Date.now();
-  if (!live.coveredSaid && Date.now() - live.coveredSince > 8000 && Date.now() - (live.mapChangedAt ?? 0) > 8000) { live.coveredSaid = true; sayPart('warnings', 'I cannot see your mini map. Move any window off it.'); }
+  const quietSince = Math.max(live.coveredSince, live.mapChangedAt ?? 0, live.screenChangedAt ?? 0);
+  if (!live.coveredSaid && Date.now() - quietSince > COVERED_WARN_MS) { live.coveredSaid = true; sayPart('warnings', 'I cannot see your mini map. Move any window off it.'); }
 }
 
 function onLiveMap(id) {
@@ -2581,8 +2585,11 @@ async function liveTick() {
     const found = locateMinimap(grabbed.source, grabbed.width, grabbed.height, live.side, live.lastFound);
     if (found) live.lastFound = { offsetX: found.offsetX, side: found.side, band: found.band };
     if (!found) { coveredReminder(Date.now() - (live.minimapSeenAt ?? 0) < 60_000); logTest('no-minimap', { frame: `${grabbed.width}x${grabbed.height}`, misses: live.misses + 1 }); if (live.misses === 2) snapshotCorner(grabbed.source, grabbed.width, grabbed.height, 'no mini map found', true); if (++live.misses >= 3) { live.mapUncertain = true; liveState('Can’t see the mini map: is a game window covering it?', true); renderLive(); } return; }
+    // The mini map coming back after a gap (loading screen, portal fade, cash shop) is a screen change too.
+    if (live.misses > 0) live.screenChangedAt = Date.now();
     live.misses = 0; live.side = found.side; live.minimapSeenAt = Date.now();
     const signature = titleSignature(found), since = Date.now() - live.lastOcr, changed = signatureChanged(signature, live.signature);
+    if (changed) live.screenChangedAt = Date.now();
     live.lastObservedSignature = signature;
     live.lastObservedAt = Date.now();
     live.manualMapLock = advanceManualMapLock(live.manualMapLock, signature,
@@ -2628,7 +2635,7 @@ async function liveTick() {
     const settling = live.mapUncertain || signatureChanged(signature, live.signature);
     live.mapUncertain = settling;
     if (live.mapId && !settling) { updatePosition(found, live.mapId); liveState(`Live · ${mapById(live.mapId)?.name ?? ''}`); }
-    else liveState('Reading the map name…');
+    else { live.coveredSince = null; liveState('Reading the map name…'); } // a new map being read is not a covered one
     const t2 = performance.now(), t3 = t2; // HUD reading runs in its own loop (hudLoop)
     renderLive();
     const t4 = performance.now();

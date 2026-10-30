@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.17
+
+- "I cannot see your mini map" no longer fires around map changes: the timer restarts whenever the map name changes, the mini map comes back after a loading screen or portal fade, or a new map is still being read, and it now waits 12 seconds.
+
 ## 1.1.0-beta.16
 
 - Voice says your EXP per hour (and time to level) every 3 minutes while Live GPS reads EXP. Switch it with **Say EXP/h** on the main Live GPS page or Settings → Voice → Say out loud.
