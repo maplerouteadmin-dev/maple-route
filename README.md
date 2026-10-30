@@ -72,7 +72,7 @@ Play in **Gaming Mode** with a small Maple Route map over the game and the full 
   **Start reading**. From then on Maple Route reads the game by itself whenever MapleStory is open.
 - The box then shows the map around you, your dot, the next exit and the route line, plus what to do on
   the map you are on, and your EXP/hour. Move it to another corner from your phone; switch on
-  **Pop-up: EXP only** for a small strip with just EXP/hour and no map.
+  **Pop-out: EXP only** for a small strip with just EXP/hour and no map.
 - Your phone has the whole app: directions, the map, **Do all quests together** with its checklist,
   **Next step ✓**, map/GPS reporting, and every setting. Bookmark the page; the link keeps working on your Wi-Fi.
 - **Stop** on your phone stops reading until you press Start again. When you close MapleStory, the box

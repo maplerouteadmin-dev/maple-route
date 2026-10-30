@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.15
+
+- PC pop-out: the "Pop-out: EXP only" switch (now on the main Live GPS page on every version, and in Settings → Live tools) shrinks the pop-out to a small EXP/hour strip with no map. The Steam Deck pop-up follows the same switch.
+
 ## 1.1.0-beta.14
 
 - Steam Deck pop-up: shows your EXP/hour, EXP % and time to the next level under the map.

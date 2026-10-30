@@ -120,7 +120,7 @@ $('#app').innerHTML = `
       <div class="action-row">
         <button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><button class="button light hidden" id="live-couch" type="button">Couch mode · phone</button>
         <span class="quick-read" role="group" aria-label="Scan your in-game quest list"><button type="button" class="button secondary" data-quick-read="progress" title="Open Q to In Progress with towns expanded, then scan">Scan In Progress</button><button type="button" class="button secondary" data-quick-read="available" title="Open Q to Available with towns expanded, then scan">Scan Available</button></span>
-        <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><label class="toggle deck-only hidden" title="The pop-up over the game shows only EXP/hour, no map"><input type="checkbox" id="live-popupexp"> Pop-up: EXP only</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
+        <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><label class="toggle" title="The pop-out (and the Steam Deck pop-up) shows only EXP/hour, no map"><input type="checkbox" id="live-popupexp"> Pop-out: EXP only</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
       </div>
       <div id="town-scroll-picker" class="town-scroll-picker hidden"><strong>Which town scrolls are in your bag?</strong><p class="fine">Only checked destinations will be used. Update this when a scroll runs out.</p><div class="town-scroll-options">${TOWN_SCROLLS.map(name => `<label class="toggle"><input type="checkbox" data-town-scroll="${esc(name)}"> ${esc(name)}</label>`).join('')}</div><div class="action-row"><button class="button" type="button" id="town-scroll-confirm">Use selected scrolls</button><button class="button light" type="button" id="town-scroll-cancel">Cancel</button></div></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
@@ -210,7 +210,7 @@ $('#app').innerHTML = `
         <label class="toggle"><input type="checkbox" id="tool-quest"> Quest Helper sync</label>
         <label class="toggle"><input type="checkbox" id="tool-prices"> Trade chat prices</label>
         <label class="toggle"><input type="checkbox" id="tool-mobcount"> Monster spawn counts in pop-out</label>
-        <label class="toggle deck-only hidden"><input type="checkbox" id="tool-popupexp"> Steam Deck pop-up: EXP/hour only (no map)</label>
+        <label class="toggle"><input type="checkbox" id="tool-popupexp"> Pop-out / Deck pop-up: EXP/hour only (no map)</label>
         <button type="button" class="button light" id="download-test-log">Download test log</button>
       </div><p class="fine">These read the status bar, the Quest Helper and the last chat lines from the same shared window. Nothing is pressed for you.</p></section>
 <section class="card" aria-labelledby="chat-watch-title"><h2 id="chat-watch-title">Watch visible game chat</h2><p class="muted">Get an alert when a new visible chat line contains your keyword. Maple Route reads only the shared screen; it cannot see hidden, scrolled-off or other-channel messages. Names and text may be misread by OCR.</p>
@@ -2037,6 +2037,14 @@ function renderLive() {
       meta.textContent = popoutMetrics({ remaining: model.remaining, tracker: tracker ? { ...tracker, last: true } : null,
         reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= 30_000 });
     }
+    state.pipDoc.body.classList.toggle('pip-exp-only', Boolean(state.tools.popupExpOnly));
+    const expBox = state.pipDoc.getElementById('pip-exp');
+    if (expBox && state.tools.popupExpOnly) {
+      const exp = popupExp({ summary: state.hud.tracker?.last ? expSummary(state.hud.tracker) : null,
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= 30_000 });
+      const html = `<b>${esc(exp.rate || 'EXP/h shows while Live GPS reads')}</b><small>${esc(exp.detail)}</small>`;
+      if (expBox.innerHTML !== html) expBox.innerHTML = html;
+    }
     const nextButton = state.pipDoc.getElementById('pip-complete');
     if (nextButton) nextButton.hidden = !currentTrip()?.trip?.order?.length;
     const destMap = mapById(state.destination), destGoal = destMap ? goalSpot() : null;
@@ -2734,8 +2742,10 @@ wireWorldMap($('#world-map'));
 // The shared window is captured in device pixels: divided by the screen scale for window sizes.
 // Without Live GPS it falls back to the map drawn in the pop-out. Browsers only allow resizing right
 // after a click, so on a map change it is tried and, if refused, the Fit button lights up instead.
-const pipFitKey = () => { const box = state.live?.minimapBox; return `${state.current}|${box ? `${Math.round(box.w / 8)}x${Math.round(box.h / 8)}` : '-'}`; };
+const pipFitKey = () => { const box = state.live?.minimapBox; return `${state.tools.popupExpOnly ? 'exp' : state.current}|${box ? `${Math.round(box.w / 8)}x${Math.round(box.h / 8)}` : '-'}`; };
 function pipTargetSize(doc, win) {
+  // EXP only: a small strip, just the title bar and the EXP lines.
+  if (state.tools.popupExpOnly) return { width: 280, height: ['.pipmm-head', '#pip-exp'].reduce((sum, sel) => sum + (doc.querySelector(`#pip-mini ${sel}`)?.offsetHeight ?? 0), 0) + 6 };
   const chrome = ['.pipmm-head', '#pip-next', '#pip-status'].reduce((sum, sel) => sum + (doc.querySelector(`#pip-mini ${sel}`)?.offsetHeight ?? 0), 0) + 4;
   const box = state.live?.minimapBox, scale = window.devicePixelRatio || 1;
   const maxW = Math.round((win.screen?.availWidth || 1600) * .8), maxH = Math.round((win.screen?.availHeight || 900) * .8);
@@ -2780,7 +2790,7 @@ async function openPip() {
     pip.document.title = 'Maple Route';
     pip.document.body.className = 'pip-body';
     pip.document.body.innerHTML = `<div id="pip-mini"><div class="pipmm-head"><div class="pipmm-title" id="pip-title"></div><span class="pipmm-btns"><button type="button" class="pipmm-btn fit" data-pip="fit" title="Size this window to cover the in-game mini map">Fit</button><button type="button" class="pipmm-btn" data-pip="world">World map</button></span></div>
-      <div class="pipmm-stage"><div id="pip-map" class="pip-map"></div><div id="pip-mobs" class="pipmm-mobs hidden"></div></div><div id="pip-next" class="pipmm-next"></div><div class="pipmm-foot"><span id="pip-meta"></span><button type="button" class="pipmm-btn complete" id="pip-complete" data-pip="complete" hidden>Complete step ✓</button></div><div class="pip-status pill" id="pip-status"></div></div>
+      <div id="pip-exp" class="pipmm-exp"></div><div class="pipmm-stage"><div id="pip-map" class="pip-map"></div><div id="pip-mobs" class="pipmm-mobs hidden"></div></div><div id="pip-next" class="pipmm-next"></div><div class="pipmm-foot"><span id="pip-meta"></span><button type="button" class="pipmm-btn complete" id="pip-complete" data-pip="complete" hidden>Complete step ✓</button></div><div class="pip-status pill" id="pip-status"></div></div>
       <div id="pip-world" class="hidden"></div><div id="pip-world-bar" class="pipmm-head hidden"><div class="pipmm-title"><b>World map</b></div><button type="button" class="pipmm-btn" data-pip="mini">Back</button></div>`;
     let confirmHandIn = null;
     pip.document.body.addEventListener('click', event => {
@@ -4213,16 +4223,15 @@ for (const [id, key] of [['tool-exp', 'exp'], ['tool-quest', 'quest'], ['tool-pr
   $(`#${id}`).checked = state.tools[key];
   $(`#${id}`).addEventListener('change', event => { state.tools[key] = event.target.checked; saveLive(); renderLive(); });
 }
-// Steam Deck pop-up: map, or only EXP/hour (two switches, Settings and the Live card, kept in step).
+// Pop-out / Steam Deck pop-up: map, or only EXP/hour (two switches, Settings and the Live card, kept in step).
 for (const id of ['tool-popupexp', 'live-popupexp']) {
   $(`#${id}`).checked = state.tools.popupExpOnly;
   $(`#${id}`).addEventListener('change', event => {
     state.tools.popupExpOnly = event.target.checked;
     for (const other of ['tool-popupexp', 'live-popupexp']) $(`#${other}`).checked = state.tools.popupExpOnly;
-    saveLive();
+    saveLive(); renderLive(); state.pipUserSized = false; fitPip();
   });
 }
-if (window.mapleDeck) for (const label of document.querySelectorAll('.deck-only')) label.classList.remove('hidden');
 $('#chat-watch-words').value = state.chatWatchWords;
 $('#chat-watch-enabled').checked = state.tools.chatWatch;
 $('#chat-watch-voice').checked = state.chatWatchVoice;

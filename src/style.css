@@ -228,3 +228,7 @@ body.gps-page .live-card .action-row .button{padding:6px 10px}
 .kpq-answers summary{cursor:pointer;font-weight:700;color:#18573f}.kpq-table-wrap{overflow-x:auto}.kpq-answers table{width:100%;border-collapse:collapse;margin:10px 0}.kpq-answers th,.kpq-answers td{padding:7px 10px;border-bottom:1px solid #dce8d9;text-align:left}.kpq-answers th:last-child,.kpq-answers td:last-child{width:90px;text-align:center;font-weight:700}.kpq-answers th{background:#f1f6ee}
 .guide-more{display:inline}.guide-more summary{display:inline;cursor:pointer;color:#18573f;text-decoration:underline}.guide-more[open]{display:inline-block}.guide-more[open] summary{margin-right:8px}
 
+
+/* Pop-out EXP only (Settings / Live card switch): no map, just EXP/hour. */
+.pipmm-exp{display:none}.pip-exp-only .pipmm-exp{display:flex;flex-direction:column;gap:1px;padding:6px 10px;background:#102c24;color:#d8eadb;flex:1}.pip-exp-only .pipmm-exp b{color:#ffe08a;font-size:1.35rem;line-height:1.15}.pip-exp-only .pipmm-exp small{font-size:.78rem}
+.pip-exp-only [data-pip="world"],.pip-exp-only .pipmm-stage,.pip-exp-only .pipmm-next,.pip-exp-only .pipmm-foot,.pip-exp-only .pip-status{display:none!important}
