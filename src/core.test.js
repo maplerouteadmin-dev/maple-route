@@ -134,3 +134,10 @@ test('a numeral glued to the last word is read as the numeral', () => {
   assert.equal(matchMap('Victoria Road\nL Forest||', maps)[0].map.id, 'l2');
   assert.equal(matchMap('Windy Hill', maps)[0].map.id, 'h');
 });
+
+test('neighboring Roman-numbered Swamp maps do not match each other on complete titles', () => {
+  const maps = ['Swamp of Despair II', 'Swamp of Despair III'].map((name, index) => ({ id: String(index), name, aliases: [] }));
+  assert.equal(matchMap('Victoria Road\nSwamp of Despair III', maps, '0')[0].map.id, '1');
+  assert.equal(matchMap('Victoria Road\nSwamp of Despair lll', maps, '0')[0].map.id, '1');
+  assert.equal(matchMap('Victoria Road\nSwamp of Despair II', maps, '1')[0].map.id, '0');
+});

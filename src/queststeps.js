@@ -17,6 +17,13 @@ const needStep = (need, number, quest) => need.type === 'mob'
 export function buildSteps(quest, wikiSteps = []) {
   if (wikiSteps?.length) {
     const steps = wikiSteps.map((step, i) => ({ ...step, number: step.number || i + 1, npc: step.npc || null, monster: step.monster || null, map: step.map || null, notes: step.notes || null }));
+    const first = steps[0];
+    const received = quest?.startItems?.map(item => item.name).filter(Boolean) ?? [];
+    if (received.length && first?.npc && quest?.giver && normalize(first.npc) === normalize(quest.giver)
+      && /\b(?:talk|speak|meet|visit)\b/i.test(first.title)
+      && !received.some(item => normalize(first.title).includes(normalize(item)))) {
+      first.title += ` (receive ${received.join(' and ')})`;
+    }
     const missing = (quest?.needs ?? []).filter(need => !steps.some(step => stepCoversNeed(step, need)));
     if (!missing.length) return steps;
     const turnIn = quest?.turnIn || quest?.giver;
@@ -29,7 +36,11 @@ export function buildSteps(quest, wikiSteps = []) {
   }
   if (!quest) return [];
   const steps = [];
-  if (quest.giver) steps.push({ title: `Talk to ${quest.giver} to start`, npc: quest.giver, accept: true });
+  if (quest.giver) {
+    const received = quest.startItems?.map(item => item.name).filter(Boolean).join(' and ');
+    steps.push({ title: `Talk to ${quest.giver} to start${received ? ` (receive ${received})` : ''}`, npc: quest.giver, accept: true });
+  }
+  if (quest.startAction) steps.push({ title: quest.startAction });
   for (const need of quest.needs ?? []) steps.push(needStep(need, null, quest));
   const turnIn = quest.turnIn || quest.giver;
   if (turnIn) steps.push({ title: `Hand it in to ${turnIn}${quest.turnInGuessed && quest.turnIn ? ' (best guess)' : ''}`, npc: turnIn, handIn: true });

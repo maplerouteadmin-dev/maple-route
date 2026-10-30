@@ -20,3 +20,11 @@ test('a job tag on the wiki item is the same item, not a second need', async () 
   assert.deepEqual(needs.map(n => [n.name, n.count]), [['Dark Marble', 30]]);
 });
 
+test('wiki rows cannot re-add an item the game gives on accepting the quest', () => {
+  const quest = { startItems: [{ name: "Arcon's Blood", count: 1 }], needs: [
+    { type: 'item', name: "Arcon's Blood", count: 1 }, { type: 'item', name: 'Leaf', count: 30 }
+  ] };
+  const needs = completeQuestNeeds(quest, [{ name: "Arcon's Blood (quest item)", quantity: 1 }, { name: 'Leaf', quantity: 30 }]);
+  assert.deepEqual(needs.map(item => item.name), ['Leaf']);
+});
+

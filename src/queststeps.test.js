@@ -18,6 +18,25 @@ test('steps come from the game data when the wiki has none', () => {
   assert.equal(steps[1].monster, 'Blue Mushroom'); assert.equal(steps[3].npc, 'Pia');
 });
 
+test('a delivery quest says the giver supplies its item instead of adding a collection step', () => {
+  const steps = buildSteps({ giver: 'Manji', turnIn: 'Sophia', startItems: [{ name: "Arcon's Blood" }], needs: [] });
+  assert.deepEqual(steps.map(step => step.title), ["Talk to Manji to start (receive Arcon's Blood)", 'Hand it in to Sophia']);
+  assert.equal(currentStep(steps, [], { accepted: true, giver: 'Manji' }).step.npc, 'Sophia');
+});
+
+test('wiki conversation steps explain an item received on acceptance', () => {
+  const quest = { giver: 'Manji', turnIn: 'Sophia', startItems: [{ name: "Arcon's Blood" }], needs: [{ type: 'item', name: 'Leaf', count: 30 }] };
+  const steps = buildSteps(quest, [{ number: 1, title: 'Talk to Manji', npc: 'Manji' }, { number: 2, title: 'Collect 30 Leaves', monster: 'Dark Stump' }, { number: 3, title: "Take Arcon's Blood to Sophia", npc: 'Sophia' }]);
+  assert.equal(steps[0].title, "Talk to Manji (receive Arcon's Blood)");
+  assert.equal(steps.some(step => /collect.*arcon/i.test(step.title)), false);
+  assert.equal(currentStep(steps, [], { accepted: true, giver: 'Manji' }).step.title, 'Collect 30 Leaves');
+});
+
+test('Roger tutorial keeps the use-item action after its supplied apple is removed from farming', () => {
+  const steps = buildSteps({ giver: 'Roger', startItems: [{ name: "Roger's Apple" }], startAction: "Use Roger's Apple from your inventory", needs: [] });
+  assert.deepEqual(steps.map(step => step.title), ["Talk to Roger to start (receive Roger's Apple)", "Use Roger's Apple from your inventory", 'Hand it in to Roger']);
+});
+
 test('the wiki steps are kept, with game objectives they omit added before hand-in', () => {
   const steps = buildSteps(pia, [{ number: 1, title: 'Talk to Pia', npc: 'Pia' }, { number: 2, title: 'Collect caps', monster: '' }]);
   assert.deepEqual(steps.map(step => step.title), ['Talk to Pia', 'Collect caps', 'Defeat 20 Blue Mushroom', 'Collect 10 Blue Mushroom Cap', 'Hand it in to Pia']);

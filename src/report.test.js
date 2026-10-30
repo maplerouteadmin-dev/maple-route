@@ -13,6 +13,12 @@ test('a problem report carries app facts only and stays a valid GitHub link', ()
   assert.ok(issueUrl({ title: 'x', body: 'y'.repeat(20000) }).length <= 7000);
 });
 
+test('a route report includes only bounded quest and stop names', () => {
+  const report = problemReport({ planMode: 'all quests together', plannedQuests: ['Asking After Shumi'], plannedStops: [{ type: 'handin', map: 'Kerning City', quests: ['Asking After Shumi'] }] });
+  assert.match(report.body, /Quest plan mode: all quests together/);
+  assert.match(report.body, /handin: Kerning City \(Asking After Shumi\)/);
+});
+
 test('a drop report names the item, monster and map', () => {
   const report = dropReport({ item: 'Diamond Ore', monster: 'Stone Golem', map: 'Excavation Site' });
   assert.equal(report.title, 'Drop: Diamond Ore from Stone Golem');

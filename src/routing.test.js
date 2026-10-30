@@ -44,6 +44,16 @@ test('town scrolls go to each town from anywhere', async () => {
   assert.deepEqual(names, ['Return Scroll - Nearest Town', 'Return Scroll to Perion']);
 });
 
+test('routes use only the town scrolls the player confirmed', async () => {
+  const { travelGraph } = await import('./routing.js');
+  const data = { maps: [{ id: 'f', name: 'Field', returnTo: 'h' }, { id: 'h', name: 'Henesys', area: 'Victoria Island' }, { id: 's', name: 'Sleepywood', area: 'Victoria Island' }], portals: [] };
+  const names = options => travelGraph(data, options).portals.filter(p => p.from === 'f').map(p => p.name);
+  assert.deepEqual(names({ nearest: false, towns: ['Henesys'] }), ['Return Scroll to Henesys']);
+  assert.deepEqual(names({ nearest: false, towns: ['Sleepywood'] }), ['Return Scroll to Sleepywood']);
+  assert.deepEqual(names({ nearest: false, towns: [] }), []);
+  assert.notEqual(travelGraph(data, { towns: ['Henesys'] }), travelGraph(data, { towns: ['Sleepywood'] }));
+});
+
 test('the VIP Cab has its own switch, apart from regular taxis', async () => {
   const { travelGraph } = await import('./routing.js');
   const data = { maps: [{ id: 'l', name: 'Lith' }, { id: 'h', name: 'Henesys' }, { id: 'a', name: 'Ant Tunnel Park' }], portals: [

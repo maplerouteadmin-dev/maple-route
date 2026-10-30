@@ -37,7 +37,13 @@ function safeAction(value) {
   return true;
 }
 
-async function startPhoneServer({ localOrigin, port = 5178, onAction, onStart, onStop, onOverlay, token: savedToken = null }) {
+function phoneControls(mode) {
+  return mode === 'couch'
+    ? '<small id="phone-status">Connecting…</small><span>Start screen sharing on the PC first.</span><button id="phone-stop" class="warn">Stop reading</button><button id="phone-report">Report map</button><button id="phone-voice">Phone voice off</button>'
+    : '<small id="phone-status">Connecting…</small><button id="phone-start">Start reading</button><button id="phone-stop" class="warn">Stop reading only</button><button id="phone-report">Report map</button><button id="phone-overlay">Pop-up off</button><select id="phone-position" aria-label="Pop-up position"><option value="bottom-left">Bottom left</option><option value="bottom-right">Bottom right</option><option value="upper-right">Upper right</option></select><button id="phone-voice">Phone voice off</button>';
+}
+
+async function startPhoneServer({ localOrigin, port = 5178, onAction, onStart, onStop, onOverlay, token: savedToken = null, mode = 'deck' }) {
   const host = lanAddress();
   if (!host) throw new Error('No private Wi-Fi/LAN address is available. Phone sharing stays off.');
   // Kept between restarts (by the caller) so a phone's saved link keeps working on this network.
@@ -50,6 +56,7 @@ async function startPhoneServer({ localOrigin, port = 5178, onAction, onStart, o
   const dist = join(__dirname, '..', 'dist');
   const assetNames = (await readdir(join(dist, 'assets'))).filter(name => /^index-[\w-]+\.css$/.test(name));
   const css = assetNames.length ? await readFile(join(dist, 'assets', assetNames[0])) : Buffer.alloc(0);
+  const controls = phoneControls(mode);
   function send(res, value) { res.write(`data: ${JSON.stringify(value)}\n\n`); }
   function publish(next) {
     snapshot = { ...snapshot, ...next };
@@ -66,7 +73,7 @@ async function startPhoneServer({ localOrigin, port = 5178, onAction, onStart, o
       res.setHeader('set-cookie', `maple-phone=${token}; HttpOnly; SameSite=Strict; Path=/`);
       res.setHeader('content-type', 'text/html; charset=utf-8');
       res.setHeader('content-security-policy', "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self'; img-src 'self' data: https:; font-src 'self' data:; frame-src 'none'");
-      res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maple Route on your phone</title><link rel="stylesheet" href="/app.css"><style>/* The Deck page is fitted to one window; on a phone it scrolls like a normal page. */html,body,body.gps-page{overflow:auto!important;height:auto!important}body.gps-page #live-plan,body.gps-page #live-step{max-height:none!important;overflow:visible!important}body.gps-page #mapview .mv-picture{max-height:55vh!important}.view.view-split{flex-direction:column}body{background:#f7f8f2}.phone-bar{position:sticky;top:0;z-index:9999;background:#123d30;color:white;padding:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.phone-bar button,.phone-bar select{font:inherit;border:0;border-radius:7px;padding:7px 11px}.phone-bar .warn{background:#f8d5c8}.phone-bar small{flex:1}.phone-disconnected{background:#ffe4db;color:#8b321d;padding:8px}@media(prefers-color-scheme:dark){body{background:#13231d;color:#f0f5ed}.card{background:#1d3028;color:#f0f5ed}}</style></head><body><div class="phone-bar"><small id="phone-status">Connecting…</small><button id="phone-start">Start reading</button><button id="phone-stop" class="warn">Stop reading only</button><button id="phone-report">Report map</button><button id="phone-overlay">Pop-up off</button><select id="phone-position" aria-label="Pop-up position"><option value="bottom-left">Bottom left</option><option value="bottom-right">Bottom right</option><option value="upper-right">Upper right</option></select><button id="phone-voice">Phone voice off</button></div><div id="phone-disconnected" class="phone-disconnected" hidden>Connection lost. Reconnecting…</div><div id="app"></div><script src="/phone.js" defer></script></body></html>`);
+      res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maple Route on your phone</title><link rel="stylesheet" href="/app.css"><style>/* The Deck page is fitted to one window; on a phone it scrolls like a normal page. */html,body,body.gps-page{overflow:auto!important;height:auto!important}body.gps-page #live-plan,body.gps-page #live-step{max-height:none!important;overflow:visible!important}body.gps-page #mapview .mv-picture{max-height:55vh!important}.view.view-split{flex-direction:column}body{background:#f7f8f2}.phone-bar{position:sticky;top:0;z-index:9999;background:#123d30;color:white;padding:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.phone-bar button,.phone-bar select{font:inherit;border:0;border-radius:7px;padding:7px 11px}.phone-bar .warn{background:#f8d5c8}.phone-bar small{flex:1}.phone-disconnected{background:#ffe4db;color:#8b321d;padding:8px}@media(prefers-color-scheme:dark){body{background:#13231d;color:#f0f5ed}.card{background:#1d3028;color:#f0f5ed}}</style></head><body><div class="phone-bar">${controls}</div><div id="phone-disconnected" class="phone-disconnected" hidden>Connection lost. Reconnecting…</div><div id="app"></div><script src="/phone.js" defer></script></body></html>`);
       return;
     }
     if (req.method === 'GET' && request.pathname === '/phone.js') {
@@ -121,4 +128,4 @@ async function startPhoneServer({ localOrigin, port = 5178, onAction, onStart, o
   return { server, url, qr, publish, clients, token };
 }
 
-module.exports = { privateIpv4, lanAddress, tokenMatches, safeAction, startPhoneServer };
+module.exports = { privateIpv4, lanAddress, tokenMatches, safeAction, phoneControls, startPhoneServer };

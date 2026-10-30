@@ -10,6 +10,7 @@
     "test": "node --check src/app.js && node --check desktop/phone.js && node --test src/*.test.js scripts/*.test.mjs desktop/*.test.mjs desktop/*.test.cjs",
     "scan:titles": "node scripts/scan-titles.mjs",
     "audit:handins": "node scripts/audit-handins.mjs",
+    "audit:routes": "node scripts/audit-quest-routes.mjs",
     "audit:quests": "node scripts/audit-quests.mjs",
     "audit:droppers": "node scripts/audit-droppers.mjs",
     "desktop": "npm run build && electron .",

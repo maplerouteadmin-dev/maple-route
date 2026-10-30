@@ -94,12 +94,27 @@ export function levelRect(bars) {
 
 const digits = value => Number(String(value).replace(/[^\d]/g, ''));
 
-export function parseStatusText(text) {
+export function parseStatusText(text, { expBarFill = null } = {}) {
   const clean = String(text).replace(/\s+/g, ' ');
   const pair = label => { const m = clean.match(new RegExp(`${label}\\s*[\\[(|]?\\s*([\\d,.]+)\\s*[/\\\\|]\\s*([\\d,.]+)`, 'i')); return m ? { now: digits(m[1]), max: digits(m[2]) } : null; };
   const hp = pair('HP'), mp = pair('MP');
   const e = clean.match(/EXP\.?\s*([\d,.]+)\s*[[(|]?\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*%/i);
-  const exp = e ? { value: digits(e[1]), percent: Number(e[2].replace(',', '.')) } : null;
+  let exp = e ? { value: digits(e[1]), percent: Number(e[2].replace(',', '.')) } : null;
+  // At small display scales OCR can read the opening percentage bracket as "1" and
+  // merge it into the EXP amount: "164541479 4%" means "16454 [47.94%]".
+  // Recover only when the independent pixel fill agrees with the reconstructed percent.
+  if (exp && Number.isFinite(expBarFill) && Math.abs(exp.percent - expBarFill * 100) > 3) {
+    const joined = `${e[1]}${e[2]}`.replace(/\D/g, '');
+    for (const decimalDigits of [4, 3]) {
+      const amountWithBracket = joined.slice(0, -decimalDigits);
+      const percentDigits = joined.slice(-decimalDigits);
+      const percent = Number(`${percentDigits.slice(0, -2)}.${percentDigits.slice(-2)}`);
+      if (amountWithBracket.length < 3 || !amountWithBracket.endsWith('1') || !Number.isFinite(percent)) continue;
+      if (Math.abs(percent - expBarFill * 100) > 2) continue;
+      const value = Number(amountWithBracket.slice(0, -1));
+      if (value > 0) { exp = { value, percent }; break; }
+    }
+  }
   return {
     hp: hp && hp.max > 0 && hp.now <= hp.max ? hp : null,
     mp: mp && mp.max > 0 && mp.now <= mp.max ? mp : null,

@@ -1,5 +1,11 @@
 # Quest catalog reconciliation audit
 
+## Quest-start item audit (2026-10-26)
+
+The current public game-file catalog has 343 quest records (310 after weekly rotations are grouped). Fifty-five quests have `start_items`; 54 of those also repeat the supplied item in `requirements_list`. Without distinguishing the two fields, the route planner treats those handovers as things to farm. Roger's Apple is one documented tutorial exception: Roger gives it on acceptance, but the export omits `start_items` for that quest.
+
+The app now removes quest-start items from farming and bag-check objectives, while retaining the start-NPC and delivery steps. The audit reports 56 supplied-item quests after that single exception, zero supplied items still in farming needs, zero wiki collect steps for those items, and zero objectives left uncovered after reconciliation. The game-file field is the rule; a quest title resembling an item is not enough to classify it as supplied.
+
 Updated on 2026-10-26 with `npm run audit:quests`. The script reads the public OSMS quest catalog and MapleClassic Wiki's quest, required-item, and structured-step tables; it changes no external data.
 
 | Check | Result |

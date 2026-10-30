@@ -18,6 +18,13 @@ export function parseWikiDrops(payload) {
   return [...new Set(payload.cargoquery.map(row => String(row?.title?.['monster id'] ?? '').trim()).filter(Boolean))];
 }
 
+// One reported Classic quest source is absent from the wiki's monster_drops API even though
+// the item and monster pages identify it. Use only when the live listing is empty, and let the
+// current map catalog locate Mano (do not hard-code a map or bundle a drop table).
+export function verifiedQuestDrop(itemName) {
+  return normalize(itemName) === 'rainbow colored snail shell' ? ['Mano'] : [];
+}
+
 export async function fetchWikiDrops(itemName) {
   if (typeof itemName !== 'string' || !itemName.trim() || itemName.length > 160) throw new Error('Choose a valid item name.');
   const params = new URLSearchParams({

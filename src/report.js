@@ -16,13 +16,16 @@ export function issueUrl({ title, body, labels = [] }, repo = REPO) {
 const reads = log => (log ?? []).filter(e => e?.kind === 'title').slice(-6)
   .map(e => `- \`${String(e.text ?? '').replace(/[\r\n`]+/g, ' ').trim().slice(0, 60) || '(nothing)'}\` → ${e.accepted ?? 'not matched'}${e.matches?.length ? ` (best: ${e.matches[0]})` : ''}`);
 
-export function problemReport({ what = '', version = '', browser = '', frame = '', current = '', destination = '', quest = '', step = '', live = false, log = [] } = {}) {
+export function problemReport({ what = '', version = '', browser = '', frame = '', current = '', destination = '', quest = '', step = '', live = false, log = [], planMode = '', plannedQuests = [], plannedStops = [] } = {}) {
   const lines = [
     '**What went wrong** (please describe):', '', what || '_…_', '',
     '**Paste the mini map picture here** (Maple Route copied it if you pressed "Copy mini map picture"; crop out any names).', '', '',
     '---', '<details><summary>Details from Maple Route</summary>', '',
     `- Version: ${version || '?'}`, `- Browser: ${browser || '?'}`, `- Live GPS: ${live ? `on, shared window ${frame || '?'}` : 'off'}`,
     `- Map: ${current || '?'}`, `- Destination: ${destination || '-'}`, ...(quest ? [`- Guided quest: ${quest}${step ? ` (step: ${step})` : ''}`] : []),
+    ...(planMode ? [`- Quest plan mode: ${planMode}`] : []),
+    ...(plannedQuests.length ? [`- Quests in route: ${plannedQuests.slice(0, 12).join(', ')}`] : []),
+    ...(plannedStops.length ? ['- Next planned stops:', ...plannedStops.slice(0, 4).map(stop => `  - ${stop.type}: ${stop.map}${stop.quests?.length ? ` (${stop.quests.join(', ')})` : ''}`)] : []),
     ...(reads(log).length ? ['- Last mini map title reads:', ...reads(log)] : []), '', '</details>'
   ];
   return { title: `Problem on ${current || 'a map'}: `, body: lines.join('\n'), labels: ['bug'] };

@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const { startDeckApi } = require('./deck-api.cjs');
 
 test('local API requires Decky header for capture commands', async () => {
-  let started = 0;
-  const server = await startDeckApi({ port: 0, status: () => ({ state: 'off' }), start: () => started++, stop() {}, overlay() {} });
+  let started = 0, pairing = null;
+  const server = await startDeckApi({ port: 0, status: () => ({ state: 'off' }), start: () => started++, stop() {}, overlay() {}, pairing: visible => { pairing = visible; } });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     assert.deepEqual(await (await fetch(base + '/status')).json(), { state: 'off' });
@@ -12,6 +12,10 @@ test('local API requires Decky header for capture commands', async () => {
     assert.equal(started, 0);
     assert.equal((await fetch(base + '/start', { method: 'POST', headers: { 'x-maple-decky': '1' } })).status, 200);
     assert.equal(started, 1);
+    assert.equal((await fetch(base + '/pairing', { method: 'POST', body: JSON.stringify({ visible: false }) })).status, 403);
+    assert.equal((await fetch(base + '/pairing', { method: 'POST', headers: { 'x-maple-decky': '1' }, body: JSON.stringify({ visible: false }) })).status, 200);
+    assert.equal(pairing, false);
+    assert.equal((await fetch(base + '/pairing', { method: 'POST', headers: { 'x-maple-decky': '1' }, body: '{}' })).status, 400);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 

@@ -1,5 +1,5 @@
 import { normalize, shortestRoute } from './core.js';
-import { completeQuestNeeds } from './questneeds.js';
+import { completeQuestNeeds, providedAtStart } from './questneeds.js';
 import { wikiQuestMatches } from './questidentity.js';
 import { verifiedQuestTurnIn } from './questorigins.js';
 
@@ -37,6 +37,9 @@ async function allRows(table, fields) {
 // guides where it has them.
 export const OSMS_QUESTS = 'https://osmsdataexplorer.com/data/current/quests.json';
 const JOB_REGIONS = new Set(['Warrior', 'Magician', 'Bowman', 'Thief']);
+// The client export omits this tutorial handover. Roger gives the apple on acceptance;
+// see https://mapleclassic.wiki/wiki/Roger%27s_Apple (one correction, not a copied dataset).
+const START_ITEM_EXCEPTIONS = new Map([['1002', { name: "Roger's Apple", count: 1 }]]);
 
 export function fromOsmsQuests(payload, wikiRows = [], wikiItemRows = []) {
   const list = Array.isArray(payload?.quests) ? payload.quests : [];
@@ -45,6 +48,9 @@ export function fromOsmsQuests(payload, wikiRows = [], wikiItemRows = []) {
   for (const chain of payload?.chains ?? []) chain.quest_ids?.forEach((id, index) => order.set(String(id), { parent: chain.parent, index, ids: chain.quest_ids.map(String) }));
   const quests = list.filter(q => q?.name).map(q => {
     const id = String(q.id), chain = order.get(id), rows = wikiRows.filter(row => wikiQuestMatches({ name: q.name, job: JOB_REGIONS.has(q.region) ? q.region : '' }, row.name)), extra = rows.find(row => q.npc_name && normalize(row.giver) === normalize(q.npc_name)) ?? rows[0];
+    const startItems = (q.start_items ?? []).filter(item => item.type === 'item' && item.name).map(item => ({ ...(item.id != null ? { id: item.id } : {}), name: item.name, count: item.count ?? 1 }));
+    const exception = START_ITEM_EXCEPTIONS.get(id);
+    if (exception && !startItems.some(item => normalize(item.name) === normalize(exception.name))) startItems.push(exception);
     const prerequisites = new Set();
     for (const match of String(q.requirements ?? '').matchAll(/Complete:\s*(.+?)\s*\(#0*(\d+)\)/g)) prerequisites.add(byId.get(String(Number(match[2])))?.name ?? byId.get(match[2])?.name ?? match[1]);
     if (chain && chain.index > 0) { const before = byId.get(chain.ids[chain.index - 1]); if (before) prerequisites.add(before.name); }
@@ -53,8 +59,9 @@ export function fromOsmsQuests(payload, wikiRows = [], wikiItemRows = []) {
       level: Number.isFinite(q.level_min) ? q.level_min : null, job: JOB_REGIONS.has(q.region) ? q.region : '', region: q.region ?? null,
       arc: q.parent || null, arcOrder: chain?.index ?? 0, prerequisites: [...prerequisites],
       type: q.region === 'Event' ? 'Event' : q.region === 'Citizenship' ? 'Citizenship' : q.region === 'Crafting' ? 'Crafting' : 'Normal',
-      repeatable: Boolean(q.is_repeatable || q.is_daily || q.is_weekly), needs: (q.requirements_list ?? []).filter(r => r.type === 'mob' || r.type === 'item').map(r => ({ type: r.type, name: r.name, count: r.count })),
-      startItems: (q.start_items ?? []).filter(item => item.type === 'item' && item.name).map(item => ({ id: item.id, name: item.name, count: item.count })),
+      repeatable: Boolean(q.is_repeatable || q.is_daily || q.is_weekly), startItems,
+      startAction: id === '1002' ? "Use Roger's Apple from your inventory" : null,
+      needs: (q.requirements_list ?? []).filter(r => (r.type === 'mob' || r.type === 'item') && !(r.type === 'item' && providedAtStart({ startItems }, r.name))).map(r => ({ type: r.type, name: r.name, count: r.count })),
       text: String(q.description ?? '').slice(0, 1200),
       doneText: String(q.description ?? '').split('\n').map(line => line.trim()).filter(Boolean).pop() ?? '',
       rewards: { exp: q.rewards_exp ?? null, mesos: q.rewards_money ?? null, items: q.rewards_items ?? '' },
@@ -126,6 +133,19 @@ export async function fetchQuestItems(questName) {
   const safeName = questName.replaceAll("'", "''");
   const result = await rows(query('quest_required_items', 'quest_id,item_id,quantity', `quest_id='${safeName}'`, 100));
   return result.map(row => ({ name: text(row['item id']), quantity: Number(row.quantity) || 1 })).filter(item => item.name);
+}
+
+// Some NPCs (notably event administrators and community boards) occur on several
+// maps. The feed's first location is not necessarily reachable from the player.
+export function bestNpcMap(data, npcName, currentMapId = null, nearMapId = null) {
+  if (!npcName) return null;
+  const ids = [...new Set((data.targets ?? []).filter(target => target.kind === 'npc' && normalize(target.name) === normalize(npcName))
+    .flatMap(target => (target.locations ?? []).map(location => location.mapId)))].filter(id => data.maps.some(map => map.id === id));
+  if (!ids.length) return null;
+  const distance = (from, to) => from && to ? shortestRoute(data, from, to)?.length ?? Infinity : 0;
+  ids.sort((a, b) => distance(currentMapId, a) - distance(currentMapId, b)
+    || distance(a, nearMapId) - distance(b, nearMapId));
+  return ids[0];
 }
 
 export function questStepMaps(data, step, currentMapId = null, limit = 6) {

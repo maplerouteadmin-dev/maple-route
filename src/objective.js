@@ -1,6 +1,8 @@
 import { editDistance, normalize, shortestRoute } from './core.js';
 import { craftRecipe, craftNeeds } from './refine.js';
 import { sellersOf } from './shops.js';
+import { providedAtStart } from './questneeds.js';
+import { bestNpcMap } from './quests.js';
 import { huntRisk } from './huntsafety.js';
 import { npcMapId } from './npclocations.js';
 import { questItemGivenAtStart, verifiedQuestItemMonsters } from './questorigins.js';
@@ -373,12 +375,14 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
   const turnInMapId = () => turnInNpc ? npcMap(data, turnInNpc, currentMapId) : null;
   const turnIn = () => { const mapId = turnInMapId(); return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId }; };
   if (handIn) return turnIn();
-  if (helperQuest?.progress?.length) {
+  const helperProgress = helperQuest?.progress?.filter(line => !providedAtStart(catalogQuest, line.name)) ?? [];
+  if (helperQuest?.progress?.length && !helperProgress.length && !catalogQuest?.needs?.length) return turnIn();
+  if (helperProgress.length) {
     if (helperQuest.complete) {
       const mapId = turnInMapId();
       return { quest, stage: 'turn-in', npc: turnInNpc, mapId, here: mapId === currentMapId };
     }
-    const goals = huntGoals(data, helperQuest.progress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name), crafting, shops, catalogQuest);
+    const goals = huntGoals(data, helperProgress, itemSources, catalogQuest?.text, (catalogQuest?.needs ?? []).map(n => n.name), crafting, shops, catalogQuest);
     if (goals.length && goals.every(goal => goal.kind === 'given')) return turnIn();
     const maps = rankObjectiveMaps(data, goals, currentMapId, { playerLevel });
     const trip = planHuntTrip(data, goals, currentMapId, turnInMapId(), { via: craftStops(data, goals), playerLevel });
@@ -388,7 +392,7 @@ export function questObjective(data, { quest, helperQuest = null, catalogQuest =
     const target = hereEntry && (!hereEntry.risk.penalty || !maps.some(m => !m.risk.penalty)) ? hereEntry : best;
     return {
       quest, stage: 'hunt', goals, maps: maps.slice(0, 4), trip, mapId: target?.mapId ?? null, here: target?.mapId === currentMapId,
-      done: helperQuest.progress.filter(p => p.done), pending: goals.some(g => g.pending)
+      done: helperProgress.filter(p => p.done), pending: goals.some(g => g.pending)
     };
   }
   // Quest Helper not on screen: the game data says what to hunt/collect (counts not readable, so 0),

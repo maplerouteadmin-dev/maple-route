@@ -2,7 +2,7 @@ export const PROFILE_KEY = 'maple-route-profile-v1';
 
 const fields = [
   'current', 'destination', 'routeStyle', 'targetId', 'crop', 'goals',
-  'level', 'job', 'focus', 'guideMode', 'selectedItemName', 'gearOwned',
+  'level', 'journeyLevelConfirmed', 'job', 'focus', 'guideMode', 'selectedItemName', 'gearOwned',
   'partyDone', 'sessions', 'selectedQuest', 'questDone', 'activeQuests', 'acceptedQuests',
   'questItemsReady', 'questsFinished', 'questsHidden', 'questsAvailable', 'planQuests', 'citizenship', 'planSkip', 'tripTicks', 'questPick', 'questNpcMaps'
 ];
@@ -25,5 +25,6 @@ export function parseProfileBackup(text) {
     throw new Error('The progress backup is missing required lists.');
   }
   if (!Number.isInteger(profile.level) || profile.level < 1 || profile.level > 200) throw new Error('The backup has an invalid character level.');
+  if (profile.journeyLevelConfirmed != null && (!Number.isInteger(profile.journeyLevelConfirmed) || profile.journeyLevelConfirmed < 1 || profile.journeyLevelConfirmed > profile.level)) throw new Error('The backup has an invalid confirmed level.');
   return Object.fromEntries(fields.filter(key => Object.hasOwn(profile, key)).map(key => [key, profile[key]]));
 }

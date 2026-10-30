@@ -1,7 +1,17 @@
 # Changelog
 
-## 1.1.0-beta.13 (pending review)
+## 1.1.0-beta.13
 
+- Hide the Chat tab for now (the community chat code stays in, switched off).
+- The optional Decky panel is not part of this release.
+- Optional Chat watch reads only visible in-game chat from the consented screen share. Up to ten local keywords/phrases trigger an in-app alert with the OCR-read username and line; desktop notifications and voice are optional. Its Ignore shop ads button skips B>/S>/WTB/WTS trade posts without changing the trade-price tool. Matches are not saved to the progress or test log, and existing lines are ignored when the watch starts.
+- Live GPS: keep the last confirmed map visible while its title is checked; cross-check neighboring map art before a scale has been learned (helpful when OCR drops a Roman numeral); let matching title and art settle harmless crop shifts. Refresh combined-quest routes immediately after quest-list changes, and return to GPS after choosing a destination or opening Report.
+- Quest routing: prefer reachable locations for NPCs present on several maps; guide Sleepywood sauna quests through the Hotel Receptionist; route the Rainbow-colored Snail Shell to Mano in Thicket Around the Beach III when the public drop listing is empty. Add a live-feed NPC route audit (`npm run audit:routes`).
+- PC pop-out: complete the current planned step (hand-ins need confirmation), show remaining portals and fresh EXP/hour, and preserve a manually resized window until Fit is pressed.
+- Quest voice: Quest Helper OCR no longer interrupts a multi-quest route with an unsolicited "ready to turn in" announcement. Hand-ins are spoken only when the guided plan reaches that stop.
+- Start a character-wide quest path to Lv 20 in the Quests tab: group live-catalog candidates by level band and show why each is available or locked. The player checks their level before the path unlocks level-gated quests; OCR only suggests a level. Confirmed completions and the in-game Available tab still take precedence. Full automatic journey planning remains in progress.
+- Quest guide: items handed over when a quest starts (including Arcon's Blood and The Snail Legend) are no longer farming targets or unchecked bag warnings. Audit covers 56 quests with start-item handovers, including Roger's Apple where the game export omits the handover field.
+- Windows desktop shortcut: opt-in Couch mode mirrors the full app to a token-protected phone page with a QR code on the same Wi-Fi. The QR code hides while a phone is connected and returns if it disconnects. The PC remains the only screen reader; a new capture still requires a click on the PC.
 - Use the game quest catalog's items-given-at-start field so nine delivery items no longer turn into guessed monster hunts; the generated checklist now says to check the item from the quest giver.
 - Route the rainbow shell quest to Mano instead of ordinary Snails, and document the remaining quest-guide source and hand-in review cases.
 - Make the phone's Report map button show when it is opening the form or cannot reach Maple Route; scrolling to the form also works when Settings is already open.

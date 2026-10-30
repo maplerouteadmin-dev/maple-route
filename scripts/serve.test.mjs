@@ -25,6 +25,11 @@ test('Electron server binds only loopback and does not expose Windows autostart'
     assert.match(url, /^http:\/\/127\.0\.0\.1:\d+$/);
     const response = await fetch(url + '/__autostart');
     assert.equal(response.status, 404);
+    assert.equal((await fetch(url + '/__couch/status')).status, 403);
+    const status = await fetch(url + '/__couch/status', { headers: { 'x-maple-couch': '1' } });
+    assert.deepEqual(await status.json(), { enabled: false, connectedPhones: 0 });
+    const forged = await fetch(url + '/__couch/enable', { method: 'POST', headers: { 'x-maple-couch': '1', origin: 'https://other.example' } });
+    assert.equal(forged.status, 403);
   } finally {
     await new Promise(resolve => server.close(resolve));
   }

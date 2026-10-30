@@ -13,6 +13,9 @@ export function addExpReading(tracker, { value, percent, level = null, barFill =
   const need = percent >= 1 ? value * 100 / percent : null;
   const last = t.last;
   if (last) {
+    // A falling amount with a rising percentage on the same level is an OCR error.
+    if (value < last.value && percent >= last.percent && !(Number.isFinite(level) && level !== last.level))
+      return { tracker, accepted: false };
     if (need && last.need && Math.abs(need - last.need) / last.need > .05 && percent >= last.percent && !(Number.isFinite(level) && level !== last.level))
       return { tracker, accepted: false }; // same level must imply the same EXP-to-level
     const leveled = (Number.isFinite(level) && Number.isFinite(last.level) && level > last.level) || (percent + 25 < last.percent && value < last.value);

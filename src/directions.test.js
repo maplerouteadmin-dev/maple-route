@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateDataset, shortestRoute } from './core.js';
-import { fromOsms } from './osms.js';
+import { fromOsms, verifiedNpcWarpEdges } from './osms.js';
 import { routeWithPreference, explainNoRoute } from './routing.js';
 import { describeStep } from './directions.js';
 
@@ -61,6 +61,14 @@ test('explains maps that are only reached through an NPC', () => {
   assert.equal(shortestRoute(osms, '000000100', '000000301'), null);
   const why = explainNoRoute(osms, '000000100', '000000301');
   assert.equal(why.nearest.name, 'Kerning City Subway');
+});
+
+test('Sleepywood hotel dialogue leads to both saunas without pretending there is a portal swirl', () => {
+  const maps = [{ id: 'hotel', name: 'Sleepywood Hotel' }, { id: 'regular', name: 'Regular Sauna' }, { id: 'vip', name: 'VIP Sauna' }];
+  const edges = verifiedNpcWarpEdges(maps, () => ({ x: 500, y: 20 }));
+  assert.deepEqual(edges.map(edge => edge.to), ['regular', 'vip']);
+  assert.equal(edges[1].npc, 'Hotel Receptionist');
+  assert.match(describeStep({ maps }, edges[1]).headline, /Talk to Hotel Receptionist to enter VIP Sauna/);
 });
 
 test('older cached data without kinds still validates as visible portals', () => {

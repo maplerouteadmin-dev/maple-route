@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { privateIpv4, lanAddress, tokenMatches, safeAction } = require('./phone-server.cjs');
+const { privateIpv4, lanAddress, tokenMatches, safeAction, phoneControls } = require('./phone-server.cjs');
+
+test('PC couch page requires local capture, while Deck controls keep Start and pop-up', () => {
+  assert.match(phoneControls('couch'), /Start screen sharing on the PC first/);
+  assert.doesNotMatch(phoneControls('couch'), /id="phone-start"|id="phone-overlay"/);
+  assert.match(phoneControls('deck'), /id="phone-start"/);
+  assert.match(phoneControls('deck'), /id="phone-overlay"/);
+});
 
 test('LAN binding accepts only private IPv4', () => {
   assert.equal(privateIpv4('192.168.1.50'), true);

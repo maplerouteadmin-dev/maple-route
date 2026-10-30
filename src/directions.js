@@ -36,8 +36,8 @@ export function describeStep(data, step, next = null, { level = null } = {}) {
       how = 'There is no swirl on screen. Stand at the spot and press ↑. It may need a quest first.';
       break;
     case 'special':
-      headline = `Use the special ${at}exit to ${toName}`;
-      how = 'Scripted exit. It may need a quest, item or NPC first.';
+      headline = step.npc ? `Talk to ${step.npc} to enter ${toName}` : `Use the special ${at}exit to ${toName}`;
+      how = step.npc ? (step.note || `Ask ${step.npc} to take you there.`) : 'Scripted exit. It may need a quest, item or NPC first.';
       break;
     default:
       headline = `Take the ${at}portal to ${toName}`;

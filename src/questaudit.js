@@ -1,4 +1,4 @@
-import { completeQuestNeeds, itemKey } from './questneeds.js';
+import { completeQuestNeeds, itemKey, providedAtStart } from './questneeds.js';
 import { buildSteps, stepCoversNeed } from './queststeps.js';
 import { wikiQuestMatches } from './questidentity.js';
 
@@ -23,10 +23,12 @@ export function auditQuestCatalog(quests, requiredRows, stepRows) {
     }
   }
   const rows = [];
+  const suppliedItemCollectSteps = [];
   for (const quest of quests) {
     const key = `${quest.id ?? quest.name}|${quest.job ?? ''}`, wikiItems = itemsByQuest.get(key) ?? [], wikiSteps = stepsByQuest.get(key) ?? [];
     const gameNeeds = quest.needs ?? [], needs = completeQuestNeeds(quest, wikiItems);
-    const missingFromGame = wikiItems.filter(item => !gameNeeds.some(need => itemKey(need.name) === itemKey(item.name))).map(item => item.name);
+    for (const step of wikiSteps) if (/\b(?:collect|gather|farm|hunt|find|obtain)\b/i.test(step.title) && quest.startItems?.some(item => stepCoversNeed(step, item))) suppliedItemCollectSteps.push(`${quest.name}: ${step.title}`);
+    const missingFromGame = wikiItems.filter(item => !providedAtStart(quest, item.name) && !gameNeeds.some(need => itemKey(need.name) === itemKey(item.name))).map(item => item.name);
     const unnamedInSteps = wikiSteps.length ? needs.filter(need => !wikiSteps.some(step => stepCoversNeed(step, need))).map(need => need.name) : [];
     const reconciled = buildSteps({ ...quest, needs }, wikiSteps);
     const uncoveredAfterReconcile = needs.filter(need => !reconciled.some(step => stepCoversNeed(step, need))).map(need => need.name);
@@ -34,6 +36,9 @@ export function auditQuestCatalog(quests, requiredRows, stepRows) {
   }
   return {
     quests: quests.length,
+    suppliedItemQuests: quests.filter(quest => quest.startItems?.length).length,
+    suppliedItemsStillInNeeds: quests.flatMap(quest => (quest.needs ?? []).filter(need => providedAtStart(quest, need.name)).map(need => `${quest.name}: ${need.name}`)),
+    suppliedItemCollectSteps,
     wikiRequiredRows: requiredRows.length,
     wikiStepRows: stepRows.length,
     unmatchedWikiItemQuests: [...new Set(requiredRows.map(row => row.quest))].filter(title => !matching(title).length),

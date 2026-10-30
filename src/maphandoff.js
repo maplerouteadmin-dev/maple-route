@@ -4,6 +4,10 @@ export function resolveMapHandoff({ current, pending = null, recognized = null, 
   // A clear match of a neighboring map's art can rescue a stale OCR read of the previous title.
   if (titleChanged && picture && picture !== current && recognized === current)
     return { mapId: picture, pending: null, settling: false, rememberTitle: true };
+  // Same title and the same map art are two independent confirmations; a shifted
+  // crop alone must not flash "checking" on a map that has not changed.
+  if (titleChanged && recognized === current && picture === current)
+    return { mapId: current, pending: null, settling: false, rememberTitle: true };
   if (recognized) {
     // A changed title is evidence of a portal transition. One stale OCR read of the old title
     // must not resume movement on the old map. Repeated OCR can make the same mistake (II as I),

@@ -7,6 +7,8 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleAutostart } from './autostart.mjs';
 import { handleRelay } from './osmscache.mjs';
+import { createCouchHost } from './couch.mjs';
+import phoneServer from '../desktop/phone-server.cjs';
 
 const root = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const port = Number(process.argv[2]) || 5174;
@@ -26,8 +28,31 @@ export function staticPath(base, urlPath) {
   return full.startsWith(base) ? full : null;
 }
 
-async function handle(req, res, { enableAutostart = process.platform === 'win32' } = {}) {
+async function handle(req, res, { enableAutostart = process.platform === 'win32', couch = null } = {}) {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname.startsWith('/__couch/')) {
+    // This control plane is available only to the app on loopback, not to the phone LAN server.
+    const host = req.headers.host ?? '';
+    const localHost = /^(?:localhost|127\.0\.0\.1):\d+$/.test(host);
+    const localPeer = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+    if (!couch || !localHost || !localPeer || req.headers['x-maple-couch'] !== '1') { res.writeHead(403); res.end(); return; }
+    if (req.method === 'POST' && req.headers.origin !== `http://${host}`) { res.writeHead(403); res.end(); return; }
+    const json = (code, value) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(value)); };
+    if (req.method === 'GET' && url.pathname === '/__couch/status') { json(200, couch.status()); return; }
+    if (req.method === 'GET' && url.pathname === '/__couch/actions') { json(200, couch.drain()); return; }
+    if (req.method === 'POST' && url.pathname === '/__couch/enable') {
+      try { json(200, await couch.enable()); } catch (error) { json(503, { error: String(error?.message ?? 'Phone sharing unavailable').slice(0, 180) }); } return;
+    }
+    if (req.method === 'POST' && url.pathname === '/__couch/disable') { json(200, await couch.disable()); return; }
+    if (req.method === 'POST' && url.pathname === '/__couch/publish') {
+      if (!req.headers['content-type']?.startsWith('application/json')) { json(415, { error: 'JSON required' }); return; }
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 2_100_000) { json(413, { error: 'Snapshot too large' }); return; } }
+      let snapshot; try { snapshot = JSON.parse(body); } catch { json(400, { error: 'Invalid snapshot' }); return; }
+      json(couch.publish(snapshot) ? 202 : 400, {}); return;
+    }
+    res.writeHead(404); res.end(); return;
+  }
   if (url.pathname === '/__autostart') {
     if (!enableAutostart) { res.writeHead(404); res.end(); return; }
     handleAutostart(req, res, Number(req.socket.localPort)); return;
@@ -45,15 +70,19 @@ async function handle(req, res, { enableAutostart = process.platform === 'win32'
 }
 
 export function startServer({ port: listenPort = port, host = '127.0.0.1', enableAutostart = process.platform === 'win32' } = {}) {
+  let couch = null;
   const server = createServer((req, res) => {
-    handle(req, res, { enableAutostart }).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); });
+    handle(req, res, { enableAutostart, couch }).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); });
   });
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(listenPort, host, () => {
       server.off('error', reject);
       const address = server.address();
-      resolve({ server, url: `http://${host}:${address.port}` });
+      const url = `http://${host}:${address.port}`;
+      couch = createCouchHost({ localOrigin: url, startPhoneServer: phoneServer.startPhoneServer });
+      server.on('close', () => couch.disable().catch(() => {}));
+      resolve({ server, url });
     });
   });
 }

@@ -29,6 +29,7 @@ export function questAvailable(quest, done, now = Date.now()) {
 // `available` = names read off the in-game Available tab: when known, the game's own list wins over
 // the wiki's level/prerequisite rules.
 export function recommendQuests(catalog, { level, job = 'Any', finished = [], active = [], hidden = [], available = [], data = null, currentMapId = null, limit = 8, below = 15, now = Date.now() } = {}) {
+  const levelConfirmed = Number.isInteger(level) && level >= 1;
   const done = new Set(finished.map(normalize)), skip = new Set([...finished, ...active, ...hidden].map(normalize)), offered = new Set(available.map(normalize));
   const giverMap = name => {
     if (!data || !name) return null;
@@ -39,7 +40,7 @@ export function recommendQuests(catalog, { level, job = 'Any', finished = [], ac
   return catalog
     // Quests read off the in-game Available tab come first; the game-data rules still list the rest
     // (a read can miss a line).
-    .filter(q => !skip.has(normalize(q.name)) && (offered.has(normalize(q.name)) || (q.level != null && q.level <= level && q.level >= level - below && (!q.maxLevel || level <= q.maxLevel) && jobFits(q.job, job) && questAvailable(q, done, now))))
+    .filter(q => !skip.has(normalize(q.name)) && (offered.has(normalize(q.name)) || (levelConfirmed && q.level != null && q.level <= level && q.level >= level - below && (!q.maxLevel || level <= q.maxLevel) && jobFits(q.job, job) && questAvailable(q, done, now))))
     .filter(q => { const key = normalize(q.name); if (seen.has(key)) return false; seen.add(key); return true; })
     .map(q => {
       const map = giverMap(q.giver);

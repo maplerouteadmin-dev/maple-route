@@ -32,3 +32,8 @@ test('a changed title does not let stale old-map OCR or picture matching resume 
     { mapId: 'old', pending: null, settling: false, rememberTitle: true });
   assert.equal(resolveMapHandoff({ current: 'old', recognized: 'old', picture: 'new', titleChanged: true }).mapId, 'new');
 });
+
+test('same OCR title and same map art settle crop jitter without a checking flash', () => {
+  assert.deepEqual(resolveMapHandoff({ current: 'hill', recognized: 'hill', picture: 'hill', titleChanged: true }),
+    { mapId: 'hill', pending: null, settling: false, rememberTitle: true });
+});

@@ -2,6 +2,14 @@ import { normalize } from './core.js';
 
 // OCR of a long mini-map title can contain one wrong letter. Fuzzy matches never score above
 // .88 in matchMap, so they need a separate, deliberately narrower path than exact titles.
+import { recallScale } from './minimap.js';
+
+// Before a layout has a learned scale, the game's 1366px logical width gives the
+// picture comparator a safe first attempt on a shared window (including 2560px TVs).
+export function pictureComparisonScale(memory, layout, frameWidth) {
+  return recallScale(memory, layout) ?? (Number.isFinite(frameWidth) && frameWidth > 0 ? frameWidth / 1366 : null);
+}
+
 export function plausibleNeighborTitle(matches, current, neighbors = []) {
   const best = matches[0];
   if (!best || !current || best.map.id === current || !neighbors.includes(best.map.id)) return false;

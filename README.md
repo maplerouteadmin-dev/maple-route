@@ -5,6 +5,8 @@ follows you from map to map: which portal to take next, where you are on the map
 spawn, and what to do next for your quests, with optional voice directions. It also has a **player
 market**: list items with their real stats, find what you need, and make offers, then trade in game.
 
+The Quests tab has an early **character quest journey preview** based on your saved level, job or planned job, and confirmed quest completions. It shows eligible quests and can pass one to Live GPS; a full automatic all-quest route is still in progress.
+
 ### ▶ Open the app: **https://maplerouteadmin-dev.github.io/maple-route/**
 
 Nothing to install. Use Chrome or Edge on a Windows PC.
@@ -26,15 +28,25 @@ Nothing to install. Use Chrome or Edge on a Windows PC.
 - [What it never does](#what-it-never-does)
 - [Setup](#setup)
 - [Steam Deck (beta)](#steam-deck-beta)
+- [PC couch mode](#pc-couch-mode)
 - [Using it](#using-it)
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
 - [Privacy](#privacy)
-- [Community chat](#community-chat)
 - [Run it on your own PC (optional)](#run-it-on-your-own-pc-optional)
 - [How this was made](#how-this-was-made)
 - [Data and credits](#data-and-credits)
 - [Feedback](#feedback)
+
+## PC couch mode
+
+The Windows desktop-shortcut app can put the full Maple Route interface on a phone while the PC reads the game screen.
+
+1. Open Maple Route on the PC and press **Start live GPS**. Choose the MapleStory window in the browser's sharing picker.
+2. Press **Couch mode · phone**, then **Share with phone**. Scan the QR code using a phone on the same Wi-Fi.
+3. Use the phone for directions, routes, quests, and settings. **Stop reading** on the phone stops the PC reader. Turn phone sharing off on the PC to end the session and invalidate its link.
+
+The PC must remain on with Maple Route open. The phone never receives game screenshots, and it cannot start a new screen share: the browser requires that action on the PC. Anyone with the current QR link can control Maple Route until sharing is turned off. This mode is available in the local desktop-shortcut app, not the hosted website.
 
 ## Steam Deck (beta)
 
@@ -64,12 +76,6 @@ Play in **Gaming Mode** with a small Maple Route map over the game and the full 
   **Next step ✓**, map/GPS reporting, and every setting. Bookmark the page; the link keeps working on your Wi-Fi.
 - **Stop** on your phone stops reading until you press Start again. When you close MapleStory, the box
   goes away and reading stops.
-
-**Optional Decky panel:** if Decky Loader is installed, the Maple Route panel can start or stop reading,
-show the next direction and quest step, tick or undo a step, confirm or choose a nearby map when GPS gets stuck,
-and move the pop-up without using your phone.
-Its source is in [`deck/decky-plugin/`](deck/decky-plugin/). It only talks to Maple Route on the Deck;
-it does not control MapleStory. The phone remains available for the full app and settings.
 
 If the GPS stays on the wrong map, tap **Report map** on the phone. Enter the name shown in MapleStory
 and what happened. The report goes to a private administrator inbox, without screenshots or chat.
@@ -208,7 +214,7 @@ looking.
 
 ## Privacy
 
-- Screenshots and OCR text stay on your device. If you opt into Community chat, the current map ID is sent to the chat service to select a Here or Map room; your image and character name are not sent.
+- Screenshots and OCR text stay on your device.
 - If you send a map report, its typed map name and description, Maple Route's believed map, app version and platform go to a private administrator inbox. No screenshot or raw OCR text is attached automatically. Reports use a separate anonymous account; see [map report privacy and review](docs/MAP_REPORTS.md).
 - Progress, settings and saved map pictures are stored in your browser (clearing site data removes them).
 - The public site counts, anonymously and without cookies ([GoatCounter](https://www.goatcounter.com/)),
@@ -216,12 +222,6 @@ looking.
   player names. Turn it off in **Settings → How screen reading works → Don't count my visits**.
 - The optional trade-chat price log is **off by default**. When on, it saves adverts (seller, item,
   price) in your browser only.
-
-## Community chat
-
-The optional Chat tab connects Maple Route players to Here (map and channel), Map (all channels on that map), Channel (all maps in that channel), and World rooms. Choose your world and channel yourself; the app cannot verify another person's location. This chat is separate from MapleStory's chat and cannot remove spam inside the game.
-
-Rooms are filters, not private spaces: any signed-in app user could query another room. Chat has its own anonymous account, separate from Market, so your Market listings are not linked to your chat pseudonym. You can mute words, hide repeated messages, block a sender on your device, and report a message; a reported message is hidden on your device. Basic posting limits and a link ban reduce spam, but this is an open beta without a dedicated moderation team. Do not share personal information. See [chat setup and safety](docs/CHAT.md).
 
 ## Run it on your own PC (optional)
 

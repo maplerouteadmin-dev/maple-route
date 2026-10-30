@@ -26,6 +26,23 @@ test('status text parses HP, MP and EXP, tolerating OCR noise', () => {
   assert.equal(parseLevel(' 15 '), 15); assert.equal(parseLevel('LV.'), null);
 });
 
+test('status text recovers a merged percentage bracket when the EXP bar confirms it', () => {
+  assert.deepEqual(parseStatusText('EXP 164541479 4%', { expBarFill: .486 }).exp, { value: 16454, percent: 47.94 });
+  assert.deepEqual(parseStatusText('EXP 165341481 8%', { expBarFill: .486 }).exp, { value: 16534, percent: 48.18 });
+  assert.deepEqual(parseStatusText('EXP 16,454 [47.94%]', { expBarFill: .486 }).exp, { value: 16454, percent: 47.94 });
+  assert.deepEqual(parseStatusText('EXP 164541479 4%', { expBarFill: .75 }).exp, { value: 164541479, percent: 4 });
+});
+
+test('EXP tracker rejects a backwards amount when the same-level percentage rises', () => {
+  const t0 = 1000;
+  const first = addExpReading(createExpTracker(t0), { value: 16840, percent: 49.07, level: 23, barFill: .495 }, t0).tracker;
+  const bad = addExpReading(first, { value: 16305, percent: 49.26, level: 23, barFill: .505 }, t0 + 5000);
+  assert.equal(bad.accepted, false);
+  const next = addExpReading(first, { value: 16939, percent: 49.36, level: 23, barFill: .505 }, t0 + 10000);
+  assert.equal(next.accepted, true);
+  assert.equal(next.tracker.gained, 99);
+});
+
 test('quest helper text: title, truncation, progress with misread slashes', () => {
   const parsed = parseQuestHelper('Quest Helper (1/5)\n\ni =\n\nChrishrama in Need of an Appre...\n\n111 Garnet Ore\n\n30 7 30 Dark Stump\n');
   assert.equal(parsed.title, 'Chrishrama in Need of an Appre'); assert.equal(parsed.truncated, true);

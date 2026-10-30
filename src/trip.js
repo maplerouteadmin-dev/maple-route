@@ -1,6 +1,6 @@
 import { shortestRoute } from './core.js';
 import { questStepMaps } from './quests.js';
-import { completeQuestNeeds } from './questneeds.js';
+import { completeQuestNeeds, providedAtStart } from './questneeds.js';
 import { buildSteps, currentStep } from './queststeps.js';
 
 export function pendingQuestTasks(data, names, catalog, details, done, currentMapId, itemsReady = {}, acceptedQuests = names) {
@@ -11,7 +11,7 @@ export function pendingQuestTasks(data, names, catalog, details, done, currentMa
     const needs = completeQuestNeeds(quest, record?.items);
     const steps = record?.status === 'loaded' ? buildSteps({ ...quest, needs }, record.steps) : [];
     const { step } = currentStep(steps, [...completed], { accepted: acceptedQuests.includes(name), giver: quest.giver, completedNeeds: itemsReady[name] ?? [] });
-    return { quest, step, status: record?.status ?? 'loading', items: record?.items ?? [], maps: step ? questStepMaps(data, step, currentMapId, 12) : [] };
+    return { quest, step, status: record?.status ?? 'loading', items: (record?.items ?? []).filter(item => !providedAtStart(quest, item.name)), maps: step ? questStepMaps(data, step, currentMapId, 12) : [] };
   });
 }
 

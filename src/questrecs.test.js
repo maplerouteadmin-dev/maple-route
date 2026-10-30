@@ -54,6 +54,11 @@ test('quests from the in-game Available list come first', () => {
   assert.ok(!recs.some(r => r.name === 'Pia and the Blue Mushroom'));
 });
 
+test('catalog suggestions wait for a confirmed level while the in-game Available list still works', () => {
+  assert.deepEqual(recommendQuests(catalog, { level: null }), []);
+  assert.deepEqual(recommendQuests(catalog, { level: null, available: ['The Rescue of Maya'] }).map(row => row.name), ['The Rescue of Maya']);
+});
+
 test('quest-line titles from the game window map to the right wiki quests', async () => {
   const { gameQuestNames, questsForGameNames } = await import('./questrecs.js');
   const line = [

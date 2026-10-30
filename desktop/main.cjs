@@ -35,6 +35,8 @@ let deckSummary = { map: null, mapId: null, mapUncertain: false, mapChoices: [],
 let overlayWindow;
 let overlayPosition = 'bottom-left';
 let overlayWanted = true;
+let pairingDismissed = false;
+let pairingForced = false;
 let overlaySnapshot = null;
 let overlayDisplaySize = null;
 const deckStream = deckMode ? new DeckStream(status => {
@@ -51,6 +53,19 @@ function setKeepReading(on) {
   try { if (on) require('node:fs').writeFileSync(readingFlag(), '1'); else require('node:fs').rmSync(readingFlag(), { force: true }); } catch { /* best effort */ }
 }
 const keepReading = () => { try { return require('node:fs').existsSync(readingFlag()); } catch { return false; } };
+const overlayPreferencesPath = () => join(app.getPath('userData'), 'overlay-preferences.json');
+function saveOverlayPreferences() {
+  try { require('node:fs').writeFileSync(overlayPreferencesPath(), JSON.stringify({ wanted: overlayWanted, position: overlayPosition, pairingDismissed, pairingForced })); } catch { /* best effort */ }
+}
+function loadOverlayPreferences() {
+  try {
+    const saved = JSON.parse(readFileSync(overlayPreferencesPath(), 'utf8'));
+    if (typeof saved.wanted === 'boolean') overlayWanted = saved.wanted;
+    if (typeof saved.pairingDismissed === 'boolean') pairingDismissed = saved.pairingDismissed;
+    if (typeof saved.pairingForced === 'boolean') pairingForced = saved.pairingForced;
+    overlayPosition = require('./deck-overlay.cjs').overlayPosition(saved.position);
+  } catch { /* first run */ }
+}
 function explicitStop() { setKeepReading(false); deckStream.stop(); mainWindow.webContents.send('deck:phone-stop'); }
 function placeOverlayBox(window, position) {
   const b = boxBounds(position);
@@ -66,9 +81,16 @@ const boxBounds = position => (pairingShown ? pairingBounds : overlayBounds)(pos
 function showPairing() {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const noPhone = !phone?.clients?.size, early = Date.now() - gameOpenedAt < 60_000;
-  const svg = phone?.qr && noPhone && (early || deckStream?.status().state !== 'reading') ? phone.qr : '';
+  const svg = require('./overlay-choice.cjs').shouldShowPairing({ hasQr: Boolean(phone?.qr), phoneConnected: !noPhone, early, reading: deckStream?.status().state === 'reading', dismissed: pairingDismissed, forced: pairingForced }) ? phone.qr : '';
   if (Boolean(svg) !== pairingShown) { pairingShown = Boolean(svg); placeOverlayBox(overlayWindow, overlayPosition); }
   overlayWindow.webContents.executeJavaScript(`window.setMaplePairing(${JSON.stringify(svg)})`).catch(() => {});
+}
+function setPairingVisible(visible) {
+  pairingDismissed = !visible;
+  pairingForced = visible;
+  saveOverlayPreferences();
+  showPairing();
+  return pairingShown;
 }
 
 function isLocalRequest(contents) {
@@ -120,9 +142,11 @@ async function setDeckOverlay(enabled, position = 'bottom-left', { remember = tr
   if (!deckMode) return false;
   if (remember) overlayWanted = Boolean(enabled);
   overlayPosition = position;
+  if (remember) saveOverlayPreferences();
   if (!enabled) {
     overlayToHelper({ hide: true }); overlayHelper?.kill(); overlayHelper = null;
     overlayWindow?.destroy(); overlayWindow = null;
+    pairingShown = false;
     phone?.publish({ overlay: false, overlayPosition });
     return false;
   }
@@ -212,6 +236,7 @@ async function speakWithFallback(text, rate, voice) {
 }
 
 async function start() {
+  if (deckMode) loadOverlayPreferences();
   if (deckMode) screen.on('display-metrics-changed', () => {
     if (overlayWindow && !overlayWindow.isDestroyed()) placeOverlayBox(overlayWindow, overlayPosition);
   });
@@ -311,10 +336,12 @@ async function start() {
     const { startDeckApi } = require('./deck-api.cjs');
     deckApi = await startDeckApi({
       status: () => ({ ...deckStream.status(), ...deckSummary, phoneUrl: phone?.url ?? null,
-        qr: phone?.qr ?? null, overlay: Boolean(overlayWindow && !overlayWindow.isDestroyed()), overlayPosition }),
+        qr: phone?.qr ?? null, overlay: Boolean(overlayWindow && !overlayWindow.isDestroyed()), overlayPosition,
+        qrVisible: pairingShown, phoneConnected: Boolean(phone?.clients?.size) }),
       start: () => mainWindow.webContents.send('deck:phone-start'),
       stop: explicitStop,
       overlay: setDeckOverlay,
+      pairing: setPairingVisible,
       nextStep: () => mainWindow.webContents.send('deck:next-step'),
       undo: () => mainWindow.webContents.send('deck:undo'),
       recoverMap: mapId => {

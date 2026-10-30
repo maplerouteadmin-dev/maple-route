@@ -66,6 +66,7 @@ export function fromOsms(mapPayload, portalPayload, monsterPayload = null, wikiP
     return null;
   };
   portals.push(...transportEdges(maps, npcAt));
+  portals.push(...verifiedNpcWarpEdges(maps, npcAt, portals));
   portals.push(...wikiPortalEdges(maps, portals, wikiPortals));
   // Named portal spots per map, so a step can say which side of the next map you arrive on.
   for (const [source, exits] of Object.entries(portalPayload)) {
@@ -99,6 +100,22 @@ export function fromOsms(mapPayload, portalPayload, monsterPayload = null, wikiP
     if (locations.length) targetMap.set(`mob:${monster.id}`, { id: `mob:${monster.id}`, kind: 'mob', name: String(monster.name), level: monster.level ?? null, hp: monster.hp ?? null, exp: monster.exp ?? null, special: Boolean(monster.special), thumb: monster.thumbnail, locations });
   }
   return validateDataset({ schemaVersion: 1, label: 'OSMS Data Explorer live map graph', source: 'https://osmsdataexplorer.com/', updated: new Date().toISOString(), maps, portals, targets: [...targetMap.values()] });
+}
+
+// These hotel rooms have exits in the client feed but no inbound portal: the Hotel
+// Receptionist sends players in by dialogue. The Classic hotel map lists both
+// connections; keep this as two sourced corrections, not a bundled map database.
+// https://meowdb.com/msclassic/maps/010005001
+export function verifiedNpcWarpEdges(maps, npcAt, existing = []) {
+  const hotel = maps.find(map => map.name === 'Sleepywood Hotel');
+  if (!hotel) return [];
+  const spot = npcAt(hotel.id, 'Hotel Receptionist');
+  return ['Regular Sauna', 'VIP Sauna'].flatMap(name => {
+    const room = maps.find(map => map.name === name);
+    if (!room || existing.some(edge => edge.from === hotel.id && edge.to === room.id)) return [];
+    return [{ from: hotel.id, to: room.id, name: `Ask for ${name}`, kind: 'special', npc: 'Hotel Receptionist',
+      note: `Talk to the Hotel Receptionist and choose ${name}; entry may cost mesos.`, cost: 3, arrive: '', x: spot?.x ?? null, y: spot?.y ?? null }];
+  });
 }
 
 // Portals the MapleClassic Wiki lists that the game-file feed lacks (Ellinia → Ellinia Station,

@@ -103,10 +103,11 @@ function applySnapshot(snapshot) {
   disconnected.hidden = true;
   const status = snapshot.status ?? {};
   statusText.textContent = status.error ? `Stopped: ${status.error}` :
-    status.state === 'reading' ? `Reading your screen · ${status.width}×${status.height}` :
+    status.state === 'reading' ? `Reading your screen${status.width && status.height ? ` · ${status.width}×${status.height}` : ''}` :
     status.state === 'starting' ? 'Starting the screen reader…' : 'Reader off';
-  document.querySelector('#phone-overlay').textContent = snapshot.overlay ? 'Pop-up on' : 'Pop-up off';
-  document.querySelector('#phone-position').value = snapshot.overlayPosition ?? 'bottom-left';
+  const overlay = document.querySelector('#phone-overlay'), position = document.querySelector('#phone-position');
+  if (overlay) overlay.textContent = snapshot.overlay ? 'Pop-up on' : 'Pop-up off';
+  if (position) position.value = snapshot.overlayPosition ?? 'bottom-left';
   document.body.className = snapshot.bodyClass ?? '';
   if (!snapshot.html || snapshot.html === currentHtml) return;
   const previousBox = app.querySelector('#mapview .mv-picture');
@@ -145,10 +146,10 @@ function connect() {
   feed.onerror = () => { disconnected.hidden = false; statusText.textContent = 'Reconnecting…'; };
 }
 connect();
-document.querySelector('#phone-start').onclick = () => action('/start');
+if (document.querySelector('#phone-start')) document.querySelector('#phone-start').onclick = () => action('/start');
 document.querySelector('#phone-stop').onclick = () => action('/stop');
-document.querySelector('#phone-overlay').onclick = () => action('/overlay', { enabled: document.querySelector('#phone-overlay').textContent !== 'Pop-up on', position: document.querySelector('#phone-position').value });
-document.querySelector('#phone-position').onchange = event => action('/overlay', { enabled: true, position: event.target.value });
+if (document.querySelector('#phone-overlay')) document.querySelector('#phone-overlay').onclick = () => action('/overlay', { enabled: document.querySelector('#phone-overlay').textContent !== 'Pop-up on', position: document.querySelector('#phone-position').value });
+if (document.querySelector('#phone-position')) document.querySelector('#phone-position').onchange = event => action('/overlay', { enabled: true, position: event.target.value });
 document.querySelector('#phone-voice').onclick = event => {
   voice = !voice; event.target.textContent = voice ? 'Phone voice on' : 'Phone voice off';
   if (!voice) window.speechSynthesis?.cancel?.();

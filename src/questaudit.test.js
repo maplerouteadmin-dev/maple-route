@@ -10,3 +10,9 @@ test('catalog audit finds missing wiki steps and confirms reconciliation covers 
   assert.equal(report.uncoveredAfterReconcileQuests, 0);
   assert.deepEqual(report.rows[0].unnamedInSteps, ['Salad']);
 });
+
+test('catalog audit flags any supplied item still mislabeled as a farming need', () => {
+  const report = auditQuestCatalog([{ name: 'Delivery', startItems: [{ name: 'Letter' }], needs: [{ name: 'Letter', type: 'item', count: 1 }] }], [], []);
+  assert.equal(report.suppliedItemQuests, 1);
+  assert.deepEqual(report.suppliedItemsStillInNeeds, ['Delivery: Letter']);
+});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { questStepMaps, questUrl, fromOsmsQuests } from './quests.js';
+import { questStepMaps, questUrl, fromOsmsQuests, bestNpcMap } from './quests.js';
 
 const data = {
   maps: [{ id: '1', name: 'Sleepywood' }, { id: '2', name: 'The Tree That Grew III' }, { id: '3', name: 'The Field South of Ellinia' }],
@@ -29,6 +29,14 @@ test('an unreachable duplicate NPC cannot take the first quest route', () => {
 
 test('quest guide offers multiple mob maps with distance breaking spawn ties', () => {
   assert.deepEqual(questStepMaps(data, { monster: 'Dark Stump' }, '1').map(x => x.map.name), ['The Tree That Grew III', 'The Field South of Ellinia']);
+});
+
+test('a repeated NPC uses a reachable location instead of the first isolated location', () => {
+  const world = { ...data, maps: [...data.maps, { id: 'event', name: 'Event Room' }], targets: [
+    { kind: 'npc', name: 'Maple Administrator', locations: [{ mapId: 'event' }, { mapId: '2' }, { mapId: '3' }] }
+  ] };
+  assert.equal(bestNpcMap(world, 'Maple Administrator', '1'), '2');
+  assert.equal(questStepMaps(world, { npc: 'Maple Administrator' }, '1', 1)[0].map.id, '2');
 });
 
 test('quest guide does not invent a route for an unmapped collection step', () => {
@@ -62,6 +70,23 @@ test('wiki required items join the correct job-specific quest even when its titl
   const quests = fromOsmsQuests(payload, [], [{ quest: 'Test of Qualification (Thief)', item: 'Dark Marble', quantity: 30 }]);
   assert.deepEqual(quests[0].needs, []);
   assert.deepEqual(quests[1].needs.map(need => [need.name, need.count]), [['Dark Marble', 30]]);
+});
+
+test('game start items are handovers, not farming objectives across the quest catalog', () => {
+  const payload = { quests: [
+    { id: '10110', name: "Getting Arcon's Blood", npc_name: 'Manji', requirements_list: [
+      { type: 'item', name: "Arcon's Blood", count: 1 }, { type: 'item', name: 'Squishy Liquid', count: 30 }
+    ], start_items: [{ type: 'item', name: "Arcon's Blood", count: 1 }] },
+    { id: '10126', name: 'The Old Snail', npc_name: 'Jay', requirements_list: [{ type: 'item', name: 'The Snail Legend', count: 1 }], start_items: [{ type: 'item', name: 'The Snail Legend', count: 1 }] },
+    { id: '1002', name: "Roger's Apple", npc_name: 'Roger', requirements_list: [{ type: 'item', name: "Roger's Apple", count: 1 }] }
+  ] };
+  const quests = fromOsmsQuests(payload, [], [{ quest: "Getting Arcon's Blood", item: "Arcon's Blood (quest item)", quantity: 1 }]);
+  assert.deepEqual(quests[0].needs.map(item => item.name), ['Squishy Liquid']);
+  assert.deepEqual(quests[0].startItems, [{ name: "Arcon's Blood", count: 1 }]);
+  assert.deepEqual(quests[1].needs, []);
+  // Roger's tutorial apple is the one documented handover missing from start_items.
+  assert.deepEqual(quests[2].needs, []);
+  assert.deepEqual(quests[2].startItems, [{ name: "Roger's Apple", count: 1 }]);
 });
 
 test('the two verified quest hand-ins survive missing community guide rows', () => {

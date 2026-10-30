@@ -55,3 +55,10 @@ test('unreachable and unmapped steps are disclosed, not given a fake route', () 
   assert.equal(plan.unroutable.length, 1);
   assert.equal(plan.unmapped.length, 1);
 });
+
+test('trip warnings do not ask players to find items supplied when the quest starts', () => {
+  const catalog = [{ name: 'Delivery', giver: 'Mai', turnIn: 'Mai', startItems: [{ name: 'Letter' }], needs: [] }];
+  const details = { Delivery: { status: 'loaded', steps: [{ number: 1, title: 'Talk to Mai', npc: 'Mai' }], items: [{ name: 'Letter', quantity: 1 }] } };
+  const [task] = pendingQuestTasks(data, ['Delivery'], catalog, details, {}, 'a');
+  assert.deepEqual(task.items, []);
+});

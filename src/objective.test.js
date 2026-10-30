@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateDataset } from './core.js';
 import { huntGoals, rankObjectiveMaps, questObjective, planHuntTrip, textMonsters } from './objective.js';
+import { verifiedQuestDrop } from './items.js';
 
 const data = validateDataset({ schemaVersion: 1, maps: [
   { id: 'el', name: 'Ellinia' }, { id: 'df', name: 'Deep Forest' }, { id: 'hg', name: 'Hunting Ground in the Deep Forest I' }, { id: 'sw', name: 'Swampy Land' }
@@ -19,6 +20,29 @@ test('unfinished counts become kill and collect goals', () => {
   const goals = huntGoals(data, helper.progress, { Leaf: ['Stump', 'Dark Stump', 'Unknown Mob'] });
   assert.deepEqual(goals.map(g => [g.name, g.kind, g.monsters]), [['Leaf', 'collect', ['Stump', 'Dark Stump']], ['Dark Stump', 'kill', ['Dark Stump']]]);
   assert.equal(huntGoals(data, helper.progress, {})[0].pending, true);
+});
+
+test('the rainbow shell routes to Mano even alongside a separate Snail hunt', () => {
+  const world = validateDataset({ schemaVersion: 1, maps: [
+    { id: 'town', name: 'Lith Harbor' }, { id: 'snail', name: 'Snail Field' }, { id: 'mano', name: 'Thicket Around the Beach III' }
+  ], portals: [
+    { from: 'town', to: 'snail', name: 'a' }, { from: 'snail', to: 'mano', name: 'b' }
+  ], targets: [
+    { id: 's', name: 'Snail', kind: 'mob', locations: [{ mapId: 'snail', count: 12 }] },
+    { id: 'm', name: 'Mano', kind: 'mob', locations: [{ mapId: 'mano', count: 1 }] }
+  ] });
+  const goals = huntGoals(world, [{ name: 'Rainbow-colored Snail Shell', have: 0, need: 1 }, { name: 'Snail', have: 0, need: 10 }],
+    { 'Rainbow-colored Snail Shell': verifiedQuestDrop('Rainbow-colored Snail Shell') });
+  assert.deepEqual(goals[0].monsters, ['Mano']);
+  assert.equal(rankObjectiveMaps(world, [goals[0]], 'town')[0].mapId, 'mano');
+});
+
+test('Quest Helper does not turn a start-given item into a hunt target', () => {
+  const catalogQuest = { giver: 'Mai', turnIn: 'Mai', startItems: [{ name: 'Letter' }], needs: [] };
+  const helperQuest = { progress: [{ name: 'Letter', have: 0, need: 1, done: false }], complete: false };
+  const objective = questObjective(data, { quest: 'Delivery', helperQuest, catalogQuest, currentMapId: 'a' });
+  assert.equal(objective.stage, 'turn-in');
+  assert.equal(objective.npc, 'Mai');
 });
 
 test('The Snail Legend comes from accepting The Old Snail, not from a Snail drop guess', () => {
@@ -163,6 +187,17 @@ test('one trip for several quests: each quest handed in on the way when its hunt
   assert.deepEqual([trip.stops.length, trip.ends, trip.missing], [2, ['rocky', 'kerning'], []]);
   // Plain map ids still work (no quest names: every hand-in waits until the end).
   assert.deepEqual(planMultiTrip(world, goals, 'start', ['rocky', 'kerning']).order.map(o => o.type), ['hunt', 'hunt', 'handin', 'handin']);
+});
+
+test('a ready hand-in on the current map comes before a distant hunt', async () => {
+  const { planMultiTrip } = await import('./objective.js');
+  const world = validateDataset({ schemaVersion: 1, maps: ['kerning', 'ellinia'].map(id => ({ id, name: id })), portals: [
+    { from: 'kerning', to: 'ellinia', name: 'east' }, { from: 'ellinia', to: 'kerning', name: 'west' }
+  ], targets: [{ id: 'snail', name: 'Snail', kind: 'mob', locations: [{ mapId: 'ellinia', count: 10 }] }] });
+  const trip = planMultiTrip(world, [{ name: 'Snail', need: 10, monsters: ['Snail'], quests: ['Other quest'] }], 'kerning', [
+    { mapId: 'kerning', quests: ['Asking After Shumi'] }, { mapId: 'ellinia', quests: ['Other quest'] }
+  ]);
+  assert.deepEqual(trip.order.map(step => `${step.type}:${step.mapId}`), ['handin:kerning', 'hunt:ellinia', 'handin:ellinia']);
 });
 
 test('a hunting map needs enough of the monster for what is left (25 kills: not a map with 2)', async () => {
