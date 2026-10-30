@@ -24,3 +24,14 @@ export function popupExp({ summary = null, reading = false, fresh = true } = {})
     : summary.minutesToLevel >= 120 ? `level in ${Math.round(summary.minutesToLevel / 60)} h` : `level in ${Math.round(summary.minutesToLevel)} min`;
   return { rate, detail: [percent, `${summary.percentPerHour.toFixed(1)}%/h`, level].filter(Boolean).join(' · ') };
 }
+
+// Said out loud every few minutes while Live GPS reads EXP (voice part 'exp'). Rounded so it is easy
+// to hear; nothing until the rate has settled (2 minutes).
+export const EXP_SPEECH_EVERY_MS = 3 * 60_000;
+export function expSpeech(summary) {
+  if (!summary || !(summary.minutes >= 2) || !Number.isFinite(summary.perHour) || summary.perHour <= 0) return '';
+  const rate = summary.perHour >= 10_000 ? Math.round(summary.perHour / 1000) * 1000 : summary.perHour >= 1000 ? Math.round(summary.perHour / 100) * 100 : Math.round(summary.perHour);
+  const level = summary.minutesToLevel == null ? '' : summary.minutesToLevel >= 120 ? ` Level up in about ${Math.round(summary.minutesToLevel / 60)} hours.`
+    : summary.minutesToLevel >= 1 ? ` Level up in about ${Math.round(summary.minutesToLevel)} minutes.` : '';
+  return `${rate.toLocaleString('en-US')} EXP an hour.${level}`;
+}

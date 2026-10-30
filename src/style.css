@@ -229,6 +229,6 @@ body.gps-page .live-card .action-row .button{padding:6px 10px}
 .guide-more{display:inline}.guide-more summary{display:inline;cursor:pointer;color:#18573f;text-decoration:underline}.guide-more[open]{display:inline-block}.guide-more[open] summary{margin-right:8px}
 
 
-/* Pop-out EXP only (Settings / Live card switch): no map, just EXP/hour. */
+/* Pop-out EXP only (Settings / Live card switch): no map or map name, just EXP/hour. */
 .pipmm-exp{display:none}.pip-exp-only .pipmm-exp{display:flex;flex-direction:column;gap:1px;padding:6px 10px;background:#102c24;color:#d8eadb;flex:1}.pip-exp-only .pipmm-exp b{color:#ffe08a;font-size:1.35rem;line-height:1.15}.pip-exp-only .pipmm-exp small{font-size:.78rem}
-.pip-exp-only [data-pip="world"],.pip-exp-only .pipmm-stage,.pip-exp-only .pipmm-next,.pip-exp-only .pipmm-foot,.pip-exp-only .pip-status{display:none!important}
+.pip-exp-only [data-pip="world"],.pip-exp-only .pipmm-title,.pip-exp-only .pipmm-stage,.pip-exp-only .pipmm-next,.pip-exp-only .pipmm-foot,.pip-exp-only .pip-status{display:none!important}

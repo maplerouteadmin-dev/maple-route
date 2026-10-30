@@ -40,7 +40,7 @@ import { createChatStore } from './chatstore.js';
 import { mountChat } from './chatui.js';
 import { spoken, taskWords } from './speech.js';
 import { usesLocalVoice } from './voiceplatform.js';
-import { popoutMetrics, popupExp } from './popout.js';
+import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS } from './popout.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
@@ -120,7 +120,7 @@ $('#app').innerHTML = `
       <div class="action-row">
         <button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><button class="button light hidden" id="live-couch" type="button">Couch mode · phone</button>
         <span class="quick-read" role="group" aria-label="Scan your in-game quest list"><button type="button" class="button secondary" data-quick-read="progress" title="Open Q to In Progress with towns expanded, then scan">Scan In Progress</button><button type="button" class="button secondary" data-quick-read="available" title="Open Q to Available with towns expanded, then scan">Scan Available</button></span>
-        <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><label class="toggle" title="The pop-out (and the Steam Deck pop-up) shows only EXP/hour, no map"><input type="checkbox" id="live-popupexp"> Pop-out: EXP only</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
+        <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><label class="toggle" title="The pop-out (and the Steam Deck pop-up) shows only EXP/hour, no map"><input type="checkbox" id="live-popupexp"> Pop-out: EXP only</label><label class="toggle" title="Say your EXP per hour out loud every 3 minutes"><input type="checkbox" id="live-sayexp"> Say EXP/h</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
       </div>
       <div id="town-scroll-picker" class="town-scroll-picker hidden"><strong>Which town scrolls are in your bag?</strong><p class="fine">Only checked destinations will be used. Update this when a scroll runs out.</p><div class="town-scroll-options">${TOWN_SCROLLS.map(name => `<label class="toggle"><input type="checkbox" data-town-scroll="${esc(name)}"> ${esc(name)}</label>`).join('')}</div><div class="action-row"><button class="button" type="button" id="town-scroll-confirm">Use selected scrolls</button><button class="button light" type="button" id="town-scroll-cancel">Cancel</button></div></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
@@ -515,7 +515,7 @@ function chosenVoice() {
 }
 // Which kinds of spoken lines are on (Settings → Voice). Directions = which portal and where it
 // leads on each new map; monsters = what spawns there and how many; quests = quest progress lines.
-const VOICE_PARTS = { directions: 'Which portal to take and where it leads', monstersDest: 'Monsters at your destination, with counts', monstersAll: 'Monsters on every map you enter (not just the destination)', questMobs: 'Quest mobs on maps you pass through (no counts)', arrival: 'Arriving at your destination', tasks: 'What to do there (talk to an NPC, buy an item, hunt, hand in)', npc: 'Reaching the NPC you are going to', quests: 'Quest steps and progress', warnings: 'Warnings (mini map hidden, share stopped)' };
+const VOICE_PARTS = { directions: 'Which portal to take and where it leads', monstersDest: 'Monsters at your destination, with counts', monstersAll: 'Monsters on every map you enter (not just the destination)', questMobs: 'Quest mobs on maps you pass through (no counts)', arrival: 'Arriving at your destination', tasks: 'What to do there (talk to an NPC, buy an item, hunt, hand in)', npc: 'Reaching the NPC you are going to', quests: 'Quest steps and progress', exp: 'EXP per hour, every 3 minutes', warnings: 'Warnings (mini map hidden, share stopped)' };
 const VOICE_DEFAULT_OFF = new Set(['monstersAll', 'questMobs']);
 function voiceOn(part) { return state.voice && (state.voiceParts?.[part] ?? !VOICE_DEFAULT_OFF.has(part)) === true; }
 function sayPart(part, words) { if (words && voiceOn(part)) say(words); }
@@ -3442,7 +3442,7 @@ if (GOATCOUNTER_CODE && !isLocalHost()) {
 }
 renderVoicePicker();
 $('#voice-parts').innerHTML = Object.entries(VOICE_PARTS).map(([key, label]) => `<label class="toggle"><input type="checkbox" data-voice-part="${key}"${(state.voiceParts?.[key] ?? !VOICE_DEFAULT_OFF.has(key)) ? ' checked' : ''}> ${esc(label)}</label>`).join('');
-$('#voice-parts').addEventListener('change', event => { const key = event.target.dataset.voicePart; if (!key) return; state.voiceParts = { ...(state.voiceParts ?? {}), [key]: event.target.checked }; saveLive(); });
+$('#voice-parts').addEventListener('change', event => { const key = event.target.dataset.voicePart; if (!key) return; state.voiceParts = { ...(state.voiceParts ?? {}), [key]: event.target.checked }; if (key === 'exp') $('#live-sayexp').checked = event.target.checked; saveLive(); });
 if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', renderVoicePicker);
 $('#voice-name').addEventListener('change', async event => {
   state.voiceName = event.target.value || null; saveLive();
@@ -3615,6 +3615,13 @@ async function hudTick(live, grabbed, ocrUsed) {
       live.tracker ??= createExpTracker(now);
       live.tracker = addExpReading(live.tracker, { ...parsed.exp, barFill: bars.exp.fill, level: state.hud.level, mapId: state.current }, now).tracker;
       state.hud.tracker = live.tracker; renderLiveExp();
+      // EXP/hour out loud every 3 minutes (first one 3 minutes after counting starts or is reset).
+      const spokenFor = live.tracker.startedAt;
+      if (state.hud.expSpoken?.for !== spokenFor) state.hud.expSpoken = { for: spokenFor, at: now };
+      if (now - state.hud.expSpoken.at >= EXP_SPEECH_EVERY_MS) {
+        const words = expSpeech(expSummary(live.tracker, now));
+        if (words) { state.hud.expSpoken.at = now; sayPart('exp', words); }
+      }
     }
     return;
   }
@@ -4232,6 +4239,13 @@ for (const id of ['tool-popupexp', 'live-popupexp']) {
     saveLive(); renderLive(); state.pipUserSized = false; fitPip();
   });
 }
+// Say EXP/hour every 3 minutes: the same switch as Settings → Voice → Say out loud → EXP per hour.
+$('#live-sayexp').checked = (state.voiceParts?.exp ?? true) === true;
+$('#live-sayexp').addEventListener('change', event => {
+  state.voiceParts = { ...(state.voiceParts ?? {}), exp: event.target.checked };
+  const box = document.querySelector('[data-voice-part="exp"]'); if (box) box.checked = event.target.checked;
+  saveLive();
+});
 $('#chat-watch-words').value = state.chatWatchWords;
 $('#chat-watch-enabled').checked = state.tools.chatWatch;
 $('#chat-watch-voice').checked = state.chatWatchVoice;

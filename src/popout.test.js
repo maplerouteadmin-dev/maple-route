@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { popoutMetrics, popupExp } from './popout.js';
+import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS } from './popout.js';
 
 test('pop-out displays the same route count and measured EXP as Live GPS', () => {
   assert.equal(popoutMetrics({ remaining: 3, reading: true, tracker: { last: {}, minutes: 4, perHour: 1234 } }), '3 portals to destination · 1,234 EXP/h');
@@ -23,4 +23,13 @@ test('Deck pop-up EXP shows the rate, percent and time to level, never a stale r
   assert.equal(popupExp({ summary, reading: true, fresh: false }).rate, 'EXP/h unavailable');
   assert.deepEqual(popupExp({ summary, reading: false }), { rate: '', detail: '' });
   assert.equal(popupExp({ reading: true }).rate, 'Waiting for EXP…');
+});
+
+test('EXP/hour is spoken rounded, only once the rate has settled', () => {
+  assert.equal(expSpeech({ minutes: 5, perHour: 12345, minutesToLevel: 40 }), '12,000 EXP an hour. Level up in about 40 minutes.');
+  assert.equal(expSpeech({ minutes: 5, perHour: 4567, minutesToLevel: 300 }), '4,600 EXP an hour. Level up in about 5 hours.');
+  assert.equal(expSpeech({ minutes: 5, perHour: 456, minutesToLevel: null }), '456 EXP an hour.');
+  assert.equal(expSpeech({ minutes: 1, perHour: 12345 }), '');
+  assert.equal(expSpeech({ minutes: 5, perHour: 0 }), '');
+  assert.ok(EXP_SPEECH_EVERY_MS >= 120_000 && EXP_SPEECH_EVERY_MS <= 180_000);
 });
