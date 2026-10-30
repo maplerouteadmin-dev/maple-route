@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.18
+
+- EXP/h shows "unavailable" much less often: if the reading it was counting from was a misread, three agreeing readings in a row now start the count again from them (before, every correct reading after a misread was rejected). The rate stays on screen for 2 minutes without a new reading (was 30 seconds), and low EXP percentages allow for the two-decimal rounding.
+
 ## 1.1.0-beta.17
 
 - "I cannot see your mini map" no longer fires around map changes: the timer restarts whenever the map name changes, the mini map comes back after a loading screen or portal fade, or a new map is still being read, and it now waits 12 seconds.

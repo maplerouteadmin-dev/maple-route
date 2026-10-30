@@ -232,3 +232,30 @@ test('weekly quests: the Quest Helper line picks the week version, never the fir
   const [q] = fixCounts([{ name: 'Donating to Kerning City', progress: [{ name: 'Firewod', have: 3, need: 30 }] }], () => versions);
   assert.deepEqual([q.progress[0].name, q.progress[0].have, q.progress[0].need], ['Firewood', 3, 30]);
 });
+
+test('EXP tracker recovers when the reading it started from was the misread one', () => {
+  const t0 = 0;
+  // A misread baseline (value 9840 instead of 1840): every true reading after it looks backwards.
+  let t = addExpReading(createExpTracker(t0), { value: 9840, percent: 10, level: 20, barFill: .1 }, t0).tracker;
+  for (const [i, value] of [[1, 1900], [2, 1950]]) { const r = addExpReading(t, { value, percent: 10 + i * .3, barFill: .1 }, t0 + i * 5000); assert.equal(r.accepted, false); t = r.tracker; }
+  const back = addExpReading(t, { value: 2000, percent: 10.9, barFill: .11 }, t0 + 15000);
+  assert.equal(back.accepted, true); assert.equal(back.rebased, true);
+  assert.equal(back.tracker.last.value, 2000); assert.equal(back.tracker.gained, 0);
+  const next = addExpReading(back.tracker, { value: 2100, percent: 11.4, barFill: .114 }, t0 + 20000);
+  assert.equal(next.accepted, true); assert.equal(next.tracker.gained, 100);
+});
+
+test('EXP tracker: one stray misread is still rejected and does not move the baseline', () => {
+  let t = addExpReading(createExpTracker(0), { value: 16840, percent: 49.07, level: 23, barFill: .495 }, 0).tracker;
+  const bad = addExpReading(t, { value: 16305, percent: 49.26, barFill: .5 }, 5000);
+  assert.equal(bad.accepted, false);
+  const good = addExpReading(bad.tracker, { value: 16939, percent: 49.36, barFill: .5 }, 10000);
+  assert.equal(good.accepted, true); assert.equal(good.tracker.gained, 99); assert.deepEqual(good.tracker.rejected, []);
+});
+
+test('EXP tracker allows rounding of the shown percentage at low EXP', () => {
+  // 0.62% shown for 155 of 25,000 EXP: worked-out EXP-to-level differs ~1% between readings.
+  let t = addExpReading(createExpTracker(0), { value: 155, percent: .62, level: 30, barFill: .006 }, 0).tracker;
+  const r = addExpReading(t, { value: 183, percent: .73, barFill: .007 }, 5000);
+  assert.equal(r.accepted, true);
+});

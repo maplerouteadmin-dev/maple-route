@@ -57,7 +57,7 @@ import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel,
 import { parseTradeChat, addTrades, summarizePrices, itemNamer, formatMesos } from './prices.js';
 import { createChatWatch, watchKeywords } from './chatwatch.js';
 import { findCatalogItem, sellVerdict, listingOpportunities, MEOWDB_PRICE_CHECK } from './sellcheck.js';
-import { createExpTracker, addExpReading, expSummary, sessionFromTracker } from './exptracker.js';
+import { createExpTracker, addExpReading, expSummary, sessionFromTracker, EXP_FRESH_MS } from './exptracker.js';
 import { inkTitle } from './minimap.js';
 import { OSMS_FILES } from './osms.js';
 import { PARTY_QUEST, partyLevelMessage } from './party.js';
@@ -1940,7 +1940,7 @@ function expChipHtml() {
   const tracker = state.hud.tracker;
   if (!state.live) return '';
   if (!tracker?.last) return '<div class="exp-chip">Waiting for EXP from the status bar…</div>';
-  if (state.live.paused || Date.now() - tracker.last.at > 30_000) return '<div class="exp-chip">EXP/h unavailable · waiting for a fresh status-bar reading</div>';
+  if (state.live.paused || Date.now() - tracker.last.at > EXP_FRESH_MS) return '<div class="exp-chip">EXP/h unavailable · waiting for a fresh status-bar reading</div>';
   const s = expSummary(tracker), measuring = s.minutes < .5 || tracker.samples < 3;
   const earlyEstimate = s.minutes < 2 ? '~' : '';
   const left = s.minutes < 2 || s.minutesToLevel == null ? '' : s.minutesToLevel >= 120 ? ` · level in ${Math.round(s.minutesToLevel / 60)} h` : ` · level in ${Math.round(s.minutesToLevel)} min`;
@@ -2035,13 +2035,13 @@ function renderLive() {
     if (meta) {
       const tracker = state.hud.tracker?.last ? expSummary(state.hud.tracker) : null;
       meta.textContent = popoutMetrics({ remaining: model.remaining, tracker: tracker ? { ...tracker, last: true } : null,
-        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= 30_000 });
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS });
     }
     state.pipDoc.body.classList.toggle('pip-exp-only', Boolean(state.tools.popupExpOnly));
     const expBox = state.pipDoc.getElementById('pip-exp');
     if (expBox && state.tools.popupExpOnly) {
       const exp = popupExp({ summary: state.hud.tracker?.last ? expSummary(state.hud.tracker) : null,
-        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= 30_000 });
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS });
       const html = `<b>${esc(exp.rate || 'EXP/h shows while Live GPS reads')}</b><small>${esc(exp.detail)}</small>`;
       if (expBox.innerHTML !== html) expBox.innerHTML = html;
     }
@@ -4717,7 +4717,7 @@ if (window.mapleDeck) {
       note: (hereTask() ? `Here: ${hereTask()}` : $('#live-step .live-where')?.textContent?.trim() ?? '').slice(0, 120),
       mode: state.tools.popupExpOnly ? 'exp' : 'map',
       exp: state.tools.exp ? popupExp({ summary: state.hud.tracker?.last ? expSummary(state.hud.tracker) : null,
-        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= 30_000 }) : null
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS }) : null
     };
     if (JSON.stringify(overlay) !== JSON.stringify(window.__lastDeckOverlay)) {
       window.__lastDeckOverlay = overlay;

@@ -2,6 +2,12 @@
 // must agree with the percent, which rejects OCR misreads. Level-ups are detected when the percent
 // wraps around, and the EXP needed for the old level is estimated from value / percent.
 
+// A reading older than this is not shown as a current rate (the status bar is read every ~5 s; a
+// window over it or a few misreads in a row should not blank the number at once).
+export const EXP_FRESH_MS = 120_000;
+// Readings rejected in a row that agree with each other: the old baseline was the misread one.
+const REBASE_AFTER = 3;
+
 export function createExpTracker(now = Date.now()) {
   return { startedAt: now, gained: 0, gainedPercent: 0, lost: 0, levelUps: 0, startLevel: null, level: null, last: null, samples: 0, mapMinutes: {} };
 }
@@ -13,11 +19,22 @@ export function addExpReading(tracker, { value, percent, level = null, barFill =
   const need = percent >= 1 ? value * 100 / percent : null;
   const last = t.last;
   if (last) {
-    // A falling amount with a rising percentage on the same level is an OCR error.
-    if (value < last.value && percent >= last.percent && !(Number.isFinite(level) && level !== last.level))
-      return { tracker, accepted: false };
-    if (need && last.need && Math.abs(need - last.need) / last.need > .05 && percent >= last.percent && !(Number.isFinite(level) && level !== last.level))
-      return { tracker, accepted: false }; // same level must imply the same EXP-to-level
+    const sameLevel = !(Number.isFinite(level) && level !== last.level);
+    // The percentage is shown with two decimals, so EXP-to-level worked out from it is rougher at low %.
+    const needSlack = .05 + .01 / Math.max(.5, Math.min(percent, last.percent));
+    // A falling amount with a rising percentage on the same level is an OCR error, and the same level
+    // must imply the same EXP-to-level.
+    const misread = sameLevel && percent >= last.percent && (value < last.value || (need && last.need && Math.abs(need - last.need) / last.need > needSlack));
+    if (misread) {
+      // Several rejections in a row that agree with each other mean the baseline was the misread:
+      // start again from them (nothing counted for the gap) instead of rejecting every reading after it.
+      const reading = { value, percent, need, level, at: now };
+      const run = [...(tracker.rejected ?? []), reading].slice(-REBASE_AFTER);
+      const agree = run.length === REBASE_AFTER && run.every((r, i) => i === 0 || (r.value >= run[i - 1].value && r.percent >= run[i - 1].percent &&
+        (!r.need || !run[i - 1].need || Math.abs(r.need - run[i - 1].need) / run[i - 1].need <= needSlack)));
+      if (!agree) return { tracker: { ...tracker, rejected: run }, accepted: false };
+      return { tracker: { ...t, rejected: [], last: { value, percent, level: Number.isFinite(level) ? level : last.level, need: need ?? last.need, at: now }, samples: t.samples + 1 }, accepted: true, rebased: true };
+    }
     const leveled = (Number.isFinite(level) && Number.isFinite(last.level) && level > last.level) || (percent + 25 < last.percent && value < last.value);
     if (leveled) {
       t.gained += Math.max(0, (last.need ?? last.value) - last.value) + value;
@@ -32,6 +49,7 @@ export function addExpReading(tracker, { value, percent, level = null, barFill =
   if (t.startLevel == null && resolvedLevel != null) t.startLevel = resolvedLevel;
   t.level = resolvedLevel;
   t.last = { value, percent, level: resolvedLevel, need: need ?? last?.need ?? null, at: now };
+  t.rejected = [];
   t.samples += 1;
   return { tracker: t, accepted: true };
 }
