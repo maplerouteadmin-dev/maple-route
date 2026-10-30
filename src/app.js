@@ -40,7 +40,7 @@ import { createChatStore } from './chatstore.js';
 import { mountChat } from './chatui.js';
 import { spoken, taskWords } from './speech.js';
 import { usesLocalVoice } from './voiceplatform.js';
-import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS, EXP_SETTLE_MS, EXP_SETTLE_MIN, clock } from './popout.js';
+import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS, EXP_SETTLE_MS } from './popout.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
@@ -1946,7 +1946,7 @@ function expChipHtml() {
   const tracker = state.hud.tracker;
   if (!state.live) return '';
   const wait = expWaitMs();
-  if (wait > 0) return `<div class="exp-chip" title="EXP/h measures training on one map, so it starts after ${EXP_SETTLE_MIN} minutes on the same map">EXP/h starts in ${clock(wait)}${state.tools.expPerMap ? ' · stay on this map' : ''}</div>`;
+  if (wait > 0) return ''; // not on one map for 3 minutes yet: no EXP/h shown
   if (!tracker?.last) return '<div class="exp-chip">Waiting for EXP from the status bar…</div>';
   if (state.live.paused || Date.now() - tracker.last.at > EXP_FRESH_MS) return '<div class="exp-chip">EXP/h unavailable · waiting for a fresh status-bar reading</div>';
   const s = expSummary(tracker), measuring = s.minutes < .5 || tracker.samples < 3;
@@ -2050,7 +2050,7 @@ function renderLive() {
     if (expBox && state.tools.popupExpOnly) {
       const exp = popupExp({ summary: state.hud.tracker?.last ? expSummary(state.hud.tracker) : null,
         reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS, waitMs: expWaitMs() });
-      const html = `<b>${esc(exp.rate || 'EXP/h shows while Live GPS reads')}</b><small>${esc(exp.detail)}</small>`;
+      const html = `<b>${esc(exp.rate || 'EXP/h —')}</b><small>${esc(exp.detail)}</small>`;
       if (expBox.innerHTML !== html) expBox.innerHTML = html;
     }
     const nextButton = state.pipDoc.getElementById('pip-complete');

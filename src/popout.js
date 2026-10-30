@@ -10,7 +10,7 @@ export function popoutMetrics({ remaining = null, tracker = null, reading = fals
   const portals = Number.isInteger(remaining) && remaining > 0
     ? `${remaining} portal${remaining === 1 ? '' : 's'} to destination` : '';
   const exp = reading
-    ? waitMs > 0 ? `EXP/h in ${clock(waitMs)}` : !tracker ? 'Waiting for EXP…' : !fresh ? 'EXP/h unavailable' : tracker.minutes >= 2 && Number.isFinite(tracker.perHour)
+    ? waitMs > 0 ? '' : !tracker ? 'Waiting for EXP…' : !fresh ? 'EXP/h unavailable' : tracker.minutes >= 2 && Number.isFinite(tracker.perHour)
       ? `${Math.round(tracker.perHour).toLocaleString()} EXP/h`
       : 'Measuring EXP/h…'
     : '';
@@ -21,7 +21,7 @@ export function popoutMetrics({ remaining = null, tracker = null, reading = fals
 // a stale rate is never shown over the game.
 export function popupExp({ summary = null, reading = false, fresh = true, waitMs = 0 } = {}) {
   if (!reading) return { rate: '', detail: '' };
-  if (waitMs > 0) return { rate: `EXP/h in ${clock(waitMs)}`, detail: `Counting starts after ${EXP_SETTLE_MIN} min on one map` };
+  if (waitMs > 0) return { rate: '', detail: '' }; // not on one map long enough: no EXP/h at all
   if (!summary) return { rate: 'Waiting for EXP…', detail: 'Reading the status bar' };
   const percent = Number.isFinite(summary.percent) ? `EXP ${summary.percent.toFixed(2)}%` : '';
   if (!fresh) return { rate: 'EXP/h unavailable', detail: [percent, 'waiting for the status bar'].filter(Boolean).join(' · ') };

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.21
+
+- No EXP/h at all until you have been on one map for 3 minutes (no countdown); the EXP-only pop-out shows "EXP/h —" meanwhile.
+
 ## 1.1.0-beta.20
 
 - EXP/h measures training on one map: it starts counting after 3 minutes on the same map (a countdown shows until then) and starts over when you change maps. Settings → Live tools → "Reset EXP/h when I change maps" turns the restart off.

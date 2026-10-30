@@ -38,7 +38,7 @@ window.setMapleOverlay=detail=>{
   if(next.textContent!==detail.next)next.textContent=detail.next;
   if(map.dataset.html!==detail.map){map.dataset.html=detail.map;map.innerHTML=detail.map;requestAnimationFrame(()=>place(map));}
   if(note.textContent!==detail.note)note.textContent=detail.note;
-  const expOnly=detail.mode==='exp',exp=document.querySelector('#exp'),rate=detail.exp?.rate||(expOnly?'EXP/h shows while reading':''),more=detail.exp?.detail||'';
+  const expOnly=detail.mode==='exp',exp=document.querySelector('#exp'),rate=detail.exp?.rate||(expOnly?'EXP/h —':''),more=detail.exp?.detail||'';
   const expHtml=rate?'<b></b><span></span>':'';
   if(exp.dataset.shape!==expHtml){exp.dataset.shape=expHtml;exp.innerHTML=expHtml;}
   if(rate){exp.firstChild.textContent=rate;exp.lastChild.textContent=more;}

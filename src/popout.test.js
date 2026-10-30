@@ -36,7 +36,7 @@ test('EXP/hour is spoken rounded, only once the rate has settled', () => {
 
 test('EXP/h waits until you have been on one map for 3 minutes', () => {
   assert.equal(clock(125_000), '2:05'); assert.equal(clock(400), '0:01'); assert.equal(clock(0), '0:00');
-  assert.deepEqual(popupExp({ reading: true, waitMs: 90_000 }), { rate: 'EXP/h in 1:30', detail: 'Counting starts after 3 min on one map' });
-  assert.equal(popoutMetrics({ remaining: 2, reading: true, waitMs: 61_000 }), '2 portals to destination · EXP/h in 1:01');
+  assert.deepEqual(popupExp({ reading: true, waitMs: 90_000 }), { rate: '', detail: '' });
+  assert.equal(popoutMetrics({ remaining: 2, reading: true, waitMs: 61_000 }), '2 portals to destination');
   assert.deepEqual(popupExp({ reading: false, waitMs: 90_000 }), { rate: '', detail: '' });
 });
