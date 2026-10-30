@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.20
+
+- EXP/h measures training on one map: it starts counting after 3 minutes on the same map (a countdown shows until then) and starts over when you change maps. Settings → Live tools → "Reset EXP/h when I change maps" turns the restart off.
+
 ## 1.1.0-beta.19
 
 - EXP/h no longer jumps to huge numbers: a misread level number no longer counts as a level-up (only the EXP % wrapping round does), and a bigger EXP amount read with a smaller % is treated as a misread instead of a gain.

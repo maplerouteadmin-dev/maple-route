@@ -1,10 +1,16 @@
+// EXP/h only counts once you have stayed on one map this long (moving between maps is not training).
+export const EXP_SETTLE_MIN = 3;
+export const EXP_SETTLE_MS = EXP_SETTLE_MIN * 60_000;
+// 2:05 style countdown.
+export function clock(ms) { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+
 // Small, stable status line for the PC pop-out. Use the already computed route
 // and EXP tracker; never infer progress from Quest Helper OCR.
-export function popoutMetrics({ remaining = null, tracker = null, reading = false, fresh = true } = {}) {
+export function popoutMetrics({ remaining = null, tracker = null, reading = false, fresh = true, waitMs = 0 } = {}) {
   const portals = Number.isInteger(remaining) && remaining > 0
     ? `${remaining} portal${remaining === 1 ? '' : 's'} to destination` : '';
   const exp = reading
-    ? !tracker ? 'Waiting for EXP…' : !fresh ? 'EXP/h unavailable' : tracker.minutes >= 2 && Number.isFinite(tracker.perHour)
+    ? waitMs > 0 ? `EXP/h in ${clock(waitMs)}` : !tracker ? 'Waiting for EXP…' : !fresh ? 'EXP/h unavailable' : tracker.minutes >= 2 && Number.isFinite(tracker.perHour)
       ? `${Math.round(tracker.perHour).toLocaleString()} EXP/h`
       : 'Measuring EXP/h…'
     : '';
@@ -13,8 +19,9 @@ export function popoutMetrics({ remaining = null, tracker = null, reading = fals
 
 // The Steam Deck pop-up's EXP lines: a big rate and a small detail line. Empty while not reading, so
 // a stale rate is never shown over the game.
-export function popupExp({ summary = null, reading = false, fresh = true } = {}) {
+export function popupExp({ summary = null, reading = false, fresh = true, waitMs = 0 } = {}) {
   if (!reading) return { rate: '', detail: '' };
+  if (waitMs > 0) return { rate: `EXP/h in ${clock(waitMs)}`, detail: `Counting starts after ${EXP_SETTLE_MIN} min on one map` };
   if (!summary) return { rate: 'Waiting for EXP…', detail: 'Reading the status bar' };
   const percent = Number.isFinite(summary.percent) ? `EXP ${summary.percent.toFixed(2)}%` : '';
   if (!fresh) return { rate: 'EXP/h unavailable', detail: [percent, 'waiting for the status bar'].filter(Boolean).join(' · ') };

@@ -40,7 +40,7 @@ import { createChatStore } from './chatstore.js';
 import { mountChat } from './chatui.js';
 import { spoken, taskWords } from './speech.js';
 import { usesLocalVoice } from './voiceplatform.js';
-import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS } from './popout.js';
+import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS, EXP_SETTLE_MS, EXP_SETTLE_MIN, clock } from './popout.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
@@ -101,7 +101,7 @@ function snapshotCorner(source, width, height, why, wholeFrame = false) {
 }
 let logSeq = 0;
 const logTest = (kind, details) => { testLog.push({ seq: ++logSeq, t: new Date().toISOString().slice(11, 23), kind, ...details }); if (testLog.length > 400) testLog.splice(0, testLog.length - 400); };
-Object.assign(state, { mapStyle: 'render', guide: { quest: null, stage: null, spoken: null }, itemSources: {}, pictureScales: [], positionPic: null, tools: { exp: true, quest: true, prices: false, chatWatch: false, mobCount: true, popupExpOnly: false }, chatWatchWords: '', chatWatchVoice: false, chatWatchIgnoreShops: false, chatWatchAlerts: [], mapViewMode: 'schematic', noteRows: [], notes: mergeNotes([]), planSourcesCache: null, live: null, position: null, positionNote: null, voice: true, pipDoc: null, minimapScales: [], useTaxis: true, townScrollsOwned: [], useTownScrolls: false });
+Object.assign(state, { mapStyle: 'render', guide: { quest: null, stage: null, spoken: null }, itemSources: {}, pictureScales: [], positionPic: null, tools: { exp: true, quest: true, prices: false, chatWatch: false, mobCount: true, popupExpOnly: false, expPerMap: true }, chatWatchWords: '', chatWatchVoice: false, chatWatchIgnoreShops: false, chatWatchAlerts: [], mapViewMode: 'schematic', noteRows: [], notes: mergeNotes([]), planSourcesCache: null, live: null, position: null, positionNote: null, voice: true, pipDoc: null, minimapScales: [], useTaxis: true, townScrollsOwned: [], useTownScrolls: false });
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { state.mapStyleChosen = saved.mapStyleChosen === true; if (saved.mapStyleChosen && saved.mapStyle === 'art') state.mapStyle = 'art'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useVip = saved.useVip === true; state.useNearestScroll = saved.useNearestScroll === true; state.townScrollsOwned = ownedTownScrolls(saved.townScrollsOwned); state.useTownScrolls = saved.useTownScrolls === true && state.townScrollsOwned.length > 0; state.tripAll = saved.tripAll === true; state.tripAvailable = saved.tripAvailable !== false; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); state.chatWatchWords = typeof saved?.chatWatchWords === 'string' ? saved.chatWatchWords.slice(0, 200) : ''; state.chatWatchVoice = saved?.chatWatchVoice === true; state.chatWatchIgnoreShops = saved?.chatWatchIgnoreShops === true; } catch { /* optional */ }
 if (!watchKeywords(state.chatWatchWords).length) state.tools.chatWatch = false;
@@ -210,6 +210,7 @@ $('#app').innerHTML = `
         <label class="toggle"><input type="checkbox" id="tool-quest"> Quest Helper sync</label>
         <label class="toggle"><input type="checkbox" id="tool-prices"> Trade chat prices</label>
         <label class="toggle"><input type="checkbox" id="tool-mobcount"> Monster spawn counts in pop-out</label>
+        <label class="toggle" title="EXP/h starts after 3 minutes on one map. Off: it keeps counting when you move to another map."><input type="checkbox" id="tool-expmap"> Reset EXP/h when I change maps</label>
         <label class="toggle"><input type="checkbox" id="tool-popupexp"> Pop-out / Deck pop-up: EXP/hour only (no map)</label>
         <button type="button" class="button light" id="download-test-log">Download test log</button>
       </div><p class="fine">These read the status bar, the Quest Helper and the last chat lines from the same shared window. Nothing is pressed for you.</p></section>
@@ -1935,10 +1936,17 @@ function cancelDestination() {
   destinationSelect.value = ''; saveLive(); persist(); renderRoute(); renderTargets(); renderWorldMap(); renderLive();
 }
 
+// Time left before EXP/h starts counting on this map (0 = counting).
+function expWaitMs() {
+  const live = state.live; if (!live || live.paused) return 0;
+  return Math.max(0, EXP_SETTLE_MS - (Date.now() - (live.expSince ?? Date.now())));
+}
 // EXP per hour on the "On <map>" line, with a reset that starts the count again from now.
 function expChipHtml() {
   const tracker = state.hud.tracker;
   if (!state.live) return '';
+  const wait = expWaitMs();
+  if (wait > 0) return `<div class="exp-chip" title="EXP/h measures training on one map, so it starts after ${EXP_SETTLE_MIN} minutes on the same map">EXP/h starts in ${clock(wait)}${state.tools.expPerMap ? ' · stay on this map' : ''}</div>`;
   if (!tracker?.last) return '<div class="exp-chip">Waiting for EXP from the status bar…</div>';
   if (state.live.paused || Date.now() - tracker.last.at > EXP_FRESH_MS) return '<div class="exp-chip">EXP/h unavailable · waiting for a fresh status-bar reading</div>';
   const s = expSummary(tracker), measuring = s.minutes < .5 || tracker.samples < 3;
@@ -2035,13 +2043,13 @@ function renderLive() {
     if (meta) {
       const tracker = state.hud.tracker?.last ? expSummary(state.hud.tracker) : null;
       meta.textContent = popoutMetrics({ remaining: model.remaining, tracker: tracker ? { ...tracker, last: true } : null,
-        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS });
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS, waitMs: expWaitMs() });
     }
     state.pipDoc.body.classList.toggle('pip-exp-only', Boolean(state.tools.popupExpOnly));
     const expBox = state.pipDoc.getElementById('pip-exp');
     if (expBox && state.tools.popupExpOnly) {
       const exp = popupExp({ summary: state.hud.tracker?.last ? expSummary(state.hud.tracker) : null,
-        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS });
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS, waitMs: expWaitMs() });
       const html = `<b>${esc(exp.rate || 'EXP/h shows while Live GPS reads')}</b><small>${esc(exp.detail)}</small>`;
       if (expBox.innerHTML !== html) expBox.innerHTML = html;
     }
@@ -2535,6 +2543,8 @@ function coveredReminder(covered) {
 
 function onLiveMap(id) {
   // Each map's mini map is a different size: a new map is not "something covering the mini map".
+  // EXP/h measures one map: a new map starts the 3-minute wait again (unless switched off in Settings).
+  if (state.live && state.tools.expPerMap && state.current && state.current !== id) { Object.assign(state.live, { expSince: Date.now(), tracker: null }); state.hud.tracker = null; }
   if (state.live) Object.assign(state.live, { mapChangedAt: Date.now(), trustedLayout: null, resizedSince: null, pendingJump: null, coveredSince: null, mapUncertain: false });
   const arrived = id === state.destination && state.current !== id;
   const step = state.route?.[0], spot = step?.to === id && step.arrive ? mapById(id)?.spots?.[step.arrive] : null;
@@ -3618,7 +3628,10 @@ async function hudTick(live, grabbed, ocrUsed) {
     }
     const parsed = parseStatusText(await readRegion(live.hudWorker, source, statusTextRect(bars), { ink: image => inkTitle(image, settings.status.threshold), scale: settings.status.scale, psm: 7 }), { expBarFill: bars.exp.fill });
     state.hud.status = parsed; logTest('status', { level: state.hud.level, hp: parsed.hp && `${parsed.hp.now}/${parsed.hp.max}`, mp: parsed.mp && `${parsed.mp.now}/${parsed.mp.max}`, exp: parsed.exp && `${parsed.exp.value} ${parsed.exp.percent}%`, bars: bars && `hp ${bars.hp.fill.toFixed(2)} mp ${bars.mp.fill.toFixed(2)} exp ${bars.exp.fill.toFixed(3)}` });
-    if (parsed.exp) {
+    // EXP/h counts only after 3 minutes on one map (onLiveMap restarts the wait).
+    live.expSince ??= now;
+    if (parsed.exp && now - live.expSince < EXP_SETTLE_MS) { live.tracker = null; state.hud.tracker = null; renderLiveExp(); }
+    else if (parsed.exp) {
       live.tracker ??= createExpTracker(now);
       live.tracker = addExpReading(live.tracker, { ...parsed.exp, barFill: bars.exp.fill, level: state.hud.level, mapId: state.current }, now).tracker;
       state.hud.tracker = live.tracker; renderLiveExp();
@@ -4233,7 +4246,7 @@ document.addEventListener('click', event => { const open = event.target.closest(
 
 $('#price-query').addEventListener('input', renderPrices);
 $('#price-clear').addEventListener('click', () => { if (!confirm('Delete the whole price log in this browser?')) return; state.prices = []; savePrices(); renderPrices(); });
-for (const [id, key] of [['tool-exp', 'exp'], ['tool-quest', 'quest'], ['tool-prices', 'prices'], ['tool-mobcount', 'mobCount']]) {
+for (const [id, key] of [['tool-exp', 'exp'], ['tool-quest', 'quest'], ['tool-prices', 'prices'], ['tool-mobcount', 'mobCount'], ['tool-expmap', 'expPerMap']]) {
   $(`#${id}`).checked = state.tools[key];
   $(`#${id}`).addEventListener('change', event => { state.tools[key] = event.target.checked; saveLive(); renderLive(); });
 }
@@ -4717,7 +4730,7 @@ if (window.mapleDeck) {
       note: (hereTask() ? `Here: ${hereTask()}` : $('#live-step .live-where')?.textContent?.trim() ?? '').slice(0, 120),
       mode: state.tools.popupExpOnly ? 'exp' : 'map',
       exp: state.tools.exp ? popupExp({ summary: state.hud.tracker?.last ? expSummary(state.hud.tracker) : null,
-        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS }) : null
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS, waitMs: expWaitMs() }) : null
     };
     if (JSON.stringify(overlay) !== JSON.stringify(window.__lastDeckOverlay)) {
       window.__lastDeckOverlay = overlay;
