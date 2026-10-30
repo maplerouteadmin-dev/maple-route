@@ -1,11 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { overlayBounds, pairingBounds, overlayPosition, displaySizeFromHelper } = require('./deck-overlay.cjs');
+const { overlayBounds, pairingBounds, expOnlyBounds, overlayPosition, displaySizeFromHelper } = require('./deck-overlay.cjs');
 
 test('Deck overlay placements avoid the in-game mini map, the chat and the level bar', () => {
   const clear = (b, box) => b.x + b.width <= box.x || box.x + box.w <= b.x || b.y + b.height <= box.y || box.y + box.h <= b.y;
   const minimap = { x: 0, y: 40, w: 170, h: 185 }, chat = { x: 268, y: 633, w: 522, h: 64 }, bar = { x: 265, y: 697, w: 750, h: 63 };
-  for (const corner of ['bottom-left', 'bottom-right', 'upper-right']) for (const b of [overlayBounds(corner), pairingBounds(corner)]) {
+  for (const corner of ['bottom-left', 'bottom-right', 'upper-right']) for (const b of [overlayBounds(corner), pairingBounds(corner), expOnlyBounds(corner)]) {
     assert.ok(b.x >= 0 && b.x + b.width <= 1280 && b.y >= 40 && b.y + b.height <= 800, corner);
     for (const box of [minimap, chat, bar]) assert.ok(clear(b, box), `${corner} overlaps the HUD`);
   }
@@ -33,4 +33,10 @@ test('the transparent overlay reports a valid TV display size', () => {
   assert.equal(displaySizeFromHelper('{"screen":{"width":1280}}'), null);
   assert.equal(displaySizeFromHelper('{"screen":{"width":9000,"height":1080}}'), null);
   assert.equal(displaySizeFromHelper('not json'), null);
+});
+
+test('EXP-only pop-up is a short strip on the same screen edge', () => {
+  for (const corner of ['bottom-left', 'bottom-right']) { const b = expOnlyBounds(corner); assert.equal(b.y + b.height, 800); assert.equal(b.height, 58); }
+  assert.equal(expOnlyBounds('upper-right').y, overlayBounds('upper-right').y);
+  assert.equal(expOnlyBounds('bottom-left', { width: 1920, height: 1200 }).height, 87);
 });

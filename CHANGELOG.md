@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0-beta.14
+
+- Steam Deck pop-up: shows your EXP/hour, EXP % and time to the next level under the map.
+- New switch "Pop-up: EXP only" (Live card on the Deck/phone, also in Settings → Live tools): the pop-up becomes a small strip with just EXP/hour, no map.
+
 ## 1.1.0-beta.13
 
 - Hide the Chat tab for now (the community chat code stays in, switched off).

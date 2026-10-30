@@ -27,6 +27,13 @@ function overlayBounds(position = 'bottom-left', viewport = { width: 1280, heigh
   return scale({ x: 4, y: 592, width: 258, height: 208 });
 }
 
+// EXP/hour only (no map): a short strip in the same corner, on the screen edge like the map box.
+function expOnlyBounds(position = 'bottom-left', viewport) {
+  const b = overlayBounds(position, viewport);
+  const height = Math.round(58 * b.height / (position === 'bottom-left' ? 208 : 142));
+  return position === 'upper-right' ? { ...b, height } : { ...b, y: b.y + b.height - height, height };
+}
+
 function displaySizeFromHelper(line) {
   try {
     const { width, height } = JSON.parse(line).screen ?? {};
@@ -45,4 +52,4 @@ async function markOwnWindowAsOverlay(window) {
   return id;
 }
 
-module.exports = { overlayBounds, pairingBounds, overlayPosition, displaySizeFromHelper, OVERLAY_POSITIONS, markOwnWindowAsOverlay };
+module.exports = { overlayBounds, pairingBounds, expOnlyBounds, overlayPosition, displaySizeFromHelper, OVERLAY_POSITIONS, markOwnWindowAsOverlay };

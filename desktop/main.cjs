@@ -5,7 +5,7 @@ const { join } = require('node:path');
 const { spawn } = require('node:child_process');
 const { readFileSync } = require('node:fs');
 const { DeckStream, lookupGamescopeSize } = require('./deck-stream.cjs');
-const { overlayBounds, pairingBounds, displaySizeFromHelper } = require('./deck-overlay.cjs');
+const { overlayBounds, pairingBounds, expOnlyBounds, displaySizeFromHelper } = require('./deck-overlay.cjs');
 
 const deckMode = process.platform === 'linux' && process.argv.includes('--deck-service');
 if (deckMode) {
@@ -71,13 +71,15 @@ function placeOverlayBox(window, position) {
   const b = boxBounds(position);
   if (!window.isDestroyed()) window.setSize(b.width, b.height);
   overlayToHelper({ display: overlayViewport(), x: b.x, y: b.y });
-  window.webContents.executeJavaScript(`window.placeMapleBox(${JSON.stringify({ x: 0, y: 0, width: b.width, height: b.height, scale: Math.min(b.width / 258, b.height / (position === 'bottom-left' ? 208 : 142)) })})`).catch(() => {});
+  window.webContents.executeJavaScript(`window.placeMapleBox(${JSON.stringify({ x: 0, y: 0, width: b.width, height: b.height, scale: Math.min(b.width / 258, b.height / (!pairingShown && overlayContent === 'exp' ? 58 : position === 'bottom-left' ? 208 : 142)) })})`).catch(() => {});
 }
 // QR code first: while no phone is connected, the pop-up shows the phone's QR code for the first
 // minute after the game opens (and whenever reading is off), then the map. A connected phone hides it.
 let gameOpenedAt = 0, pairingShown = false;
+// What the pop-up shows: the map ('map') or only EXP/hour in a short strip ('exp'); set from the app.
+let overlayContent = 'map';
 const overlayViewport = () => overlayDisplaySize ?? screen.getPrimaryDisplay().size;
-const boxBounds = position => (pairingShown ? pairingBounds : overlayBounds)(position, overlayViewport());
+const boxBounds = position => (pairingShown ? pairingBounds : overlayContent === 'exp' ? expOnlyBounds : overlayBounds)(position, overlayViewport());
 function showPairing() {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const noPhone = !phone?.clients?.size, early = Date.now() - gameOpenedAt < 60_000;
@@ -292,6 +294,8 @@ async function start() {
     ipcMain.on('deck:overlay-update', (event, snapshot) => {
       if (!isLocalRequest(event.sender) || typeof snapshot?.next !== 'string' || typeof snapshot?.map !== 'string' || snapshot.map.length > 500_000) return;
       overlaySnapshot = snapshot;
+      const content = snapshot.mode === 'exp' ? 'exp' : 'map';
+      if (content !== overlayContent) { overlayContent = content; if (overlayWindow && !overlayWindow.isDestroyed()) placeOverlayBox(overlayWindow, overlayPosition); }
       if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.webContents.executeJavaScript(`window.setMapleOverlay(${JSON.stringify(snapshot)})`).catch(() => {});
     });
     ipcMain.on('deck:publish', (event, snapshot) => {

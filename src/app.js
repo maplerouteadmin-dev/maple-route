@@ -40,7 +40,7 @@ import { createChatStore } from './chatstore.js';
 import { mountChat } from './chatui.js';
 import { spoken, taskWords } from './speech.js';
 import { usesLocalVoice } from './voiceplatform.js';
-import { popoutMetrics } from './popout.js';
+import { popoutMetrics, popupExp } from './popout.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
@@ -101,7 +101,7 @@ function snapshotCorner(source, width, height, why, wholeFrame = false) {
 }
 let logSeq = 0;
 const logTest = (kind, details) => { testLog.push({ seq: ++logSeq, t: new Date().toISOString().slice(11, 23), kind, ...details }); if (testLog.length > 400) testLog.splice(0, testLog.length - 400); };
-Object.assign(state, { mapStyle: 'render', guide: { quest: null, stage: null, spoken: null }, itemSources: {}, pictureScales: [], positionPic: null, tools: { exp: true, quest: true, prices: false, chatWatch: false, mobCount: true }, chatWatchWords: '', chatWatchVoice: false, chatWatchIgnoreShops: false, chatWatchAlerts: [], mapViewMode: 'schematic', noteRows: [], notes: mergeNotes([]), planSourcesCache: null, live: null, position: null, positionNote: null, voice: true, pipDoc: null, minimapScales: [], useTaxis: true, townScrollsOwned: [], useTownScrolls: false });
+Object.assign(state, { mapStyle: 'render', guide: { quest: null, stage: null, spoken: null }, itemSources: {}, pictureScales: [], positionPic: null, tools: { exp: true, quest: true, prices: false, chatWatch: false, mobCount: true, popupExpOnly: false }, chatWatchWords: '', chatWatchVoice: false, chatWatchIgnoreShops: false, chatWatchAlerts: [], mapViewMode: 'schematic', noteRows: [], notes: mergeNotes([]), planSourcesCache: null, live: null, position: null, positionNote: null, voice: true, pipDoc: null, minimapScales: [], useTaxis: true, townScrollsOwned: [], useTownScrolls: false });
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { state.mapStyleChosen = saved.mapStyleChosen === true; if (saved.mapStyleChosen && saved.mapStyle === 'art') state.mapStyle = 'art'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useVip = saved.useVip === true; state.useNearestScroll = saved.useNearestScroll === true; state.townScrollsOwned = ownedTownScrolls(saved.townScrollsOwned); state.useTownScrolls = saved.useTownScrolls === true && state.townScrollsOwned.length > 0; state.tripAll = saved.tripAll === true; state.tripAvailable = saved.tripAvailable !== false; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); state.chatWatchWords = typeof saved?.chatWatchWords === 'string' ? saved.chatWatchWords.slice(0, 200) : ''; state.chatWatchVoice = saved?.chatWatchVoice === true; state.chatWatchIgnoreShops = saved?.chatWatchIgnoreShops === true; } catch { /* optional */ }
 if (!watchKeywords(state.chatWatchWords).length) state.tools.chatWatch = false;
@@ -120,7 +120,7 @@ $('#app').innerHTML = `
       <div class="action-row">
         <button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><button class="button light hidden" id="live-couch" type="button">Couch mode · phone</button>
         <span class="quick-read" role="group" aria-label="Scan your in-game quest list"><button type="button" class="button secondary" data-quick-read="progress" title="Open Q to In Progress with towns expanded, then scan">Scan In Progress</button><button type="button" class="button secondary" data-quick-read="available" title="Open Q to Available with towns expanded, then scan">Scan Available</button></span>
-        <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
+        <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><label class="toggle deck-only hidden" title="The pop-up over the game shows only EXP/hour, no map"><input type="checkbox" id="live-popupexp"> Pop-up: EXP only</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
       </div>
       <div id="town-scroll-picker" class="town-scroll-picker hidden"><strong>Which town scrolls are in your bag?</strong><p class="fine">Only checked destinations will be used. Update this when a scroll runs out.</p><div class="town-scroll-options">${TOWN_SCROLLS.map(name => `<label class="toggle"><input type="checkbox" data-town-scroll="${esc(name)}"> ${esc(name)}</label>`).join('')}</div><div class="action-row"><button class="button" type="button" id="town-scroll-confirm">Use selected scrolls</button><button class="button light" type="button" id="town-scroll-cancel">Cancel</button></div></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
@@ -210,6 +210,7 @@ $('#app').innerHTML = `
         <label class="toggle"><input type="checkbox" id="tool-quest"> Quest Helper sync</label>
         <label class="toggle"><input type="checkbox" id="tool-prices"> Trade chat prices</label>
         <label class="toggle"><input type="checkbox" id="tool-mobcount"> Monster spawn counts in pop-out</label>
+        <label class="toggle deck-only hidden"><input type="checkbox" id="tool-popupexp"> Steam Deck pop-up: EXP/hour only (no map)</label>
         <button type="button" class="button light" id="download-test-log">Download test log</button>
       </div><p class="fine">These read the status bar, the Quest Helper and the last chat lines from the same shared window. Nothing is pressed for you.</p></section>
 <section class="card" aria-labelledby="chat-watch-title"><h2 id="chat-watch-title">Watch visible game chat</h2><p class="muted">Get an alert when a new visible chat line contains your keyword. Maple Route reads only the shared screen; it cannot see hidden, scrolled-off or other-channel messages. Names and text may be misread by OCR.</p>
@@ -4212,6 +4213,16 @@ for (const [id, key] of [['tool-exp', 'exp'], ['tool-quest', 'quest'], ['tool-pr
   $(`#${id}`).checked = state.tools[key];
   $(`#${id}`).addEventListener('change', event => { state.tools[key] = event.target.checked; saveLive(); renderLive(); });
 }
+// Steam Deck pop-up: map, or only EXP/hour (two switches, Settings and the Live card, kept in step).
+for (const id of ['tool-popupexp', 'live-popupexp']) {
+  $(`#${id}`).checked = state.tools.popupExpOnly;
+  $(`#${id}`).addEventListener('change', event => {
+    state.tools.popupExpOnly = event.target.checked;
+    for (const other of ['tool-popupexp', 'live-popupexp']) $(`#${other}`).checked = state.tools.popupExpOnly;
+    saveLive();
+  });
+}
+if (window.mapleDeck) for (const label of document.querySelectorAll('.deck-only')) label.classList.remove('hidden');
 $('#chat-watch-words').value = state.chatWatchWords;
 $('#chat-watch-enabled').checked = state.tools.chatWatch;
 $('#chat-watch-voice').checked = state.chatWatchVoice;
@@ -4673,7 +4684,10 @@ if (window.mapleDeck) {
     const overlay = {
       next: deckDirectionSummary({ headline: $('#live-step .live-headline')?.textContent, hint: $('#live-step .live-hint')?.textContent, current: state.current, destination: state.destination, uncertain: state.live?.mapUncertain }),
       map: $('#mapview')?.innerHTML ?? '',
-      note: (hereTask() ? `Here: ${hereTask()}` : $('#live-step .live-where')?.textContent?.trim() ?? '').slice(0, 120)
+      note: (hereTask() ? `Here: ${hereTask()}` : $('#live-step .live-where')?.textContent?.trim() ?? '').slice(0, 120),
+      mode: state.tools.popupExpOnly ? 'exp' : 'map',
+      exp: state.tools.exp ? popupExp({ summary: state.hud.tracker?.last ? expSummary(state.hud.tracker) : null,
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= 30_000 }) : null
     };
     if (JSON.stringify(overlay) !== JSON.stringify(window.__lastDeckOverlay)) {
       window.__lastDeckOverlay = overlay;

@@ -7,10 +7,12 @@
 .map .mv-picture{display:block;overflow:hidden;width:100%;height:100%;padding:0;margin:0;max-height:none}
 .map svg{display:block;max-width:none;margin:0}
 .note{font-size:calc(11px * var(--ui-scale));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d8eadb;flex-shrink:0}.note:empty{display:none}
+.exp{flex-shrink:0;display:flex;align-items:baseline;gap:calc(6px * var(--ui-scale));white-space:nowrap;overflow:hidden;font-size:calc(11px * var(--ui-scale));color:#d8eadb}.exp:empty{display:none}.exp b{color:#ffe08a;font-size:calc(12px * var(--ui-scale))}.exp span{overflow:hidden;text-overflow:ellipsis}
+body.exp-only .next,body.exp-only .map,body.exp-only .note{display:none}body.exp-only .shell{justify-content:center;gap:0}body.exp-only .exp{flex-direction:column;align-items:flex-start;gap:calc(1px * var(--ui-scale))}body.exp-only .exp b{font-size:calc(19px * var(--ui-scale))}body.exp-only .exp span{font-size:calc(11px * var(--ui-scale));max-width:100%}
 .pair{position:absolute;inset:0;z-index:2;background:#102c24;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:6px;text-align:center}.pair[hidden]{display:none}
 .pair #qr{width:min(100%,236px);aspect-ratio:1;flex-shrink:0;background:#fff;padding:6px;border-radius:6px}.pair #qr svg{width:100%;height:100%;display:block}
 .pair .pair-text{display:flex;flex-direction:column;gap:2px;font-size:13px;line-height:1.2}.pair small{font-size:11px;color:#d8eadb}
-</style></head><body><div id="box"><div class="shell"><div class="next" id="next">Maple Route</div><div class="map" id="map"></div><div class="note" id="note"></div></div><div class="pair" id="pair" hidden><div id="qr"></div><div class="pair-text"><b>Scan with your phone</b><small>Same Wi-Fi as the Deck, then press Start reading</small></div></div></div><script>
+</style></head><body><div id="box"><div class="shell"><div class="next" id="next">Maple Route</div><div class="map" id="map"></div><div class="note" id="note"></div><div class="exp" id="exp"></div></div><div class="pair" id="pair" hidden><div id="qr"></div><div class="pair-text"><b>Scan with your phone</b><small>Same Wi-Fi as the Deck, then press Start reading</small></div></div></div><script>
 window.placeMapleBox=b=>{const box=document.querySelector('#box');Object.assign(box.style,{left:b.x+'px',top:b.y+'px',width:b.width+'px',height:b.height+'px'});box.style.setProperty('--ui-scale',String(Math.max(.75,Math.min(3,b.scale||1))));const map=document.querySelector('#map');if(map.firstChild)requestAnimationFrame(()=>place(map));};
 window.setMaplePairing=svg=>{const pair=document.querySelector('#pair');if(svg){document.querySelector('#qr').innerHTML=svg;pair.hidden=false;}else pair.hidden=true;};
 // Zoom so map labels stay readable in a small box: map height fills the box (not shrunk below 0.55x
@@ -36,5 +38,10 @@ window.setMapleOverlay=detail=>{
   if(next.textContent!==detail.next)next.textContent=detail.next;
   if(map.dataset.html!==detail.map){map.dataset.html=detail.map;map.innerHTML=detail.map;requestAnimationFrame(()=>place(map));}
   if(note.textContent!==detail.note)note.textContent=detail.note;
+  const expOnly=detail.mode==='exp',exp=document.querySelector('#exp'),rate=detail.exp?.rate||(expOnly?'EXP/h shows while reading':''),more=detail.exp?.detail||'';
+  const expHtml=rate?'<b></b><span></span>':'';
+  if(exp.dataset.shape!==expHtml){exp.dataset.shape=expHtml;exp.innerHTML=expHtml;}
+  if(rate){exp.firstChild.textContent=rate;exp.lastChild.textContent=more;}
+  if(document.body.classList.contains('exp-only')!==expOnly){document.body.classList.toggle('exp-only',expOnly);if(!expOnly&&map.firstChild)requestAnimationFrame(()=>place(map));}
 };
 </script></body></html>

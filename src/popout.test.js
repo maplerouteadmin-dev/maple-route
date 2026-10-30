@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { popoutMetrics } from './popout.js';
+import { popoutMetrics, popupExp } from './popout.js';
 
 test('pop-out displays the same route count and measured EXP as Live GPS', () => {
   assert.equal(popoutMetrics({ remaining: 3, reading: true, tracker: { last: {}, minutes: 4, perHour: 1234 } }), '3 portals to destination · 1,234 EXP/h');
@@ -12,4 +12,15 @@ test('pop-out does not show a false portal or stale EXP rate', () => {
   assert.equal(popoutMetrics({ remaining: 0, reading: true, tracker: { last: {}, minutes: 1, perHour: 500 } }), 'Measuring EXP/h…');
   assert.equal(popoutMetrics({ remaining: 2, reading: true, tracker: { last: {}, minutes: 4, perHour: 500 }, fresh: false }), '2 portals to destination · EXP/h unavailable');
   assert.equal(popoutMetrics({ reading: true }), 'Waiting for EXP…');
+});
+
+test('Deck pop-up EXP shows the rate, percent and time to level, never a stale rate', () => {
+  const summary = { minutes: 10, perHour: 12345.6, percent: 42.126, percentPerHour: 6, minutesToLevel: 578 };
+  assert.deepEqual(popupExp({ summary, reading: true }), { rate: '12,346 EXP/h', detail: 'EXP 42.13% · 6.0%/h · level in 10 h' });
+  assert.deepEqual(popupExp({ summary: { ...summary, minutesToLevel: 40 }, reading: true }).detail, 'EXP 42.13% · 6.0%/h · level in 40 min');
+  assert.equal(popupExp({ summary: { ...summary, minutes: 1 }, reading: true }).rate, '~12,346 EXP/h');
+  assert.equal(popupExp({ summary: { ...summary, minutes: .2 }, reading: true }).rate, 'Measuring EXP/h…');
+  assert.equal(popupExp({ summary, reading: true, fresh: false }).rate, 'EXP/h unavailable');
+  assert.deepEqual(popupExp({ summary, reading: false }), { rate: '', detail: '' });
+  assert.equal(popupExp({ reading: true }).rate, 'Waiting for EXP…');
 });
