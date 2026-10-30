@@ -259,3 +259,17 @@ test('EXP tracker allows rounding of the shown percentage at low EXP', () => {
   const r = addExpReading(t, { value: 183, percent: .73, barFill: .007 }, 5000);
   assert.equal(r.accepted, true);
 });
+
+test('EXP tracker: a misread level number never adds a fake level-up', () => {
+  let t = addExpReading(createExpTracker(0), { value: 16840, percent: 49.07, level: 23, barFill: .49 }, 0).tracker;
+  const r = addExpReading(t, { value: 16900, percent: 49.25, level: 28, barFill: .49 }, 5000);
+  assert.equal(r.accepted, true); assert.equal(r.tracker.gained, 60); assert.equal(r.tracker.levelUps, 0); assert.equal(r.tracker.level, 23);
+});
+
+test('EXP tracker: a bigger amount with a smaller percentage is a misread, not a gain', () => {
+  let t = addExpReading(createExpTracker(0), { value: 16840, percent: 49.07, level: 23, barFill: .49 }, 0).tracker;
+  const r = addExpReading(t, { value: 68400, percent: 48.9, barFill: .49 }, 5000);
+  assert.equal(r.accepted, false); assert.equal(r.tracker.gained, 0);
+  const extra = addExpReading(t, { value: 168400, percent: 49.2, barFill: .49 }, 5000);
+  assert.equal(extra.accepted, false);
+});

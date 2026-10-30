@@ -19,12 +19,15 @@ export function addExpReading(tracker, { value, percent, level = null, barFill =
   const need = percent >= 1 ? value * 100 / percent : null;
   const last = t.last;
   if (last) {
-    const sameLevel = !(Number.isFinite(level) && level !== last.level);
+    // A level-up is the percentage wrapping round (a big drop with a smaller amount). The level number
+    // read off the screen is not trusted for this: one misread level would add a whole level of EXP.
+    const leveled = value < last.value && percent + 25 < last.percent;
     // The percentage is shown with two decimals, so EXP-to-level worked out from it is rougher at low %.
     const needSlack = .05 + .01 / Math.max(.5, Math.min(percent, last.percent));
-    // A falling amount with a rising percentage on the same level is an OCR error, and the same level
-    // must imply the same EXP-to-level.
-    const misread = sameLevel && percent >= last.percent && (value < last.value || (need && last.need && Math.abs(need - last.need) / last.need > needSlack));
+    // Within a level the amount and the percentage move together, and EXP-to-level stays the same.
+    // Anything else is an OCR error (a dropped or extra digit, a misread percentage).
+    const misread = !leveled && ((value < last.value && percent >= last.percent) || (value > last.value && percent < last.percent) ||
+      Boolean(need && last.need && Math.abs(need - last.need) / last.need > needSlack));
     if (misread) {
       // Several rejections in a row that agree with each other mean the baseline was the misread:
       // start again from them (nothing counted for the gap) instead of rejecting every reading after it.
@@ -33,9 +36,8 @@ export function addExpReading(tracker, { value, percent, level = null, barFill =
       const agree = run.length === REBASE_AFTER && run.every((r, i) => i === 0 || (r.value >= run[i - 1].value && r.percent >= run[i - 1].percent &&
         (!r.need || !run[i - 1].need || Math.abs(r.need - run[i - 1].need) / run[i - 1].need <= needSlack)));
       if (!agree) return { tracker: { ...tracker, rejected: run }, accepted: false };
-      return { tracker: { ...t, rejected: [], last: { value, percent, level: Number.isFinite(level) ? level : last.level, need: need ?? last.need, at: now }, samples: t.samples + 1 }, accepted: true, rebased: true };
+      return { tracker: { ...t, rejected: [], last: { value, percent, level: last.level, need: need ?? last.need, at: now }, samples: t.samples + 1 }, accepted: true, rebased: true };
     }
-    const leveled = (Number.isFinite(level) && Number.isFinite(last.level) && level > last.level) || (percent + 25 < last.percent && value < last.value);
     if (leveled) {
       t.gained += Math.max(0, (last.need ?? last.value) - last.value) + value;
       t.gainedPercent += 100 - last.percent + percent;
@@ -45,7 +47,9 @@ export function addExpReading(tracker, { value, percent, level = null, barFill =
     } else t.lost += last.value - value; // died, or EXP spent
     if (mapId) t.mapMinutes[mapId] = (t.mapMinutes[mapId] ?? 0) + (now - last.at) / 60000;
   }
-  const resolvedLevel = Number.isFinite(level) ? level : last?.level != null ? last.level + (last && percent + 25 < last.percent ? 1 : 0) : null;
+  // The level comes from the first reading that has one, then only goes up on a real wrap-round.
+  const wrapped = last && value < last.value && percent + 25 < last.percent;
+  const resolvedLevel = last?.level != null ? last.level + (wrapped ? 1 : 0) : Number.isFinite(level) ? level : null;
   if (t.startLevel == null && resolvedLevel != null) t.startLevel = resolvedLevel;
   t.level = resolvedLevel;
   t.last = { value, percent, level: resolvedLevel, need: need ?? last?.need ?? null, at: now };
