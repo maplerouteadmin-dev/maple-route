@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.26
+
+- **Read quests one by one** (Live GPS toolbar, Untested): open the quest window (Q) and click through your quests, about a second each. Each time the window shows a different quest, Maple Route reads everything around the quest window and works out which quest it is from its full text (name, description, NPCs, items), which also tells same-named quests apart. Press Done to review the list, untick mistakes, pick the tab (In Progress, Available or Completed) and Add these. Nothing is added without your OK, and Maple Route still never clicks in the game. In a test against all 310 quests with misread letters it named 90% correctly and none wrongly when the quest name was readable.
+
 ## 1.1.0-beta.25
 
 - Sync between your devices (Settings): turn it on, enter the same code on your other device, and your quest plan (quests added, started, ticked and finished, the quest you are guiding, Do all quests together) follows you between the PC and the Steam Deck. It uploads a few seconds after each change and picks up the other device's changes when the app opens and every minute. Only a hash of the code is stored on the server; the map you are on, Live GPS and settings stay on each device. Server setup: `supabase/progress-sync.sql`.

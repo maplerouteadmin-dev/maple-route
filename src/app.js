@@ -63,6 +63,7 @@ import { OSMS_FILES } from './osms.js';
 import { PARTY_QUEST, partyLevelMessage } from './party.js';
 import { summarizeSession, bestMeasuredSpot } from './session.js';
 import { PROFILE_KEY, snapshotProfile, makeProfileBackup, parseProfileBackup } from './profile.js';
+import { identifyQuestDetail } from './questdetail.js';
 import { createSyncStore, newSyncCode, normalizeSyncCode, syncPayload, readSyncPayload, syncFingerprint } from './progresssync.js';
 import { CLASSIC_BANDS, guideForLevel, resolveGuideMaps } from './classic-guide.js';
 import { atlasNeighbors } from './atlas.js';
@@ -129,11 +130,12 @@ $('#app').innerHTML = `
       <div class="choose-row"><div id="guide-offer"></div></div>
       <div class="action-row">
         <button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><button class="button light hidden" id="live-couch" type="button">Couch mode · phone</button>
-        <span class="quick-read" role="group" aria-label="Scan your in-game quest list"><button type="button" class="button secondary" data-quick-read="progress" title="Open Q to In Progress with towns expanded, then scan">Scan In Progress</button><button type="button" class="button secondary" data-quick-read="available" title="Open Q to Available with towns expanded, then scan">Scan Available</button></span>
+        <span class="quick-read" role="group" aria-label="Scan your in-game quest list"><button type="button" class="button secondary" data-quick-read="progress" title="Open Q to In Progress with towns expanded, then scan">Scan In Progress</button><button type="button" class="button secondary" data-quick-read="available" title="Open Q to Available with towns expanded, then scan">Scan Available</button><button type="button" class="button secondary" data-qs="start" title="Open Q in the game and click through your quests one by one; each is read as you click it">Read quests one by one</button></span>
         <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Regular Cab to or from Sleepywood, 2,500 mesos"><input type="checkbox" id="live-sleepy"> Sleepywood taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><label class="toggle" title="The pop-out (and the Steam Deck pop-up) shows only EXP/hour, no map"><input type="checkbox" id="live-popupexp"> Pop-out: EXP only</label><label class="toggle" title="Say your EXP per hour out loud every 3 minutes"><input type="checkbox" id="live-sayexp"> Say EXP/h</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
       </div>
       <div id="town-scroll-picker" class="town-scroll-picker hidden"><strong>Which town scrolls are in your bag?</strong><p class="fine">Only checked destinations will be used. Update this when a scroll runs out.</p><div class="town-scroll-options">${TOWN_SCROLLS.map(name => `<label class="toggle"><input type="checkbox" data-town-scroll="${esc(name)}"> ${esc(name)}</label>`).join('')}</div><div class="action-row"><button class="button" type="button" id="town-scroll-confirm">Use selected scrolls</button><button class="button light" type="button" id="town-scroll-cancel">Cancel</button></div></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
+      <div class="quest-session hidden" id="quest-session"></div>
       <div class="couch-panel hidden" id="couch-panel"><strong>Use your phone from the couch</strong><p class="fine">First start Live GPS on this PC and choose the MapleStory window. Then turn on phone sharing and scan the QR code. Your phone controls the app; only this PC reads the game screen.</p><button class="button secondary" id="couch-toggle" type="button">Share with phone</button><p class="fine" id="couch-status" role="status"></p><div id="couch-qr" class="couch-qr"></div><a id="couch-url" target="_blank" rel="noopener" hidden></a><p class="fine">Same Wi-Fi only. Anyone with this link can control Maple Route until you turn Couch mode off. Starting a new screen share still requires a click on this PC.</p></div>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
@@ -3669,6 +3671,8 @@ async function hudTick(live, grabbed, ocrUsed) {
     }
     return;
   }
+  // Reading quests one by one: only that, every second, until Done.
+  if (state.questSession && !state.questSession.review) { await questSessionTick(live, source, width, height); return; }
   // The quest window open on the Available, In Progress or Completed tab: read its list whenever it changes.
   if (state.tools.quest && state.questCatalogStatus === 'loaded' && due('questwin', 4000) && now > (live.questWinQuietUntil ?? 0)) {
     live.jobs.questwin = now;
@@ -4685,6 +4689,96 @@ bootstrapping = false;
 // Cards drawn before the saved profile loaded: draw them again with it.
 renderPlanList(); renderCitizenship(); renderTicks();
 persist();
+
+// ---------- Read quests one by one (src/questdetail.js) ----------
+// The player opens the quest window and clicks through its quests; each time the window shows a
+// different quest it is read and named. Nothing is added until the player confirms the list (Done).
+// Maple Route never clicks in the game: the player does all the clicking.
+const QS_TABS = { progress: 'In Progress', available: 'Available', completed: 'Completed' };
+function renderQuestSession() {
+  const panel = $('#quest-session'); if (!panel) return;
+  const s = state.questSession;
+  panel.classList.toggle('hidden', !s);
+  if (!s) { panel.innerHTML = ''; panel.dataset.html = ''; return; }
+  const tabSelect = `<select id="qs-tab" aria-label="Which tab these quests are on">${Object.entries(QS_TABS).map(([key, label]) => `<option value="${key}"${key === (s.tab ?? 'progress') ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+  const rows = s.found.map((f, i) => `<li><label><input type="checkbox" data-qs-pick="${i}"${f.picked === false ? '' : ' checked'}> ${esc(f.name)}${f.detail ? ` <small>${esc(f.detail)}</small>` : ''}</label></li>`).join('');
+  const html = s.review
+    ? `<strong>Add these quests?</strong> ${UNTESTED}<p class="fine">Untick any that are wrong. They are on your ${tabSelect} tab.</p>${rows ? `<ul class="qr-found">${rows}</ul>` : '<p class="fine">No quests were recognised.</p>'}${s.misses ? `<p class="fine">${s.misses} quest${s.misses === 1 ? ' was' : 's were'} not recognised: add ${s.misses === 1 ? 'it' : 'them'} by name in My quest plan.</p>` : ''}<div class="action-row"><button type="button" class="button" data-qs="add"${rows ? '' : ' disabled'}>Add these</button><button type="button" class="button light" data-qs="cancel">Cancel</button></div>`
+    : `<strong>Reading quests one by one</strong> ${UNTESTED}<p class="fine">In the game, open the quest window (Q) and click each quest in turn, waiting about a second on each. ${esc(s.status ?? '')}</p>${rows ? `<ul class="qr-found">${s.found.map(f => `<li>✓ ${esc(f.name)}${f.detail ? ` <small>${esc(f.detail)}</small>` : ''}</li>`).join('')}</ul>` : ''}${s.misses ? `<p class="fine">Not recognised: ${s.misses}</p>` : ''}<div class="action-row"><button type="button" class="button" data-qs="done">Done</button><button type="button" class="button light" data-qs="cancel">Cancel</button></div>`;
+  if (panel.dataset.html !== html) { panel.innerHTML = html; panel.dataset.html = html; }
+}
+// One HUD-loop step while reading: find the quest window, wait for it to settle on a new picture,
+// then read it and name the quest shown.
+async function questSessionTick(live, source, width, height) {
+  const s = state.questSession;
+  const win = findQuestWindow(regionImage(source, { x: 0, y: 0, w: width, h: height }));
+  if (!win) { s.status = 'Waiting for the quest window: press Q in the game.'; renderQuestSession(); return; }
+  if (win.tab && !s.tabChosen) s.tab = win.tab;
+  // The window and anything that opens beside it (the quest's details): its width again to the right.
+  const l = win.line, x0 = Math.max(0, Math.round(l.x - l.w * .15)), y0 = Math.max(0, Math.round(l.y - l.w * .3));
+  const rect = { x: x0, y: y0, w: Math.min(width, Math.round(l.x + l.w * 2.3)) - x0, h: Math.min(height, Math.round(l.y + l.w * 1.9)) - y0 };
+  const sig = quickSignature(regionImage(source, rect));
+  if (s.lastRead && listChange(sig, s.lastRead, 16, 0) <= .02) { s.status = s.found.length || s.misses ? 'Click the next quest.' : 'Click a quest in the list.'; renderQuestSession(); return; }
+  // Changed: read it once it has stayed the same for a second (not mid-click or mid-scroll).
+  if (!s.pending || listChange(sig, s.pending, 16, 0) > .02) { s.pending = sig; return; }
+  s.lastRead = sig; s.pending = null; s.status = 'Reading…'; renderQuestSession();
+  const text = await readRegion(live.hudWorker, source, rect, { scale: 1.5, ink: inkQuestList });
+  if (state.questSession !== s) return; // cancelled while reading
+  const hit = identifyQuestDetail(text, state.quests);
+  logTest('quest-detail', { tab: win.tab, found: hit?.quest.name ?? null, score: hit ? +hit.score.toFixed(1) : null, text: text.slice(0, 1500) });
+  if (!hit) { s.misses++; s.status = 'Could not tell which quest that is. Click it again, or carry on.'; renderQuestSession(); return; }
+  const quest = hit.quest, key = `${quest.name}|${quest.id ?? ''}`;
+  if (!s.found.some(f => f.key === key)) s.found.push({ key, name: quest.name, id: quest.id ?? null, detail: sameNameCount(quest.name) > 1 ? questDetail(quest, { sameName: sameNameCount(quest.name) }) : quest.giver ? `from ${quest.giver}` : '' });
+  s.status = `Read: ${quest.name}. Click the next quest.`;
+  renderQuestSession();
+}
+// The confirmed quests go where the tab says: In Progress = started, Available = can be started,
+// Completed = finished.
+function applyReadQuests(tab, picks) {
+  const names = [...new Set(picks.map(p => p.name))];
+  for (const p of picks) if (p.id && sameNameCount(p.name) > 1) state.questPick = { ...(state.questPick ?? {}), [p.name]: p.id };
+  if (tab === 'completed') markFinished(names);
+  else if (tab === 'progress') {
+    for (const name of names) if (!state.activeQuests.includes(name) && state.activeQuests.length < 200) { state.activeQuests.push(name); ensureQuestDetails(name); }
+    state.acceptedQuests = [...new Set([...state.acceptedQuests, ...names])].slice(0, 500);
+    state.questsAvailable = state.questsAvailable.filter(name => !names.includes(name));
+  } else {
+    const helper = new Set((state.hud.quests ?? []).map(q => q.name));
+    const offered = names.filter(name => !state.questsFinished.includes(name) && !helper.has(name));
+    state.questsAvailable = [...new Set([...state.questsAvailable, ...offered])];
+    state.activeQuests = state.activeQuests.filter(name => !offered.includes(name) || helper.has(name));
+    state.acceptedQuests = state.acceptedQuests.filter(name => !offered.includes(name));
+  }
+  state.allTripCache = null; state.tripCache = null;
+  persist(); applyObjective(); renderLive();
+  for (const draw of [renderQuestRecs, renderPlanList, renderTicks]) { try { draw(); } catch { /* card not shown */ } }
+}
+document.addEventListener('change', event => {
+  const s = state.questSession; if (!s) return;
+  if (event.target.id === 'qs-tab') { s.tab = event.target.value; s.tabChosen = true; return; }
+  const pick = event.target.closest('[data-qs-pick]'); if (pick) s.found[Number(pick.dataset.qsPick)].picked = pick.checked;
+});
+document.addEventListener('click', async event => {
+  const button = event.target.closest('[data-qs]'); if (!button) return;
+  const action = button.dataset.qs, note = $('#live-note');
+  if (action === 'start') {
+    if (!state.live || state.live.paused) { note.textContent = 'Start Live GPS first: the quest window is read from the same shared screen.'; note.classList.remove('hidden'); return; }
+    if (state.questCatalogStatus !== 'loaded') await loadQuestCatalog();
+    if (state.questCatalogStatus !== 'loaded') { note.textContent = 'The quest list is unavailable right now.'; note.classList.remove('hidden'); return; }
+    state.questSession = { found: [], misses: 0, tab: null, tabChosen: false, status: 'Waiting for the quest window: press Q in the game.', review: false };
+    renderQuestSession(); return;
+  }
+  const s = state.questSession; if (!s) return;
+  if (action === 'done') { s.review = true; renderQuestSession(); return; }
+  if (action === 'cancel') { state.questSession = null; renderQuestSession(); return; }
+  if (action === 'add') {
+    const tab = $('#qs-tab')?.value || s.tab || 'progress', picks = s.found.filter(f => f.picked !== false);
+    state.questSession = null; renderQuestSession();
+    applyReadQuests(tab, picks);
+    note.textContent = picks.length ? `Added ${picks.length} quest${picks.length === 1 ? '' : 's'} from your ${QS_TABS[tab]} tab: ${picks.map(p => p.name).join(', ')}.` : 'Nothing added.';
+    note.classList.remove('hidden');
+  }
+});
 
 // ---------- Sync between devices (src/progresssync.js, supabase/progress-sync.sql) ----------
 const SYNC_KEY = 'maple-route-sync';
