@@ -63,6 +63,7 @@ import { OSMS_FILES } from './osms.js';
 import { PARTY_QUEST, partyLevelMessage } from './party.js';
 import { summarizeSession, bestMeasuredSpot } from './session.js';
 import { PROFILE_KEY, snapshotProfile, makeProfileBackup, parseProfileBackup } from './profile.js';
+import { createSyncStore, newSyncCode, normalizeSyncCode, syncPayload, readSyncPayload, syncFingerprint } from './progresssync.js';
 import { CLASSIC_BANDS, guideForLevel, resolveGuideMaps } from './classic-guide.js';
 import { atlasNeighbors } from './atlas.js';
 import { fetchQuestCatalog, fetchQuestSteps, fetchQuestItems, questStepMaps, questUrl, bestNpcMap } from './quests.js';
@@ -114,7 +115,7 @@ Object.assign(state, { mapStyle: 'render', guide: { quest: null, stage: null, sp
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { state.mapStyleChosen = saved.mapStyleChosen === true; if (saved.mapStyleChosen && saved.mapStyle === 'art') state.mapStyle = 'art'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useVip = saved.useVip === true; state.useSleepyTaxi = saved.useSleepyTaxi === true; state.useNearestScroll = saved.useNearestScroll === true; state.townScrollsOwned = ownedTownScrolls(saved.townScrollsOwned); state.useTownScrolls = saved.useTownScrolls === true && state.townScrollsOwned.length > 0; state.tripAll = saved.tripAll === true; state.tripAvailable = saved.tripAvailable !== false; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); state.chatWatchWords = typeof saved?.chatWatchWords === 'string' ? saved.chatWatchWords.slice(0, 200) : ''; state.chatWatchVoice = saved?.chatWatchVoice === true; state.chatWatchIgnoreShops = saved?.chatWatchIgnoreShops === true; } catch { /* optional */ }
 if (!watchKeywords(state.chatWatchWords).length) state.tools.chatWatch = false;
-const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ useNearestScroll: Boolean(state.useNearestScroll), useTownScrolls: Boolean(state.useTownScrolls), townScrollsOwned: ownedTownScrolls(state.townScrollsOwned), tripAll: Boolean(state.tripAll), tripAvailable: state.tripAvailable !== false, voiceParts: state.voiceParts ?? null, voiceName: state.voiceName ?? null, voiceRate: state.voiceRate ?? 1, goalNpc: state.goalNpc ?? null, startingQuest: state.startingQuest ?? null, mapStyle: state.mapStyle, mapStyleChosen: Boolean(state.mapStyleChosen), guideQuest: state.guide.quest, voice: state.voice, useTaxis: state.useTaxis, useVip: Boolean(state.useVip), useSleepyTaxi: Boolean(state.useSleepyTaxi), tools: state.tools, chatWatchWords: state.chatWatchWords, chatWatchVoice: state.chatWatchVoice, chatWatchIgnoreShops: state.chatWatchIgnoreShops, minimapScales: state.minimapScales, pictureScales: state.pictureScales })); } catch { /* optional */ } };
+const saveLive = () => { scheduleSyncPush(); try { localStorage.setItem(LIVE_KEY, JSON.stringify({ useNearestScroll: Boolean(state.useNearestScroll), useTownScrolls: Boolean(state.useTownScrolls), townScrollsOwned: ownedTownScrolls(state.townScrollsOwned), tripAll: Boolean(state.tripAll), tripAvailable: state.tripAvailable !== false, voiceParts: state.voiceParts ?? null, voiceName: state.voiceName ?? null, voiceRate: state.voiceRate ?? 1, goalNpc: state.goalNpc ?? null, startingQuest: state.startingQuest ?? null, mapStyle: state.mapStyle, mapStyleChosen: Boolean(state.mapStyleChosen), guideQuest: state.guide.quest, voice: state.voice, useTaxis: state.useTaxis, useVip: Boolean(state.useVip), useSleepyTaxi: Boolean(state.useSleepyTaxi), tools: state.tools, chatWatchWords: state.chatWatchWords, chatWatchVoice: state.chatWatchVoice, chatWatchIgnoreShops: state.chatWatchIgnoreShops, minimapScales: state.minimapScales, pictureScales: state.pictureScales })); } catch { /* optional */ } };
 
 // Parts not yet checked in real play carry this label, so players know to double-check them.
 const UNTESTED = '<span class="untested" title="Not checked in real play yet: it may misread or miss things. Please report what you see.">Untested</span>';
@@ -252,6 +253,7 @@ $('#app').innerHTML = `
       <section class="card" aria-labelledby="data-title"><div class="data-row"><div><h2 id="data-title">Map data</h2><p class="muted" id="data-status">Loading the public portal graph…</p></div><span class="pill" id="map-count">0 maps</span></div>
         <div class="data-actions"><button class="button secondary" id="refresh-data">Refresh map data</button><button class="button light" id="import-data">Import authorized JSON</button><input class="visually-hidden" id="data-file" type="file" accept="application/json,.json"></div>
         <div class="divider"></div><h3>Back up your progress</h3><p class="fine">Download your quests, goals, settings, and session logs. Restore them in another browser or after clearing site data. Map data is refreshed separately.</p><div class="data-actions"><button class="button secondary" id="export-progress">Download progress backup</button><button class="button light" id="import-progress">Restore progress backup</button><input class="visually-hidden" id="progress-file" type="file" accept="application/json,.json"></div><p class="fine" id="progress-status" role="status"></p>
+        <div class="divider"></div><h3>Sync between your devices</h3><p class="fine">Keep the same quest plan on your PC and Steam Deck: quests you added, started, ticked and finished, and the quest you are guiding. Turn it on here, then enter the same code on your other device. Linking replaces that device's plan with this one. The map you are on, Live GPS and settings stay on each device.</p><div id="sync-panel"></div>
         <div class="divider"></div><p class="fine">Map and portal routing data is fetched directly from <a href="https://osmsdataexplorer.com/" target="_blank" rel="noopener">OSMS Data Explorer</a> on your device. <a href="https://meowdb.com/msclassic/ko/quests" target="_blank" rel="noopener">MeowDB quests</a> remain a separate reference. Imported data stays in your browser.</p>
       </section>
     </div><div class="stack"><section class="card" aria-labelledby="route-title"><h2 id="route-title">Directions</h2><label class="field">Route style<select id="route-style"><option value="fewest">Fewest portals</option><option value="level">Avoid much higher-level monsters</option><option value="cautious">Avoid possibly special exits</option></select></label><div id="route-result" aria-live="polite"><div class="empty"><div class="icon">◇</div>Choose a destination to see your next portal.</div></div></section>
@@ -388,11 +390,13 @@ function switchCharacter(name) {
 }
 
 let bootstrapping = true;
+let syncState = null; // device sync (below); null until the saved profile has loaded
 // The graph routes and distances use: your Taxis / Scrolls choices applied.
 const travel = () => travelGraph(state.data, { taxis: state.useTaxis, vip: Boolean(state.useVip), sleepy: Boolean(state.useSleepyTaxi), nearest: Boolean(state.useNearestScroll), towns: state.useTownScrolls ? state.townScrollsOwned : [] });
 
 function persist() {
   if (bootstrapping) return;
+  scheduleSyncPush();
   setTimeout(() => { renderTicks(); renderPlanList(); }, 0); // Quest lists follow every saved change
   try { localStorage.setItem(profileKey(), JSON.stringify(snapshotProfile(state))); }
   catch { $('#progress-status').textContent = 'Your browser could not save progress. Download a backup now.'; }
@@ -4681,6 +4685,113 @@ bootstrapping = false;
 // Cards drawn before the saved profile loaded: draw them again with it.
 renderPlanList(); renderCitizenship(); renderTicks();
 persist();
+
+// ---------- Sync between devices (src/progresssync.js, supabase/progress-sync.sql) ----------
+const SYNC_KEY = 'maple-route-sync';
+syncState = (() => {
+  try { const saved = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); return { code: normalizeSyncCode(saved?.code), remoteAt: saved?.remoteAt ?? null, pushed: saved?.pushed ?? '', at: saved?.at ?? null }; }
+  catch { return { code: null, remoteAt: null, pushed: '', at: null }; }
+})();
+Object.assign(syncState, { store: createSyncStore(), timer: null, busy: false, note: '' });
+const saveSyncState = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify({ code: syncState.code, remoteAt: syncState.remoteAt, pushed: syncState.pushed, at: syncState.at })); } catch { /* sync still works this session */ } };
+function scheduleSyncPush() {
+  if (!syncState?.code) return;
+  clearTimeout(syncState.timer);
+  syncState.timer = setTimeout(() => syncPush().catch(() => {}), 4000);
+}
+// Put a downloaded plan into this device. False when it is for another character or unreadable.
+function applySynced(data) {
+  const read = readSyncPayload(data, { character: character() });
+  if (!read) return false;
+  if (read.otherCharacter) { syncState.note = `Your other device is on ${read.otherCharacter}. Pick the same character here to sync.`; return false; }
+  Object.assign(state, read.profile);
+  const live = read.live;
+  if ('guideQuest' in live) state.guide.quest = typeof live.guideQuest === 'string' ? live.guideQuest : null;
+  if ('tripAll' in live) state.tripAll = live.tripAll === true;
+  if ('tripAvailable' in live) state.tripAvailable = live.tripAvailable !== false;
+  if ('startingQuest' in live) state.startingQuest = typeof live.startingQuest === 'string' ? live.startingQuest : null;
+  if ('goalNpc' in live) state.goalNpc = typeof live.goalNpc === 'string' ? live.goalNpc : null;
+  state.tripCache = null; state.allTripCache = null; state.lastTick = null;
+  $('#player-level').value = state.level;
+  // What came down counts as already uploaded, so it is not sent straight back.
+  syncState.pushed = syncFingerprint(syncPayload(state, { character: character() }));
+  saveLive(); persist(); applyObjective();
+  for (const draw of [renderTripPlanner, renderPlanList, renderTicks, renderCharacterJourney, renderQuestRecs, renderCitizenship, renderLive]) {
+    try { draw(); } catch { /* a card not on this page */ }
+  }
+  return true;
+}
+async function syncPull() {
+  if (!syncState.code || syncState.busy) return;
+  syncState.busy = true;
+  let empty = false;
+  try {
+    const remote = await syncState.store.get(syncState.code);
+    if (!remote) empty = true;
+    else {
+      syncState.note = '';
+      if (remote.updated_at !== syncState.remoteAt) { applySynced(remote.data); syncState.remoteAt = remote.updated_at; }
+      syncState.at = Date.now();
+    }
+  } catch (error) { syncState.note = error.message; }
+  finally { syncState.busy = false; saveSyncState(); renderSync(); }
+  if (empty) await syncPush(true); // nothing saved under this code yet: this device's plan goes up
+}
+async function syncPush(force = false) {
+  if (!syncState.code || syncState.busy) return;
+  const payload = syncPayload(state, { character: character() }), fingerprint = syncFingerprint(payload);
+  if (!force && fingerprint === syncState.pushed) return;
+  syncState.busy = true;
+  try {
+    const result = await syncState.store.put(syncState.code, payload, syncState.remoteAt);
+    syncState.note = '';
+    // Another device saved first: take its plan (the same player, playing on one device at a time).
+    if (result && result.saved === false) applySynced(result.data); else syncState.pushed = fingerprint;
+    syncState.remoteAt = result?.updated_at ?? syncState.remoteAt; syncState.at = Date.now();
+  } catch (error) { syncState.note = error.message; }
+  finally { syncState.busy = false; saveSyncState(); renderSync(); }
+}
+function renderSync() {
+  const panel = $('#sync-panel'); if (!panel) return;
+  const when = syncState.at ? new Date(syncState.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null;
+  const html = syncState.code
+    ? `<p><b>Sync is on.</b> Code: <code class="sync-code">${esc(syncState.code)}</code>${when ? ` · last synced ${esc(when)}` : ''}</p><div class="data-actions"><button type="button" class="button secondary" data-sync="now">Sync now</button><button type="button" class="button light" data-sync="copy">Copy code</button><button type="button" class="button light" data-sync="off">Turn off on this device</button></div>`
+    : `<div class="data-actions"><button type="button" class="button secondary" data-sync="new">Turn on sync</button></div><label class="field">Code from your other device<input id="sync-code-input" type="text" autocomplete="off" spellcheck="false" maxlength="40" placeholder="MR-XXXX-XXXX-XXXX-XXXX-XXXX"></label><div class="data-actions"><button type="button" class="button light" data-sync="link">Link this device</button></div>`;
+  const full = html + (syncState.note ? `<p class="fine" role="status">${esc(syncState.note)}</p>` : '');
+  if (panel.dataset.html === full) return;
+  const typed = $('#sync-code-input')?.value;
+  panel.innerHTML = full; panel.dataset.html = full;
+  if (typed && $('#sync-code-input')) $('#sync-code-input').value = typed;
+}
+document.addEventListener('click', async event => {
+  const button = event.target.closest('[data-sync]'); if (!button) return;
+  const action = button.dataset.sync;
+  if (action === 'new') {
+    Object.assign(syncState, { code: newSyncCode(), remoteAt: null, pushed: '', note: 'Now enter this code on your other device (Settings → Sync between your devices).' });
+    saveSyncState(); renderSync(); await syncPush(true); return;
+  }
+  if (action === 'link') {
+    const code = normalizeSyncCode($('#sync-code-input')?.value);
+    if (!code) { syncState.note = 'That code is not complete. It looks like MR-XXXX-XXXX-XXXX-XXXX-XXXX.'; renderSync(); return; }
+    Object.assign(syncState, { code, remoteAt: null, pushed: '', note: '' });
+    saveSyncState(); renderSync(); await syncPull(); return;
+  }
+  if (action === 'now') { await syncPull(); await syncPush(); return; }
+  if (action === 'copy') {
+    try { await navigator.clipboard.writeText(syncState.code); syncState.note = 'Code copied.'; } catch { syncState.note = 'Copy it by hand from the line above.'; }
+    renderSync(); return;
+  }
+  if (action === 'off') {
+    clearTimeout(syncState.timer);
+    Object.assign(syncState, { code: null, remoteAt: null, pushed: '', at: null, note: 'Sync is off on this device. Your plan stays here.' });
+    saveSyncState(); renderSync();
+  }
+});
+renderSync();
+// Take the other device's changes when the app opens, every minute, and when you come back to it.
+syncPull();
+setInterval(() => { if (document.visibilityState === 'visible' || window.mapleDeck) syncPull(); }, 60_000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncPull(); });
 
 // Both Deck and PC Couch mode mirror this app's UI, never captured game pixels.
 function applyPhoneAction(action) {

@@ -218,6 +218,7 @@ looking.
 - Screenshots and OCR text stay on your device.
 - If you send a map report, its typed map name and description, Maple Route's believed map, app version and platform go to a private administrator inbox. No screenshot or raw OCR text is attached automatically. Reports use a separate anonymous account; see [map report privacy and review](docs/MAP_REPORTS.md).
 - Progress, settings and saved map pictures are stored in your browser (clearing site data removes them).
+- **Sync between your devices** is off until you turn it on. When on, your quest plan (quest names, ticks, level) is saved on the Maple Route server under your sync code; only a hash of the code is stored, and nothing read from your screen is sent.
 - The public site counts, anonymously and without cookies ([GoatCounter](https://www.goatcounter.com/)),
   only two things: that the app was opened and that Live GPS was started. No game data, map names or
   player names. Turn it off in **Settings → How screen reading works → Don't count my visits**.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.25
+
+- Sync between your devices (Settings): turn it on, enter the same code on your other device, and your quest plan (quests added, started, ticked and finished, the quest you are guiding, Do all quests together) follows you between the PC and the Steam Deck. It uploads a few seconds after each change and picks up the other device's changes when the app opens and every minute. Only a hash of the code is stored on the server; the map you are on, Live GPS and settings stay on each device. Server setup: `supabase/progress-sync.sql`.
+
 ## 1.1.0-beta.24
 
 - Quest guide: talk-only quests whose game text names where they happen now get a "Go to <map>" step, and the GPS and Do all quests together plan go there between picking the quest up and handing it in. Covers the [Event] Marks trail (The Pig Beach, Someone Else's House, Marr's Forest, Ant Tunnel Park), the job instructors in Finding the Instructor and a few others (17 quests). Trail quests that only give a riddle show it as a "Follow the clue" step. Towns are left out (the quest NPCs are already there).
