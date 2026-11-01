@@ -12,6 +12,41 @@ const needStep = (need, number, quest) => need.type === 'mob'
   ? { number, title: `Defeat ${need.count} ${need.name}`, monster: need.name, count: need.count }
   : { number, title: questItemGivenAtStart(quest, need.name) ? `Check ${need.name} in your bag (given when you accepted the quest)` : `Collect ${need.count} ${need.name}`, item: need.name, count: need.count };
 
+// Talk-only quests with nothing to hunt (event trails like The First Mark) still happen somewhere:
+// the quest's own ending text names the map ("…in a crack in the rocks at The Pig Beach"). Returns the
+// known maps it names, in text order, with the sentence that names each. Only unique map names of 6+
+// letters count, longest first, so "Ant Tunnel Park" wins over "Ant Tunnel". Towns are left out: an
+// ending like "…back in Henesys" is where the quest NPCs already are, not a place to search. Pure.
+export function questPlaces(quest, maps = []) {
+  if (!quest?.text || quest.needs?.length) return [];
+  if (quest.turnIn && quest.giver && normalize(quest.turnIn) !== normalize(quest.giver)) return []; // a delivery: the hand-in is the place
+  const paragraphs = String(quest.text).split(/\n+/).filter(Boolean);
+  const ending = paragraphs.length > 1 ? paragraphs.at(-1) : '';
+  if (!ending) return [];
+  const counts = new Map();
+  for (const map of maps) { const key = normalize(map.name ?? ''); if (key) counts.set(key, (counts.get(key) ?? 0) + 1); }
+  // Older saved map data has no town flag: a map that returns to itself is a town.
+  const isTown = map => map.town ?? !map.returnTo;
+  const names = [...new Set(maps.filter(map => !isTown(map)).map(map => map.name).filter(name => name && normalize(name).length >= 6 && counts.get(normalize(name)) === 1))]
+    .sort((a, b) => b.length - a.length);
+  const text = ` ${normalize(ending)} `, taken = [], found = [];
+  for (const name of names) {
+    const key = ` ${normalize(name)} `;
+    const at = text.indexOf(key);
+    if (at === -1 || taken.some(([from, to]) => at < to && at + key.length > from)) continue;
+    taken.push([at, at + key.length]);
+    const map = maps.find(candidate => candidate.name === name);
+    const sentence = ending.split(/(?<=[.!?])\s+/).find(part => normalize(part).includes(normalize(name))) ?? '';
+    found.push({ at, id: map.id, name, sentence: sentence.trim() });
+  }
+  return found.sort((a, b) => a.at - b.at).map(({ at, ...place }) => place);
+}
+// The quest's clue, when its text quotes one ("Where the sea meets a shore guarded by little snouts.").
+export function questClue(quest) {
+  const middle = String(quest?.text ?? '').split(/\n+/).filter(Boolean).slice(1, -1).join(' ');
+  return middle.match(/"([^"]{8,200})"/)?.[1] ?? null;
+}
+
 // The steps of one quest for the Live card checklist: the wiki's step list when it has one, else
 // built from the game data (talk to the giver, each hunt/collect target, hand in). Pure.
 export function buildSteps(quest, wikiSteps = []) {
@@ -42,6 +77,11 @@ export function buildSteps(quest, wikiSteps = []) {
   }
   if (quest.startAction) steps.push({ title: quest.startAction });
   for (const need of quest.needs ?? []) steps.push(needStep(need, null, quest));
+  // Where a talk-only quest actually happens (quest.places, from questPlaces), with its clue.
+  // A clue only matters further along a trail (the opening quest just quotes the log).
+  const clue = quest.needs?.length || !quest.prerequisites?.length ? null : questClue(quest);
+  for (const place of quest.places ?? []) steps.push({ title: `Go to ${place.name}`, map: place.name, mapId: place.id, visit: true, notes: place.sentence || (clue ? `Clue: "${clue}"` : null) });
+  if (!quest.places?.length && clue) steps.push({ title: `Follow the clue: "${clue}"`, notes: 'The game data does not say where; check the quest window in game.' });
   const turnIn = quest.turnIn || quest.giver;
   if (turnIn) steps.push({ title: `Hand it in to ${turnIn}${quest.turnInGuessed && quest.turnIn ? ' (best guess)' : ''}`, npc: turnIn, handIn: true });
   return steps.map((step, i) => ({ npc: null, monster: null, map: null, ...step, number: i + 1 }));

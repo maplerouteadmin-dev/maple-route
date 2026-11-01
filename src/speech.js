@@ -22,6 +22,7 @@ export function taskWords(step, { npc = null } = {}) {
   if (step.type === 'buy') return `Buy ${step.count ?? 1} ${step.item} from ${step.npc ?? 'the shop'}.`;
   if (step.type === 'hunt') return `Hunt here for ${list(step.goals ?? []) || 'what you need'}.`;
   if (step.type === 'craft') return 'Craft your items here.';
+  if (step.type === 'visit') return step.notes ? `For ${quests || 'your quest'}: ${step.notes}` : `Look around here for ${quests || 'your quest'}.`;
   if (step.type === 'handin') return `Talk to ${npc ?? step.npc ?? 'the quest NPC'} to hand in ${quests || 'your quest'}.`;
   return '';
 }

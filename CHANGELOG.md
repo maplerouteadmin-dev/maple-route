@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0-beta.24
+
+- Quest guide: talk-only quests whose game text names where they happen now get a "Go to <map>" step, and the GPS and Do all quests together plan go there between picking the quest up and handing it in. Covers the [Event] Marks trail (The Pig Beach, Someone Else's House, Marr's Forest, Ant Tunnel Park), the job instructors in Finding the Instructor and a few others (17 quests). Trail quests that only give a riddle show it as a "Follow the clue" step. Towns are left out (the quest NPCs are already there).
+- New **Sleepywood taxi** switch (Live card and Plan your route), off by default: routes no longer take the 2,500-meso Regular Cab to or from Sleepywood unless you turn it on.
+
 ## 1.1.0-beta.23
 
 - Phone (Steam Deck and Couch mode): ticking which town scrolls you have now shows on the phone. Checkboxes without a name (town scrolls, voice parts) were changed on the Deck but the phone kept showing them unticked.

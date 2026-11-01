@@ -51,7 +51,7 @@ import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOU
 // server already saves them.
 if (!isLocalHost() && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn, questDetail } from './questrecs.js';
-import { buildSteps, currentStep, stepCoversNeed } from './queststeps.js';
+import { questPlaces, buildSteps, currentStep, stepCoversNeed } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
 import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines, fixCounts } from './hud.js';
 import { parseTradeChat, addTrades, summarizePrices, itemNamer, formatMesos } from './prices.js';
@@ -75,7 +75,16 @@ import './goals.css';
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, journeyLevelConfirmed: null, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], acceptedQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], tripTicks: [], questPick: {}, questNpcMaps: {}, questDetails: {}, questItemsReady: {} };
+// Where talk-only quests happen (questPlaces): worked out once per catalog / map data.
+let placesStamp = '';
+function ensureQuestPlaces() {
+  const stamp = `${state.quests.length}:${state.data?.maps?.length ?? 0}`;
+  if (stamp === placesStamp || !state.data?.maps?.length) return;
+  placesStamp = stamp;
+  for (const quest of state.quests) quest.places = questPlaces(quest, state.data.maps);
+}
 function questByName(name) {
+  ensureQuestPlaces();
   const matches = state.quests.filter(quest => quest.name === name);
   const picked = state.questPick?.[name];
   return (picked && matches.find(quest => quest.id === picked)) ?? matches.find(quest => state.job !== 'Any' && quest.job === state.job) ?? matches.find(quest => !quest.job && !quest.town) ?? matches[0] ?? null;
@@ -102,10 +111,10 @@ function snapshotCorner(source, width, height, why, wholeFrame = false) {
 let logSeq = 0;
 const logTest = (kind, details) => { testLog.push({ seq: ++logSeq, t: new Date().toISOString().slice(11, 23), kind, ...details }); if (testLog.length > 400) testLog.splice(0, testLog.length - 400); };
 Object.assign(state, { mapStyle: 'render', guide: { quest: null, stage: null, spoken: null }, itemSources: {}, pictureScales: [], positionPic: null, tools: { exp: true, quest: true, prices: false, chatWatch: false, mobCount: true, popupExpOnly: false, expPerMap: true }, chatWatchWords: '', chatWatchVoice: false, chatWatchIgnoreShops: false, chatWatchAlerts: [], mapViewMode: 'schematic', noteRows: [], notes: mergeNotes([]), planSourcesCache: null, live: null, position: null, positionNote: null, voice: true, pipDoc: null, minimapScales: [], useTaxis: true, townScrollsOwned: [], useTownScrolls: false });
-try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { state.mapStyleChosen = saved.mapStyleChosen === true; if (saved.mapStyleChosen && saved.mapStyle === 'art') state.mapStyle = 'art'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useVip = saved.useVip === true; state.useNearestScroll = saved.useNearestScroll === true; state.townScrollsOwned = ownedTownScrolls(saved.townScrollsOwned); state.useTownScrolls = saved.useTownScrolls === true && state.townScrollsOwned.length > 0; state.tripAll = saved.tripAll === true; state.tripAvailable = saved.tripAvailable !== false; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
+try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { state.mapStyleChosen = saved.mapStyleChosen === true; if (saved.mapStyleChosen && saved.mapStyle === 'art') state.mapStyle = 'art'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useVip = saved.useVip === true; state.useSleepyTaxi = saved.useSleepyTaxi === true; state.useNearestScroll = saved.useNearestScroll === true; state.townScrollsOwned = ownedTownScrolls(saved.townScrollsOwned); state.useTownScrolls = saved.useTownScrolls === true && state.townScrollsOwned.length > 0; state.tripAll = saved.tripAll === true; state.tripAvailable = saved.tripAvailable !== false; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); state.chatWatchWords = typeof saved?.chatWatchWords === 'string' ? saved.chatWatchWords.slice(0, 200) : ''; state.chatWatchVoice = saved?.chatWatchVoice === true; state.chatWatchIgnoreShops = saved?.chatWatchIgnoreShops === true; } catch { /* optional */ }
 if (!watchKeywords(state.chatWatchWords).length) state.tools.chatWatch = false;
-const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ useNearestScroll: Boolean(state.useNearestScroll), useTownScrolls: Boolean(state.useTownScrolls), townScrollsOwned: ownedTownScrolls(state.townScrollsOwned), tripAll: Boolean(state.tripAll), tripAvailable: state.tripAvailable !== false, voiceParts: state.voiceParts ?? null, voiceName: state.voiceName ?? null, voiceRate: state.voiceRate ?? 1, goalNpc: state.goalNpc ?? null, startingQuest: state.startingQuest ?? null, mapStyle: state.mapStyle, mapStyleChosen: Boolean(state.mapStyleChosen), guideQuest: state.guide.quest, voice: state.voice, useTaxis: state.useTaxis, useVip: Boolean(state.useVip), tools: state.tools, chatWatchWords: state.chatWatchWords, chatWatchVoice: state.chatWatchVoice, chatWatchIgnoreShops: state.chatWatchIgnoreShops, minimapScales: state.minimapScales, pictureScales: state.pictureScales })); } catch { /* optional */ } };
+const saveLive = () => { try { localStorage.setItem(LIVE_KEY, JSON.stringify({ useNearestScroll: Boolean(state.useNearestScroll), useTownScrolls: Boolean(state.useTownScrolls), townScrollsOwned: ownedTownScrolls(state.townScrollsOwned), tripAll: Boolean(state.tripAll), tripAvailable: state.tripAvailable !== false, voiceParts: state.voiceParts ?? null, voiceName: state.voiceName ?? null, voiceRate: state.voiceRate ?? 1, goalNpc: state.goalNpc ?? null, startingQuest: state.startingQuest ?? null, mapStyle: state.mapStyle, mapStyleChosen: Boolean(state.mapStyleChosen), guideQuest: state.guide.quest, voice: state.voice, useTaxis: state.useTaxis, useVip: Boolean(state.useVip), useSleepyTaxi: Boolean(state.useSleepyTaxi), tools: state.tools, chatWatchWords: state.chatWatchWords, chatWatchVoice: state.chatWatchVoice, chatWatchIgnoreShops: state.chatWatchIgnoreShops, minimapScales: state.minimapScales, pictureScales: state.pictureScales })); } catch { /* optional */ } };
 
 // Parts not yet checked in real play carry this label, so players know to double-check them.
 const UNTESTED = '<span class="untested" title="Not checked in real play yet: it may misread or miss things. Please report what you see.">Untested</span>';
@@ -120,7 +129,7 @@ $('#app').innerHTML = `
       <div class="action-row">
         <button class="button" id="live-start">Start live GPS</button><button class="button secondary hidden" id="live-stop">Stop live GPS</button><button class="button light" id="live-pip">Pop-out window</button><button class="button light hidden" id="live-couch" type="button">Couch mode · phone</button>
         <span class="quick-read" role="group" aria-label="Scan your in-game quest list"><button type="button" class="button secondary" data-quick-read="progress" title="Open Q to In Progress with towns expanded, then scan">Scan In Progress</button><button type="button" class="button secondary" data-quick-read="available" title="Open Q to Available with towns expanded, then scan">Scan Available</button></span>
-        <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><label class="toggle" title="The pop-out (and the Steam Deck pop-up) shows only EXP/hour, no map"><input type="checkbox" id="live-popupexp"> Pop-out: EXP only</label><label class="toggle" title="Say your EXP per hour out loud every 3 minutes"><input type="checkbox" id="live-sayexp"> Say EXP/h</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
+        <label class="toggle"><input type="checkbox" id="live-voice"> Voice</label><label class="toggle" title="Regular Cabs and Phil"><input type="checkbox" id="live-taxis"> Taxis</label><label class="toggle" title="VIP Cab: Lith Harbor or Ellinia to Ant Tunnel Park, 10,000 mesos"><input type="checkbox" id="live-vip"> VIP taxi</label><label class="toggle" title="Regular Cab to or from Sleepywood, 2,500 mesos"><input type="checkbox" id="live-sleepy"> Sleepywood taxi</label><label class="toggle" title="Return Scroll - Nearest Town"><input type="checkbox" id="live-nearest"> Nearest scroll</label><label class="toggle" title="Use only town scrolls you confirm are in your bag"><input type="checkbox" id="live-townscrolls"> Town scrolls</label><label class="toggle" title="The pop-out (and the Steam Deck pop-up) shows only EXP/hour, no map"><input type="checkbox" id="live-popupexp"> Pop-out: EXP only</label><label class="toggle" title="Say your EXP per hour out loud every 3 minutes"><input type="checkbox" id="live-sayexp"> Say EXP/h</label><button class="button light hidden" type="button" id="town-scroll-edit">Change scrolls</button>
       </div>
       <div id="town-scroll-picker" class="town-scroll-picker hidden"><strong>Which town scrolls are in your bag?</strong><p class="fine">Only checked destinations will be used. Update this when a scroll runs out.</p><div class="town-scroll-options">${TOWN_SCROLLS.map(name => `<label class="toggle"><input type="checkbox" data-town-scroll="${esc(name)}"> ${esc(name)}</label>`).join('')}</div><div class="action-row"><button class="button" type="button" id="town-scroll-confirm">Use selected scrolls</button><button class="button light" type="button" id="town-scroll-cancel">Cancel</button></div></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
@@ -380,7 +389,7 @@ function switchCharacter(name) {
 
 let bootstrapping = true;
 // The graph routes and distances use: your Taxis / Scrolls choices applied.
-const travel = () => travelGraph(state.data, { taxis: state.useTaxis, vip: Boolean(state.useVip), nearest: Boolean(state.useNearestScroll), towns: state.useTownScrolls ? state.townScrollsOwned : [] });
+const travel = () => travelGraph(state.data, { taxis: state.useTaxis, vip: Boolean(state.useVip), sleepy: Boolean(state.useSleepyTaxi), nearest: Boolean(state.useNearestScroll), towns: state.useTownScrolls ? state.townScrollsOwned : [] });
 
 function persist() {
   if (bootstrapping) return;
@@ -465,7 +474,7 @@ function noRouteHtml() {
   return `<div class="empty">No confirmed walking route to ${esc(mapById(state.destination)?.name ?? 'this map')} in the current map data. It may need an NPC ride, quest warp or a missing portal; Maple Route will not guess an exit.${why.nearest ? `<div class="action-row center"><button class="button secondary" id="route-nearest" data-map="${esc(why.nearest.id)}">Route to ${esc(why.nearest.name)} instead</button></div>` : ''}</div>`;
 }
 $('#route-style').addEventListener('change', () => { state.routeStyle = $('#route-style').value; persist(); renderRoute(); });
-$('#route-style').closest('label').insertAdjacentHTML('afterend', '<label class="toggle route-toggle"><input type="checkbox" id="use-taxis"> Use taxis and NPC rides (they cost mesos)</label><label class="toggle route-toggle"><input type="checkbox" id="use-vip"> Use the VIP taxi (10,000 mesos)</label>');
+$('#route-style').closest('label').insertAdjacentHTML('afterend', '<label class="toggle route-toggle"><input type="checkbox" id="use-taxis"> Use taxis and NPC rides (they cost mesos)</label><label class="toggle route-toggle"><input type="checkbox" id="use-vip"> Use the VIP taxi (10,000 mesos)</label><label class="toggle route-toggle"><input type="checkbox" id="use-sleepy"> Use the Sleepywood taxi (2,500 mesos)</label>');
 $('#use-taxis').checked = state.useTaxis;
 $('#use-taxis').addEventListener('change', event => { state.useTaxis = event.target.checked; $('#live-taxis').checked = state.useTaxis; saveLive(); renderRoute(); });
 $('#live-taxis').checked = state.useTaxis;
@@ -499,6 +508,10 @@ $('#town-scroll-confirm').addEventListener('click', () => {
 });
 $('#live-taxis').addEventListener('change', event => { state.useTaxis = event.target.checked; $('#use-taxis').checked = state.useTaxis; saveLive(); renderRoute(); renderLive(); renderTargets(); });
 // The VIP Cab has its own switch (on the Live card and in route options), off unless you turn it on.
+for (const id of ['#live-sleepy', '#use-sleepy']) {
+  $(id).checked = Boolean(state.useSleepyTaxi);
+  $(id).addEventListener('change', event => { state.useSleepyTaxi = event.target.checked; $('#live-sleepy').checked = $('#use-sleepy').checked = state.useSleepyTaxi; state.tripCache = null; state.allTripCache = null; saveLive(); applyObjective(); renderRoute(); renderLive(); renderTargets(); });
+}
 for (const id of ['#live-vip', '#use-vip']) {
   $(id).checked = Boolean(state.useVip);
   $(id).addEventListener('change', event => { state.useVip = event.target.checked; $('#live-vip').checked = $('#use-vip').checked = state.useVip; state.tripCache = null; state.allTripCache = null; saveLive(); applyObjective(); renderRoute(); renderLive(); renderTargets(); });
@@ -2004,6 +2017,13 @@ function completeNextStep() {
     }
     if (step.type === 'buy' && !ticks.length) for (const quest of step.quests ?? []) { const key = `need:${step.item}`, done = new Set(state.questDone[quest] ?? []); if (!done.has(key)) { done.add(key); state.questDone[quest] = [...done]; ticks.push([quest, key]); } }
     state.lastTick = { multi: ticks, label: step.type === 'hunt' ? `${step.goals.join(', ')}` : step.item, at: Date.now() };
+    state.allTripCache = null; persist(); applyObjective(); renderLive(); renderTicks();
+    return;
+  }
+  if (step.type === 'visit') {
+    const ticks = [];
+    for (const quest of step.quests ?? []) { const done = new Set(state.questDone[quest] ?? []); if (!done.has(step.step)) { done.add(step.step); state.questDone[quest] = [...done]; ticks.push([quest, step.step]); } }
+    state.lastTick = { multi: ticks, label: `Go to ${mapById(step.mapId)?.name ?? 'the map'}`, at: Date.now() };
     state.allTripCache = null; persist(); applyObjective(); renderLive(); renderTicks();
     return;
   }
@@ -3808,6 +3828,7 @@ function stepTarget(step, guide) {
   const chosenNpcMap = step.npc && guide?.name ? questNpcMap(guide.name, step.npc) : null;
   const npcChoice = npcChoices.find(choice => choice.map.id === chosenNpcMap && choice.hops !== null) ?? npcChoices.find(choice => choice.hops !== null);
   if (npcChoice && !(state.tripAll && step.handIn)) return { mapId: npcChoice.map.id, npc: step.npc };
+  if (step.visit && mapById(step.mapId)) return { mapId: step.mapId, npc: null };
   if (state.guide.huntMap && mapById(state.guide.huntMap) && !step.npc) return { mapId: state.guide.huntMap, npc: null };
   const options = huntOptions(guide);
   const all = state.tripAll ? allQuestsTrip() : null;
@@ -3860,7 +3881,7 @@ function huntOptions(g) {
   loadItemSources(goals.filter(goal => goal.pending).map(goal => goal.lookup ?? goal.name));
   // The trip ends where the quest is handed in, so stops on the way there are preferred.
   const endNpc = g.quest?.turnIn || g.quest?.giver, endMapId = endNpc ? questNpcMap(g.name, endNpc) : null;
-  const key = JSON.stringify([goals.map(goal => [goal.name, goal.monsters]), state.current, state.level, endMapId, state.useTaxis, state.useVip, state.useNearestScroll, state.useTownScrolls, state.townScrollsOwned]);
+  const key = JSON.stringify([goals.map(goal => [goal.name, goal.monsters]), state.current, state.level, endMapId, state.useTaxis, state.useVip, state.useSleepyTaxi, state.useNearestScroll, state.useTownScrolls, state.townScrollsOwned]);
   if (state.tripCache?.key !== key) state.tripCache = { key, trip: planHuntTrip(travel(), goals, state.current, endMapId, { via: craftStops(state.data, goals), playerLevel: state.level }), endNpc };
   return { goals, maps: rankObjectiveMaps(travel(), goals, state.current, { playerLevel: state.level }).slice(0, 4), trip: state.tripCache.trip, endNpc };
 }
@@ -3877,7 +3898,7 @@ function allQuestsTrip(onlyQuest = null) {
   const candidates = [...doing, ...planned, ...offered.filter(q => !planned.includes(q))];
   const names = candidates.filter(q => onlyQuest || !state.planSkip.includes(q)).slice(0, 12);
   const started = name => (state.hud.quests ?? []).some(q => q.name === name) || state.acceptedQuests.includes(name);
-  const byName = new Map(), ends = new Map(), endQuests = new Map(), starts = [];
+  const byName = new Map(), ends = new Map(), endQuests = new Map(), starts = [], visits = [];
   // An NPC name on several maps (each town's Community Board): the one nearest `near` (the hand-in).
   const npcMapOf = (npc, questName, near = null) => questNpcMap(questName, npc, near);
   for (const name of names) {
@@ -3889,6 +3910,10 @@ function allQuestsTrip(onlyQuest = null) {
     const ticked = new Set([...(state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))), ...(state.questItemsReady[name] ?? []).map(normalize)]);
     const notStarted = !started(name);
     if (notStarted && quest.giver) starts.push({ mapId: npcMapOf(quest.giver, name, npcMapOf(quest.turnIn, name)), quests: [name], npc: quest.giver });
+    // A talk-only quest's own place (an event trail's map) is a stop until its step is ticked.
+    const questSteps = buildSteps({ ...quest, needs }, state.questDetails[name]?.steps ?? []);
+    const stepsDone = currentStep(questSteps, state.questDone[name] ?? [], { accepted: !notStarted, giver: quest.giver }).done;
+    for (const step of questSteps.filter(step => step.visit && step.mapId && !stepsDone.has(step.number))) visits.push({ mapId: step.mapId, quests: [name], step: step.number, place: step.map, notes: step.notes });
     const progress = needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: 0, need: n.count ?? seen?.need, done: ticked.has(normalize(n.name)) }; });
     goals = huntGoals(state.data, progress, planSources(), quest.text, needs.map(n => n.name), state.crafting, myShops(), quest);
     loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
@@ -3903,8 +3928,8 @@ function allQuestsTrip(onlyQuest = null) {
     if (mapId && !(quest.variants?.length && !quest.week?.by)) { ends.set(mapId, [...(ends.get(mapId) ?? []), npc]); endQuests.set(mapId, [...(endQuests.get(mapId) ?? []), name]); }
   }
   const goals = [...byName.values()];
-  const key = JSON.stringify([onlyQuest, names, goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], starts.map(st => st.quests[0]), state.current, state.level, state.useTaxis, state.useVip, state.useNearestScroll, state.useTownScrolls, state.townScrollsOwned]);
-  if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()].map(mapId => ({ mapId, quests: endQuests.get(mapId) ?? [] })), { via: craftStops(state.data, goals), starts, playerLevel: state.level }) };
+  const key = JSON.stringify([onlyQuest, names, goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], starts.map(st => st.quests[0]), visits.map(v => [v.quests[0], v.step]), state.current, state.level, state.useTaxis, state.useVip, state.useSleepyTaxi, state.useNearestScroll, state.useTownScrolls, state.townScrollsOwned]);
+  if (state.allTripCache?.key !== key) state.allTripCache = { key, trip: planMultiTrip(travel(), goals, state.current, [...ends.keys()].map(mapId => ({ mapId, quests: endQuests.get(mapId) ?? [] })), { via: craftStops(state.data, goals), starts, visits, playerLevel: state.level }) };
   return { goals, ends, quests: names, skipped: onlyQuest ? [] : candidates.filter(q => state.planSkip.includes(q)), offered: offered.length, waiting: state.questsAvailable.filter(q => !doing.includes(q) && !state.questsFinished.includes(q)).length, trip: state.allTripCache.trip };
 }
 let questStepsExpanded = false;
@@ -3967,6 +3992,7 @@ function allStepsHtml(all, { single = false } = {}) {
     }
     if (step.type === 'buy') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Buy at ${mapName}</strong>${now}<ul class="need-list">${(step.quests.length ? step.quests : ['']).map(q => `<li><label><input type="checkbox" data-need-tick="${esc(q)}" data-need="${esc(step.item)}"> ${esc(step.item)} ×${step.count} <small>${esc(needCount(q, step.item))} · from ${esc(step.npc)}${step.price ? `, ${step.price.toLocaleString()} mesos each` : ''}</small></label></li>`).join('')}${!state.citizenship ? (() => { const halls = (state.shops?.[step.item.toLowerCase()] ?? []).filter(x => x.grade); return halls.length ? `<li class="buy-note"><small>Citizen? ${esc(halls.map(x => `${x.npc} (${x.map}) sells it to ${x.town} residents of grade ${x.grade}`).join('; '))}. <a href="#settings" data-reveal-citizen>Set my citizenship</a> and the plan can use the nearer shop.</small></li>` : ''; })() : ''}</ul></li>`;
     if (step.type === 'start') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Start at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', '))} <small>from ${esc(step.npc ?? 'the quest NPC')} (assumed started if listed In Progress)</small></label></li></ul></li>`;
+    if (step.type === 'visit') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Go to ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-all-step-tick="${esc(step.quests[0] ?? '')}" data-step-number="${step.step}"> ${esc(step.quests.join(', '))}${step.notes ? ` <small>${esc(step.notes)}</small>` : ''}</label></li></ul></li>`;
     if (step.type === 'craft') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Craft at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> Made it</label></li></ul></li>`;
     return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hand in at ${mapName}</strong>${now}${step.noRoute ? ' <small>(no walking route there)</small>' : ''}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', ') || 'your quest')} <small>to ${esc(npcsAt(step.mapId) || 'the quest NPC')}</small></label></li></ul></li>`;
   });

@@ -277,10 +277,10 @@ export function rankObjectiveMaps(data, goals, currentMapId = null, { playerLeve
 // the fewest maps but before any hunting for it (kills only count once a quest is accepted), and its
 // hand-in comes after it.
 // Returns { order: [{ type: 'hunt'|'craft'|'handin', mapId, … }], stops, via, ends, hops, missing }.
-export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { via = [], starts = [], playerLevel = null } = {}) {
+export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { via = [], starts = [], visits = [], playerLevel = null } = {}) {
   goals = shareMonsterThresholds(goals);
   const active = goals.filter(g => g.monsters?.length);
-  if (!active.length && !starts.length && !handIns.length && !goals.some(g => g.kind === 'buy')) return null;
+  if (!active.length && !starts.length && !handIns.length && !visits.length && !goals.some(g => g.kind === 'buy')) return null;
   const ends = handIns.map(h => typeof h === 'string' ? { mapId: h, quests: [] } : h).filter(h => h.mapId);
   const cap = goal => Math.min(20, 8 + Math.ceil(Math.max(1, (goal.need ?? 1) - (goal.have ?? 0)) / 5));
   const spawnsOn = (goal, mapId) => goalSpawns(data, goal).get(mapId) ?? 0;
@@ -325,6 +325,11 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
     const firstHunt = order.findIndex(o => o.type === 'hunt' && o.quests.some(q => start.quests.includes(q)));
     cheapest({ mapId: start.mapId, type: 'start', quests: start.quests, npc: start.npc ?? null }, 0, firstHunt === -1 ? order.length : firstHunt);
   }
+  // Places a talk-only quest happens at (an event trail's map): after the quest is picked up.
+  for (const visit of visits.filter(v => v.mapId)) {
+    const startAt = order.findIndex(o => o.type === 'start' && o.quests.some(q => visit.quests.includes(q))) + 1;
+    cheapest({ mapId: visit.mapId, type: 'visit', quests: visit.quests, step: visit.step ?? null, place: visit.place ?? null, notes: visit.notes ?? null }, startAt, order.length);
+  }
   // Each hand-in where it adds the fewest maps, after the last stop its quest needs.
   const crafting = new Set(goals.filter(g => g.craft).flatMap(g => g.quests ?? []));
   const lastCraft = order.findLastIndex(o => o.type === 'craft');
@@ -332,7 +337,7 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
   for (const end of named) {
     let earliest = 0;
     for (const quest of end.quests) {
-      earliest = Math.max(earliest, order.findLastIndex(o => (o.type === 'hunt' || o.type === 'start') && o.quests.includes(quest)) + 1);
+      earliest = Math.max(earliest, order.findLastIndex(o => (o.type === 'hunt' || o.type === 'start' || o.type === 'visit') && o.quests.includes(quest)) + 1);
       if (crafting.has(quest)) earliest = Math.max(earliest, lastCraft + 1);
       if ([...left].some(g => g.quests?.includes(quest))) earliest = order.length; // something has no spot: hand in last
     }

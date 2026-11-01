@@ -297,3 +297,15 @@ test('needs from the same monster hunt on the same map (Axe Stump kills and Plan
   assert.equal(hunts.length, 1);
   assert.deepEqual(hunts[0].goals.sort(), ['Axe Stump', 'Plant Fossil']);
 });
+
+test('a talk-only quest stops at its place after pick-up and before the hand-in', async () => {
+  const { planMultiTrip } = await import('./objective.js');
+  const world = validateDataset({ schemaVersion: 1,
+    maps: [{ id: 'hen', name: 'Henesys' }, { id: 'field', name: 'Field' }, { id: 'beach', name: 'The Pig Beach' }],
+    portals: [{ from: 'hen', to: 'field', name: 'r' }, { from: 'field', to: 'hen', name: 'l' }, { from: 'field', to: 'beach', name: 'r' }, { from: 'beach', to: 'field', name: 'l' }],
+    targets: [{ id: 'jay', kind: 'npc', name: 'Jay', locations: [{ mapId: 'hen' }] }] });
+  const trip = planMultiTrip(world, [], 'hen', [{ mapId: 'hen', quests: ['The First Mark'] }], {
+    starts: [{ mapId: 'hen', quests: ['The First Mark'], npc: 'Jay' }],
+    visits: [{ mapId: 'beach', quests: ['The First Mark'], step: 2, place: 'The Pig Beach' }] });
+  assert.deepEqual(trip.order.map(stop => `${stop.type}:${stop.mapId}`), ['start:hen', 'visit:beach', 'handin:hen']);
+});

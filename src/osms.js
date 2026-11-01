@@ -31,7 +31,7 @@ export function fromOsms(mapPayload, portalPayload, monsterPayload = null, wikiP
     .flatMap(group => (group.maps ?? []).filter(m => m.name).map(m => ({
       id: id9(m.id), name: String(m.name), area: String(m.region ?? group.region ?? ''),
       aliases: [m.street_name && `${m.street_name} ${m.name}`].filter(Boolean), bounds: boundsById.get(id9(m.id)),
-      picture: typeof m.minimap === 'string' ? m.minimap : null, returnTo: m.return_map_id && Number(m.return_map_id) !== Number(m.id) && Number(m.return_map_id) < 999999999 ? id9(m.return_map_id) : null,
+      picture: typeof m.minimap === 'string' ? m.minimap : null, town: m.is_town === true && m.street_name !== 'Hidden Street', returnTo: m.return_map_id && Number(m.return_map_id) !== Number(m.id) && Number(m.return_map_id) < 999999999 ? id9(m.return_map_id) : null,
       npcs: (m.npc_positions ?? []).map(position => ({ name: mapPayload.npc_lookup?.[String(position.id)]?.name, x: position.x, y: position.y })).filter(npc => npc.name),
       capacity: Number.isInteger(Number(m.mob_capacity)) && Number(m.mob_capacity) > 0 ? Number(m.mob_capacity) : null,
       mobSpots: (m.mob_positions ?? []).map(position => ({ name: monsterNames.get(String(position.id)), x: position.x, y: position.y })).filter(spot => spot.name)

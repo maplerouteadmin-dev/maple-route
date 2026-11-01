@@ -66,3 +66,16 @@ test('the VIP Cab has its own switch, apart from regular taxis', async () => {
   assert.deepEqual(names({ taxis: true }), ['Phil', 'VIP Cab']);
 });
 
+
+test('the Sleepywood cab can be left out while other cabs stay', async () => {
+  const { travelGraph } = await import('./routing.js');
+  const world = validateDataset({ schemaVersion: 1, maps: [{ id: 'hen', name: 'Henesys' }, { id: 'sleepy', name: 'Sleepywood' }, { id: 'kc', name: 'Kerning City' }], portals: [
+    { from: 'hen', to: 'sleepy', name: 'Regular Cab', kind: 'taxi', npc: 'Regular Cab' },
+    { from: 'sleepy', to: 'hen', name: 'Regular Cab', kind: 'taxi', npc: 'Regular Cab' },
+    { from: 'hen', to: 'kc', name: 'Regular Cab', kind: 'taxi', npc: 'Regular Cab' }
+  ], targets: [] });
+  const rides = graph => graph.portals.filter(p => p.kind === 'taxi').map(p => `${p.from}>${p.to}`);
+  assert.deepEqual(rides(travelGraph(world, { taxis: true, sleepy: true })), ['hen>sleepy', 'sleepy>hen', 'hen>kc']);
+  assert.deepEqual(rides(travelGraph(world, { taxis: true, sleepy: false })), ['hen>kc']);
+  assert.deepEqual(rides(travelGraph(world, { taxis: false, sleepy: true })), []);
+});

@@ -13,14 +13,16 @@ export function uncertainPortal(portal) {
 const travelCache = new WeakMap();
 // `nearest`: Return Scroll - Nearest Town; `towns`: the town scrolls (each a separate choice).
 // `taxis` = Regular Cabs and Phil; `vip` = the VIP Cab (10,000 mesos) on its own switch. Boats always count.
-export function travelGraph(data, { taxis = true, vip = taxis, nearest = false, towns: townScrolls = false, scrolls = false } = {}) {
+// `sleepy: false` leaves out the Regular Cab to and from Sleepywood (2,500 mesos, the dearest cab).
+export function travelGraph(data, { taxis = true, vip = taxis, sleepy = taxis, nearest = false, towns: townScrolls = false, scrolls = false } = {}) {
   if (scrolls) { nearest = true; townScrolls = true; }
   const selectedTowns = townScrolls === true ? TOWN_SCROLLS : ownedTownScrolls(townScrolls);
-  const key = `${taxis}|${vip}|${nearest}|${selectedTowns.join(',')}`, byData = travelCache.get(data) ?? new Map();
+  const key = `${taxis}|${vip}|${sleepy}|${nearest}|${selectedTowns.join(',')}`, byData = travelCache.get(data) ?? new Map();
   travelCache.set(data, byData);
   if (byData.has(key)) return byData.get(key);
   const known = new Set(data.maps.map(m => m.id));
-  const portals = data.portals.filter(p => p.kind !== 'taxi' || p.boat || (p.npc === 'VIP Cab' ? vip : taxis));
+  const sleepywood = new Set(data.maps.filter(m => m.name === 'Sleepywood').map(m => m.id));
+  const portals = data.portals.filter(p => p.kind !== 'taxi' || p.boat || (p.npc === 'VIP Cab' ? vip : taxis && (sleepy || !(p.npc === 'Regular Cab' && (sleepywood.has(p.to) || sleepywood.has(p.from))))));
   if (nearest || selectedTowns.length) {
     // Return Scroll - Nearest Town (to the map's own return town) and the town scrolls Classic sells
     // (Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow).

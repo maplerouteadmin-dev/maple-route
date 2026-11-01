@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSteps, currentStep } from './queststeps.js';
+import { buildSteps, currentStep, questPlaces, questClue } from './queststeps.js';
 
 test('The Old Snail asks for the book from Pia, never a Snail hunt', () => {
   const quest = { name: 'The Old Snail', giver: 'Pia', turnIn: 'Jay', needs: [{ type: 'item', name: 'The Snail Legend', count: 1 }] };
@@ -62,4 +62,31 @@ test('an item already marked ready is not offered again as the next quest step',
   const steps = buildSteps(quest, [{ number: 1, title: 'Talk to Luke', npc: 'Luke' }]);
   assert.equal(currentStep(steps, [], { accepted: true, giver: 'Luke', completedNeeds: ['Stirge Wing'] }).step.item, 'Salad');
   assert.equal(currentStep(steps, ['need:Salad'], { accepted: true, giver: 'Luke', completedNeeds: ['Stirge Wing'] }).step.handIn, true);
+});
+
+test('a talk-only event trail goes to the map its ending text names, with the clue', () => {
+  const maps = [{ id: 'pig', name: 'The Pig Beach', returnTo: 'lith' }, { id: 'hen', name: 'Henesys', town: true }, { id: 'atp', name: 'Ant Tunnel Park', returnTo: 'sleepy' }, { id: 'at1', name: 'Ant Tunnel I', returnTo: 'sleepy' }, { id: 'house', name: "Someone Else's House", returnTo: 'hen' }];
+  const first = { name: '[Event] The First Mark', giver: 'Jay', needs: [], text: 'The first page of the Adventurer\'s Journal is still legible.\nThe first page of the Adventurer\'s Journal reads: "Where the sea meets a shore guarded by little snouts." Only characters at Level 10 or higher can complete this quest.\nWedged in a crack in the rocks at The Pig Beach was the next sheet of the log. The Adventurer\'s Journal - Page 2 is mine.' };
+  assert.deepEqual(questPlaces(first, maps), [{ id: 'pig', name: 'The Pig Beach', sentence: 'Wedged in a crack in the rocks at The Pig Beach was the next sheet of the log.' }]);
+  assert.equal(questClue(first), 'Where the sea meets a shore guarded by little snouts.');
+  const steps = buildSteps({ ...first, places: questPlaces(first, maps) });
+  assert.deepEqual(steps.map(step => step.title), ['Talk to Jay to start', 'Go to The Pig Beach', 'Hand it in to Jay']);
+  assert.equal(steps[1].mapId, 'pig'); assert.equal(steps[1].visit, true);
+  const final = { giver: 'Jay', needs: [], text: 'Start.\nIt reads: "Beneath the earth, even the smallest footsteps may lead the way."\nPast the hidden portal, at the end of Ant Tunnel Park, the trail finally ran out.' };
+  assert.deepEqual(questPlaces(final, maps).map(place => place.name), ['Ant Tunnel Park']);
+  // No map named: the clue becomes the step, said plainly that the data has no place.
+  const fourth = { giver: 'Jay', needs: [], prerequisites: ['[Event] The Third Mark'], text: 'Start.\nPage 4 reads: "Where shadows gather, leave no coin unturned."\n10 mesos was all the nameless thief ever wanted for it.' };
+  assert.deepEqual(buildSteps(fourth).map(step => step.title), ['Talk to Jay to start', 'Follow the clue: "Where shadows gather, leave no coin unturned."', 'Hand it in to Jay']);
+});
+
+test('places are not added to hunting quests or deliveries to someone else', () => {
+  const maps = [{ id: 'hen', name: 'Henesys' }];
+  assert.deepEqual(questPlaces({ giver: 'Pia', needs: [{ type: 'mob', name: 'Snail', count: 5 }], text: 'a\nb\nDone in Henesys.' }, maps), []);
+  assert.deepEqual(questPlaces({ giver: 'Pia', turnIn: 'Mai', needs: [], text: 'a\nb\nI walked to Henesys.' }, maps), []);
+});
+
+test('a town named in the ending is not a place to go (the quest NPCs are already there)', () => {
+  const maps = [{ id: 'hen', name: 'Henesys', town: true }, { id: 'kc', name: 'Kerning City' }, { id: 'hall', name: 'Henesys Town Hall', town: true, returnTo: 'hen' }];
+  const quest = { giver: 'Bruce', needs: [], text: 'a\nb\nI told Bruce in Henesys, then went on to Kerning City and the Henesys Town Hall.' };
+  assert.deepEqual(questPlaces(quest, maps), []);
 });
