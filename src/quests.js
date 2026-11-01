@@ -59,7 +59,7 @@ export function fromOsmsQuests(payload, wikiRows = [], wikiItemRows = []) {
       level: Number.isFinite(q.level_min) ? q.level_min : null, job: JOB_REGIONS.has(q.region) ? q.region : '', region: q.region ?? null,
       arc: q.parent || null, arcOrder: chain?.index ?? 0, prerequisites: [...prerequisites],
       type: q.region === 'Event' ? 'Event' : q.region === 'Citizenship' ? 'Citizenship' : q.region === 'Crafting' ? 'Crafting' : 'Normal',
-      repeatable: Boolean(q.is_repeatable || q.is_daily || q.is_weekly), startItems,
+      repeatable: Boolean(q.is_repeatable || q.is_daily || q.is_weekly), resets: q.is_daily ? 'daily' : q.is_weekly ? 'weekly' : null, startItems,
       startAction: id === '1002' ? "Use Roger's Apple from your inventory" : null,
       needs: (q.requirements_list ?? []).filter(r => (r.type === 'mob' || r.type === 'item') && !(r.type === 'item' && providedAtStart({ startItems }, r.name))).map(r => ({ type: r.type, name: r.name, count: r.count })),
       text: String(q.description ?? '').slice(0, 1200),

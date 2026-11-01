@@ -11,6 +11,7 @@ let wakeLock;
 let currentHtml = '';
 let mapUserAt = 0;
 let pendingReport = false;
+let goneBuzzed = false;
 app.addEventListener('wheel', event => { if (event.target.closest('#mapview .mv-picture')) mapUserAt = Date.now(); }, { passive: true });
 for (const type of ['pointerdown', 'touchstart', 'keydown'])
   app.addEventListener(type, event => { if (event.target.closest('#mapview .mv-picture')) mapUserAt = Date.now(); }, { passive: true });
@@ -118,6 +119,10 @@ function applySnapshot(snapshot) {
   const selection = focusPath && 'selectionStart' in focused ? [focused.selectionStart, focused.selectionEnd] : null;
   currentHtml = snapshot.html;
   app.innerHTML = currentHtml;
+  // The game disconnected (the Deck lost it for 90 s): buzz once so you notice from the couch.
+  const gone = Boolean(app.querySelector('#game-gone'));
+  if (gone && !goneBuzzed) navigator.vibrate?.([300, 200, 300, 200, 300]);
+  goneBuzzed = gone;
   if (pendingReport && app.querySelector('#feedback-title')) {
     pendingReport = false;
     requestAnimationFrame(() => app.querySelector('#feedback-title')?.scrollIntoView({ block: 'start' }));

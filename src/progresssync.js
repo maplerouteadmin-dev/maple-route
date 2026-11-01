@@ -5,7 +5,7 @@ import { MARKET_URL, MARKET_KEY } from './marketstore.js';
 // map you are on, Live GPS, screen reading, voice) stay on each device.
 export const SYNC_FIELDS = ['goals', 'level', 'journeyLevelConfirmed', 'job', 'gearOwned', 'sessions', 'questDone', 'activeQuests',
   'acceptedQuests', 'questItemsReady', 'questsFinished', 'questsHidden', 'questsAvailable', 'planQuests', 'citizenship', 'planSkip',
-  'tripTicks', 'questPick', 'questNpcMaps'];
+  'tripTicks', 'questPick', 'questNpcMaps', 'questFinishedAt'];
 export const SYNC_LIVE_FIELDS = ['guideQuest', 'tripAll', 'tripAvailable', 'startingQuest', 'goalNpc'];
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I: easy to type on a phone or Deck

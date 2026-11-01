@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0-beta.28
+
+- **Boss timers** (Live card → Boss timers): press Killed for Mano, Stumpy, Faust, King Clang, Mushmom, Zombie Mushmom, Jr. Balrog or Crimson Balrog. The countdown shows on the Live card, the pop-out and the Deck pop-up, and the voice warns a minute before and when due (voice part "Boss timers"). Respawn times are not in the game data: each starts at 60 minutes and you set your own.
+- **Session summary** when you stop Live GPS: time played, EXP and EXP/h, levels, EXP/h on each map you stayed on, quests finished, compared with your last session. The last 30 sessions are kept.
+- **Time to move on**: after 10 minutes on a map, if one of your past sessions near your level got at least half again as much EXP/h somewhere else, it says so (under EXP/h and by voice). On a level-up it names a good training map for the new level.
+- **Mesos per hour** (Settings → Live tools, off by default, Untested): adds up meso pickups shown in the visible chat.
+- **Daily and weekly quests reset**: a finished daily quest comes back after 00:00 UTC, a weekly one after Monday 00:00 UTC (the weekly day is assumed; check in game).
+- **Disconnect alert** (on by default): if neither the mini map nor the status bars have been seen for 90 seconds, a banner shows, the voice says so, the phone buzzes and (if allowed) a desktop notification pops up.
+
 ## 1.1.0-beta.27
 
 - Read quests one by one now counts: it adds up the town rows of the open tab ("Perion (1)", "Henesys (3)"), shows "Read 4 of 6" as you click, counts a quest it cannot name only once, and stops by itself when it has seen every quest on the tab, with a summary like "All 6 quests seen: 5 recognised, 1 not recognised". The first picture before you click anything is not counted.

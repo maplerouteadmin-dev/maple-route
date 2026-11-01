@@ -4,7 +4,7 @@ const fields = [
   'current', 'destination', 'routeStyle', 'targetId', 'crop', 'goals',
   'level', 'journeyLevelConfirmed', 'job', 'focus', 'guideMode', 'selectedItemName', 'gearOwned',
   'partyDone', 'sessions', 'selectedQuest', 'questDone', 'activeQuests', 'acceptedQuests',
-  'questItemsReady', 'questsFinished', 'questsHidden', 'questsAvailable', 'planQuests', 'citizenship', 'planSkip', 'tripTicks', 'questPick', 'questNpcMaps'
+  'questItemsReady', 'questsFinished', 'questsHidden', 'questsAvailable', 'planQuests', 'citizenship', 'planSkip', 'tripTicks', 'questPick', 'questNpcMaps', 'questFinishedAt'
 ];
 
 export function snapshotProfile(state) {

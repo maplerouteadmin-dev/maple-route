@@ -64,6 +64,11 @@ import { PARTY_QUEST, partyLevelMessage } from './party.js';
 import { summarizeSession, bestMeasuredSpot } from './session.js';
 import { PROFILE_KEY, snapshotProfile, makeProfileBackup, parseProfileBackup } from './profile.js';
 import { identifyQuestDetail, questTabCount } from './questdetail.js';
+import { BOSSES, bossRows, countdown, bossAnnouncements, respawnMinutes } from './bosstimers.js';
+import { createSessionLog, logMap, logExp, logQuest, finishSession, summaryLines, betterMap } from './sessionlog.js';
+import { questsToReset } from './questresets.js';
+import { mesoAmount, newChatLines, createMesoTracker, addMesos, mesosPerHour } from './mesotracker.js';
+import { gameGone } from './disconnect.js';
 import { createSyncStore, newSyncCode, normalizeSyncCode, syncPayload, readSyncPayload, syncFingerprint } from './progresssync.js';
 import { CLASSIC_BANDS, guideForLevel, resolveGuideMaps } from './classic-guide.js';
 import { atlasNeighbors } from './atlas.js';
@@ -112,7 +117,7 @@ function snapshotCorner(source, width, height, why, wholeFrame = false) {
 }
 let logSeq = 0;
 const logTest = (kind, details) => { testLog.push({ seq: ++logSeq, t: new Date().toISOString().slice(11, 23), kind, ...details }); if (testLog.length > 400) testLog.splice(0, testLog.length - 400); };
-Object.assign(state, { mapStyle: 'render', guide: { quest: null, stage: null, spoken: null }, itemSources: {}, pictureScales: [], positionPic: null, tools: { exp: true, quest: true, prices: false, chatWatch: false, mobCount: true, popupExpOnly: false, expPerMap: true }, chatWatchWords: '', chatWatchVoice: false, chatWatchIgnoreShops: false, chatWatchAlerts: [], mapViewMode: 'schematic', noteRows: [], notes: mergeNotes([]), planSourcesCache: null, live: null, position: null, positionNote: null, voice: true, pipDoc: null, minimapScales: [], useTaxis: true, townScrollsOwned: [], useTownScrolls: false });
+Object.assign(state, { mapStyle: 'render', guide: { quest: null, stage: null, spoken: null }, itemSources: {}, pictureScales: [], positionPic: null, tools: { exp: true, quest: true, prices: false, chatWatch: false, mobCount: true, popupExpOnly: false, expPerMap: true, mesos: false, goneAlert: true }, chatWatchWords: '', chatWatchVoice: false, chatWatchIgnoreShops: false, chatWatchAlerts: [], mapViewMode: 'schematic', noteRows: [], notes: mergeNotes([]), planSourcesCache: null, live: null, position: null, positionNote: null, voice: true, pipDoc: null, minimapScales: [], useTaxis: true, townScrollsOwned: [], useTownScrolls: false });
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (saved) { state.mapStyleChosen = saved.mapStyleChosen === true; if (saved.mapStyleChosen && saved.mapStyle === 'art') state.mapStyle = 'art'; if (typeof saved.guideQuest === 'string') state.guide.quest = saved.guideQuest; if (typeof saved.goalNpc === 'string') state.goalNpc = saved.goalNpc; if (typeof saved.voiceName === 'string') state.voiceName = saved.voiceName; if (saved.voiceParts && typeof saved.voiceParts === 'object') state.voiceParts = Object.fromEntries(Object.entries(saved.voiceParts).filter(([, v]) => typeof v === 'boolean')); if ([0.85, 1, 1.15].includes(saved.voiceRate)) state.voiceRate = saved.voiceRate; if (typeof saved.startingQuest === 'string') state.startingQuest = saved.startingQuest; state.voice = saved.voice !== false; state.useTaxis = saved.useTaxis !== false; state.useVip = saved.useVip === true; state.useSleepyTaxi = saved.useSleepyTaxi === true; state.useNearestScroll = saved.useNearestScroll === true; state.townScrollsOwned = ownedTownScrolls(saved.townScrollsOwned); state.useTownScrolls = saved.useTownScrolls === true && state.townScrollsOwned.length > 0; state.tripAll = saved.tripAll === true; state.tripAvailable = saved.tripAvailable !== false; if (saved.tools && typeof saved.tools === 'object') for (const key of Object.keys(state.tools)) if (typeof saved.tools[key] === typeof state.tools[key]) state.tools[key] = saved.tools[key]; state.pictureScales = Array.isArray(saved.pictureScales) ? saved.pictureScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; state.minimapScales = Array.isArray(saved.minimapScales) ? saved.minimapScales.filter(entry => [entry?.w, entry?.h, entry?.scale].every(Number.isFinite)).slice(0, 8) : []; } } catch { /* optional */ }
 try { const saved = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); state.chatWatchWords = typeof saved?.chatWatchWords === 'string' ? saved.chatWatchWords.slice(0, 200) : ''; state.chatWatchVoice = saved?.chatWatchVoice === true; state.chatWatchIgnoreShops = saved?.chatWatchIgnoreShops === true; } catch { /* optional */ }
 if (!watchKeywords(state.chatWatchWords).length) state.tools.chatWatch = false;
@@ -136,6 +141,8 @@ $('#app').innerHTML = `
       <div id="town-scroll-picker" class="town-scroll-picker hidden"><strong>Which town scrolls are in your bag?</strong><p class="fine">Only checked destinations will be used. Update this when a scroll runs out.</p><div class="town-scroll-options">${TOWN_SCROLLS.map(name => `<label class="toggle"><input type="checkbox" data-town-scroll="${esc(name)}"> ${esc(name)}</label>`).join('')}</div><div class="action-row"><button class="button" type="button" id="town-scroll-confirm">Use selected scrolls</button><button class="button light" type="button" id="town-scroll-cancel">Cancel</button></div></div>
       <p class="live-note hidden" id="live-note" role="status"></p>
       <div class="quest-session hidden" id="quest-session"></div>
+      <div class="session-summary hidden" id="session-summary"></div>
+      <details class="boss-timers" id="boss-timers"><summary>Boss timers</summary><div id="boss-list"></div></details>
       <div class="couch-panel hidden" id="couch-panel"><strong>Use your phone from the couch</strong><p class="fine">First start Live GPS on this PC and choose the MapleStory window. Then turn on phone sharing and scan the QR code. Your phone controls the app; only this PC reads the game screen.</p><button class="button secondary" id="couch-toggle" type="button">Share with phone</button><p class="fine" id="couch-status" role="status"></p><div id="couch-qr" class="couch-qr"></div><a id="couch-url" target="_blank" rel="noopener" hidden></a><p class="fine">Same Wi-Fi only. Anyone with this link can control Maple Route until you turn Couch mode off. Starting a new screen share still requires a click on this PC.</p></div>
 
       <p class="fine">Share the MapleStory window once. About once a second the app reads only the minimap corner, on this device, to see which map you are on and where your dot is. Nothing is uploaded, and no keys, clicks or game memory are involved.</p></section>
@@ -223,6 +230,8 @@ $('#app').innerHTML = `
         <label class="toggle"><input type="checkbox" id="tool-prices"> Trade chat prices</label>
         <label class="toggle"><input type="checkbox" id="tool-mobcount"> Monster spawn counts in pop-out</label>
         <label class="toggle" title="EXP/h starts after 3 minutes on one map. Off: it keeps counting when you move to another map."><input type="checkbox" id="tool-expmap"> Reset EXP/h when I change maps</label>
+        <label class="toggle" title="Adds up meso pickups shown in the visible chat"><input type="checkbox" id="tool-mesos"> Mesos per hour (from chat pickups)</label> ${UNTESTED}
+        <label class="toggle" title="When neither the mini map nor the status bars have been seen for 90 seconds"><input type="checkbox" id="tool-gone"> Alert me if the game disconnects</label>
         <label class="toggle"><input type="checkbox" id="tool-popupexp"> Pop-out / Deck pop-up: EXP/hour only (no map)</label>
         <button type="button" class="button light" id="download-test-log">Download test log</button>
       </div><p class="fine">These read the status bar, the Quest Helper and the last chat lines from the same shared window. Nothing is pressed for you.</p></section>
@@ -535,7 +544,7 @@ function chosenVoice() {
 }
 // Which kinds of spoken lines are on (Settings → Voice). Directions = which portal and where it
 // leads on each new map; monsters = what spawns there and how many; quests = quest progress lines.
-const VOICE_PARTS = { directions: 'Which portal to take and where it leads', monstersDest: 'Monsters at your destination, with counts', monstersAll: 'Monsters on every map you enter (not just the destination)', questMobs: 'Quest mobs on maps you pass through (no counts)', arrival: 'Arriving at your destination', tasks: 'What to do there (talk to an NPC, buy an item, hunt, hand in)', npc: 'Reaching the NPC you are going to', quests: 'Quest steps and progress', exp: 'EXP per hour, every 3 minutes', warnings: 'Warnings (mini map hidden, share stopped)' };
+const VOICE_PARTS = { directions: 'Which portal to take and where it leads', monstersDest: 'Monsters at your destination, with counts', monstersAll: 'Monsters on every map you enter (not just the destination)', questMobs: 'Quest mobs on maps you pass through (no counts)', arrival: 'Arriving at your destination', tasks: 'What to do there (talk to an NPC, buy an item, hunt, hand in)', npc: 'Reaching the NPC you are going to', quests: 'Quest steps and progress', bosses: 'Boss timers (a minute before, and when due)', exp: 'EXP per hour, every 3 minutes', warnings: 'Warnings (mini map hidden, share stopped)' };
 const VOICE_DEFAULT_OFF = new Set(['monstersAll', 'questMobs']);
 function voiceOn(part) { return state.voice && (state.voiceParts?.[part] ?? !VOICE_DEFAULT_OFF.has(part)) === true; }
 function sayPart(part, words) { if (words && voiceOn(part)) say(words); }
@@ -639,7 +648,7 @@ async function loadQuestCatalog() {
   loadCrafting(); loadShops();
   state.questCatalogStatus = 'loading'; renderQuestResults();
   try {
-    const QUESTS_KEY = 'maple-route-quests-v8'; // v8: refresh older cached quests that lack start-item handovers
+    const QUESTS_KEY = 'maple-route-quests-v9'; // v9: daily/weekly resets // v8: refresh older cached quests that lack start-item handovers
     let cached = null; try { cached = JSON.parse(localStorage.getItem(QUESTS_KEY) || 'null'); } catch { cached = null; }
     const fresh = cached?.quests?.length && Date.now() - cached.savedAt < 24 * 60 * 60 * 1000;
     try {
@@ -949,6 +958,8 @@ function markFinished(names) {
   const add = [names].flat().filter(name => name && !state.questsFinished.includes(name));
   if (!add.length) return;
   state.questsFinished = [...state.questsFinished, ...add].slice(-2000);
+  state.questFinishedAt = { ...(state.questFinishedAt ?? {}), ...Object.fromEntries(add.map(name => [name, Date.now()])) };
+  if (state.sessionLog) state.sessionLog = logQuest(state.sessionLog, add);
   state.activeQuests = state.activeQuests.filter(name => !add.includes(name));
   state.acceptedQuests = state.acceptedQuests.filter(name => !add.includes(name));
   state.planQuests = state.planQuests.filter(name => !add.includes(name));
@@ -1971,13 +1982,13 @@ function expChipHtml() {
   const s = expSummary(tracker), measuring = s.minutes < .5 || tracker.samples < 3;
   const earlyEstimate = s.minutes < 2 ? '~' : '';
   const left = s.minutes < 2 || s.minutesToLevel == null ? '' : s.minutesToLevel >= 120 ? ` · level in ${Math.round(s.minutesToLevel / 60)} h` : ` · level in ${Math.round(s.minutesToLevel)} min`;
-  return `<div class="exp-chip" title="From your status bar since ${new Date(tracker.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}">EXP ${s.percent.toFixed(2)}% · ${measuring ? 'measuring EXP/h…' : `<b>${earlyEstimate}${Math.round(s.perHour).toLocaleString()}</b> EXP/h · ${s.percentPerHour.toFixed(1)}%/h${left}`} <button type="button" class="link-button" data-exp-reset>reset</button></div>`;
+  return `<div class="exp-chip" title="From your status bar since ${new Date(tracker.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}">EXP ${s.percent.toFixed(2)}% · ${measuring ? 'measuring EXP/h…' : `<b>${earlyEstimate}${Math.round(s.perHour).toLocaleString()}</b> EXP/h · ${s.percentPerHour.toFixed(1)}%/h${left}`}${mesoText()} <button type="button" class="link-button" data-exp-reset>reset</button>${state.hud.moveOn ? `<br><small>${esc(state.hud.moveOn)}</small>` : ''}</div>`;
 }
 document.addEventListener('click', event => {
   if (!event.target.closest('[data-exp-reset]') || !state.live) return;
   // Start counting again from the current reading (kept, so the % shows straight away).
   const last = state.live.tracker?.last;
-  state.live.tracker = createExpTracker(Date.now());
+  state.live.tracker = createExpTracker(Date.now()); state.live.mesos = createMesoTracker(Date.now());
   if (last) state.live.tracker = addExpReading(state.live.tracker, { value: last.value, percent: last.percent, level: last.level ?? null, mapId: state.current }, Date.now()).tracker;
   state.hud.tracker = state.live.tracker; renderLiveExp(); renderLive();
 });
@@ -2039,7 +2050,7 @@ document.addEventListener('click', event => { if (event.target.closest('[data-ne
 const CHOOSE_DEST = '<button type="button" class="link-button choose-dest" data-choose-dest>Choose destination</button>';
 function renderLive() {
   // Directions above the map (the map's header); quests, checklist and EXP in the card below it.
-  const html = destinationHtml() + expChipHtml() + liveHtml(liveModel()) + hereTaskHtml() + CHOOSE_DEST, planHtml = hudHtml();
+  const html = gameGoneHtml() + destinationHtml() + expChipHtml() + bossChipsHtml() + liveHtml(liveModel()) + hereTaskHtml() + CHOOSE_DEST, planHtml = hudHtml();
   const card = $('#live-step'), plan = $('#live-plan');
   if (card && card.dataset.html !== html) { card.innerHTML = html; card.dataset.html = html; }
   const offer = $('#guide-offer'), offerHtml = guideOfferHtml();
@@ -2069,7 +2080,7 @@ function renderLive() {
     if (meta) {
       const tracker = state.hud.tracker?.last ? expSummary(state.hud.tracker) : null;
       meta.textContent = popoutMetrics({ remaining: model.remaining, tracker: tracker ? { ...tracker, last: true } : null,
-        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS, waitMs: expWaitMs() });
+        reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS, waitMs: expWaitMs() }) + bossText(' · ');
     }
     state.pipDoc.body.classList.toggle('pip-exp-only', Boolean(state.tools.popupExpOnly));
     const expBox = state.pipDoc.getElementById('pip-exp');
@@ -2569,6 +2580,8 @@ function coveredReminder(covered) {
 
 function onLiveMap(id) {
   // Each map's mini map is a different size: a new map is not "something covering the mini map".
+  if (state.sessionLog && state.current !== id) state.sessionLog = logMap(state.sessionLog, id);
+  if (state.live) state.live.moveOnSaid = null;
   // EXP/h measures one map: a new map starts the 3-minute wait again (unless switched off in Settings).
   if (state.live && state.tools.expPerMap && state.current && state.current !== id) { Object.assign(state.live, { expSince: Date.now(), tracker: null }); state.hud.tracker = null; }
   if (state.live) Object.assign(state.live, { mapChangedAt: Date.now(), trustedLayout: null, resizedSince: null, pendingJump: null, coveredSince: null, mapUncertain: false });
@@ -2620,10 +2633,11 @@ async function liveTick() {
     live.frameW = grabbed.width;
     const found = locateMinimap(grabbed.source, grabbed.width, grabbed.height, live.side, live.lastFound);
     if (found) live.lastFound = { offsetX: found.offsetX, side: found.side, band: found.band };
-    if (!found) { coveredReminder(Date.now() - (live.minimapSeenAt ?? 0) < 60_000); logTest('no-minimap', { frame: `${grabbed.width}x${grabbed.height}`, misses: live.misses + 1 }); if (live.misses === 2) snapshotCorner(grabbed.source, grabbed.width, grabbed.height, 'no mini map found', true); if (++live.misses >= 3) { live.mapUncertain = true; liveState('Can’t see the mini map: is a game window covering it?', true); renderLive(); } return; }
+    if (!found) { checkGameGone(live); coveredReminder(Date.now() - (live.minimapSeenAt ?? 0) < 60_000); logTest('no-minimap', { frame: `${grabbed.width}x${grabbed.height}`, misses: live.misses + 1 }); if (live.misses === 2) snapshotCorner(grabbed.source, grabbed.width, grabbed.height, 'no mini map found', true); if (++live.misses >= 3) { live.mapUncertain = true; liveState('Can’t see the mini map: is a game window covering it?', true); renderLive(); } return; }
     // The mini map coming back after a gap (loading screen, portal fade, cash shop) is a screen change too.
     if (live.misses > 0) live.screenChangedAt = Date.now();
     live.misses = 0; live.side = found.side; live.minimapSeenAt = Date.now();
+    if (state.gameGone) { state.gameGone = false; live.goneAlerted = false; renderLive(); }
     const signature = titleSignature(found), since = Date.now() - live.lastOcr, changed = signatureChanged(signature, live.signature);
     if (changed) live.screenChangedAt = Date.now();
     live.lastObservedSignature = signature;
@@ -2711,7 +2725,8 @@ async function startLive() {
       logTest('reconnected', { surface: capture.track.getSettings?.().displaySurface ?? null });
     } else {
       const audio = typeof AudioContext !== 'undefined' ? new AudioContext() : null; audio?.resume?.();
-      state.live = { capture, worker, audio, jobs: {}, tracker: null, busy: false, misses: 0, side: null, signature: null, lastOcr: 0, mapId: null, nearSpoken: null, stopTicker: null, paused: false };
+      state.live = { capture, worker, audio, jobs: {}, tracker: null, busy: false, misses: 0, side: null, signature: null, lastOcr: 0, mapId: null, nearSpoken: null, stopTicker: null, paused: false, startedAt: Date.now() };
+      state.sessionLog = logMap(createSessionLog(Date.now(), state.hud.level ?? state.level), state.current, Date.now()); state.gameGone = false;
       logTest('started', { surface: capture.track.getSettings?.().displaySurface ?? null, label: capture.track.label });
       // Remember what was shared so the next prompt can say which screen to pick again.
       try { const settings = capture.track.getSettings?.() ?? {}; localStorage.setItem('maple-route-last-share', JSON.stringify({ surface: settings.displaySurface ?? null, label: capture.track.label, width: settings.width ?? null, height: settings.height ?? null })); } catch { /* optional */ }
@@ -2746,6 +2761,7 @@ function pauseLive(reason) {
 function stopLive() {
   const live = state.live;
   if (!live) return;
+  showSessionSummary(live);
   state.live = null; live.stopTicker?.(); live.stopHudTicker?.(); if (!live.paused) live.capture.stop(); live.audio?.close?.(); live.hudWorker?.terminate?.();
   chatWatch.reset();
   renderLiveExp(); renderQuestHelper();
@@ -3637,7 +3653,7 @@ async function hudTick(live, grabbed, ocrUsed) {
   live.barsRect = bars ? { x: Math.max(0, bars.hp.x0 - 20), y: Math.max(0, bars.y0 - 4), w: Math.min(width, bars.exp.x1 + 20) - Math.max(0, bars.hp.x0 - 20), h: bars.y1 - bars.y0 + 9 } : null;
   state.hud.bars = bars;
   if (!bars && !(live.jobs.noBarsLogged > Date.now() - 10_000)) { live.jobs.noBarsLogged = Date.now(); logTest('no-status-bars', { frame: `${width}x${height}` }); }
-  if (bars) updateFractions(bars);
+  if (bars) { updateFractions(bars); live.barsSeenAt = Date.now(); }
   if (ocrUsed) return;
   const now = Date.now(), due = (job, every) => now - (live.jobs[job] ?? 0) > every;
   if (now - (live.mapChangedAt ?? 0) < 1500) return; // let the new map settle first
@@ -3654,6 +3670,14 @@ async function hudTick(live, grabbed, ocrUsed) {
     }
     const parsed = parseStatusText(await readRegion(live.hudWorker, source, statusTextRect(bars), { ink: image => inkTitle(image, settings.status.threshold), scale: settings.status.scale, psm: 7 }), { expBarFill: bars.exp.fill });
     state.hud.status = parsed; logTest('status', { level: state.hud.level, hp: parsed.hp && `${parsed.hp.now}/${parsed.hp.max}`, mp: parsed.mp && `${parsed.mp.now}/${parsed.mp.max}`, exp: parsed.exp && `${parsed.exp.value} ${parsed.exp.percent}%`, bars: bars && `hp ${bars.hp.fill.toFixed(2)} mp ${bars.mp.fill.toFixed(2)} exp ${bars.exp.fill.toFixed(3)}` });
+    // The whole session's EXP (never reset by map changes) for the summary when Live GPS stops.
+    if (parsed.exp) {
+      const before = live.sessionTracker ?? createExpTracker(now), result = addExpReading(before, { ...parsed.exp, barFill: bars.exp.fill, level: state.hud.level, mapId: state.current }, now);
+      live.sessionTracker = result.tracker;
+      const gained = result.tracker.gained - before.gained, ups = result.tracker.levelUps - before.levelUps;
+      if (state.sessionLog && (gained > 0 || ups)) state.sessionLog = logExp(state.sessionLog, gained, { levelUps: ups });
+      if (ups > 0) announceLevelUp(result.tracker.level);
+    }
     // EXP/h counts only after 3 minutes on one map (onLiveMap restarts the wait).
     live.expSince ??= now;
     if (parsed.exp && now - live.expSince < EXP_SETTLE_MS) { live.tracker = null; state.hud.tracker = null; renderLiveExp(); }
@@ -3661,6 +3685,7 @@ async function hudTick(live, grabbed, ocrUsed) {
       live.tracker ??= createExpTracker(now);
       live.tracker = addExpReading(live.tracker, { ...parsed.exp, barFill: bars.exp.fill, level: state.hud.level, mapId: state.current }, now).tracker;
       state.hud.tracker = live.tracker; renderLiveExp();
+      checkMoveOn(live, now);
       // EXP/hour out loud every 3 minutes (first one 3 minutes after counting starts or is reset).
       const spokenFor = live.tracker.startedAt;
       if (state.hud.expSpoken?.for !== spokenFor) state.hud.expSpoken = { for: spokenFor, at: now };
@@ -3704,7 +3729,7 @@ async function hudTick(live, grabbed, ocrUsed) {
     if (parsed) await syncQuestHelper(parsed);
     return;
   }
-  if ((state.tools.prices || state.tools.chatWatch) && due('chat', 4000)) {
+  if ((state.tools.prices || state.tools.chatWatch || state.tools.mesos) && due('chat', 4000)) {
     live.jobs.chat = now;
     const input = findChatInput(bottom(), { offsetY: bottomY });
     const rect = input ? chatLogRect(input) : bars ? collapsedChatRect(bars) : null;
@@ -3715,6 +3740,13 @@ async function hudTick(live, grabbed, ocrUsed) {
     const chatSettings = input ? settings.chat : settings.chatLine;
     const chatText = await readRegion(live.hudWorker, source, rect, { ink: image => inkByContrast(image, chatSettings.distance), scale: chatSettings.scale, ...(input ? {} : { psm: 7 }) });
     if (state.tools.chatWatch) notifyChatWatch(chatWatch.scan(chatText, state.chatWatchWords, now, { ignoreShopAds: state.chatWatchIgnoreShops }));
+    if (state.tools.mesos) {
+      // Only lines that were not on screen last time: a pickup line stays visible for a while.
+      const { fresh, lines } = newChatLines(live.chatLines ?? [], chatText.split('\n'));
+      live.chatLines = lines; live.mesos ??= createMesoTracker(now);
+      const amounts = fresh.map(mesoAmount).filter(Boolean);
+      if (amounts.length) { live.mesos = addMesos(live.mesos, amounts, now); logTest('mesos', { amounts }); }
+    }
     if (state.tools.prices) {
       const trades = parseTradeChat(chatText);
       logTest('chat', { trades: trades.map(t => `${t.kind} ${t.item} ${t.price}`) });
@@ -4280,7 +4312,7 @@ document.addEventListener('click', event => { const open = event.target.closest(
 
 $('#price-query').addEventListener('input', renderPrices);
 $('#price-clear').addEventListener('click', () => { if (!confirm('Delete the whole price log in this browser?')) return; state.prices = []; savePrices(); renderPrices(); });
-for (const [id, key] of [['tool-exp', 'exp'], ['tool-quest', 'quest'], ['tool-prices', 'prices'], ['tool-mobcount', 'mobCount'], ['tool-expmap', 'expPerMap']]) {
+for (const [id, key] of [['tool-exp', 'exp'], ['tool-quest', 'quest'], ['tool-prices', 'prices'], ['tool-mobcount', 'mobCount'], ['tool-expmap', 'expPerMap'], ['tool-mesos', 'mesos'], ['tool-gone', 'goneAlert']]) {
   $(`#${id}`).checked = state.tools[key];
   $(`#${id}`).addEventListener('change', event => { state.tools[key] = event.target.checked; saveLive(); renderLive(); });
 }
@@ -4670,6 +4702,7 @@ try {
   state.planQuests = Array.isArray(saved?.planQuests) ? [...new Set(saved.planQuests.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 20) : [];
   state.questsHidden = Array.isArray(saved?.questsHidden) ? [...new Set(saved.questsHidden.filter(name => typeof name === 'string' && name.length <= 180))].slice(0, 500) : [];
   state.questsFinished = Array.isArray(saved?.questsFinished) ? [...new Set(saved.questsFinished.filter(name => typeof name === 'string' && name.length <= 180))].slice(-2000) : [];
+  state.questFinishedAt = saved?.questFinishedAt && typeof saved.questFinishedAt === 'object' && !Array.isArray(saved.questFinishedAt) ? Object.fromEntries(Object.entries(saved.questFinishedAt).filter(([name, at]) => typeof name === 'string' && Number.isFinite(at))) : {};
   // Older versions could mark a planned quest finished from a partial Quest Helper read.
   // Keep the user's explicit plan as the source of truth and restore those quests.
   state.questsFinished = state.questsFinished.filter(name => !state.planQuests.includes(name));
@@ -4796,6 +4829,125 @@ document.addEventListener('click', async event => {
     note.classList.remove('hidden');
   }
 });
+
+// ---------- Play tools: boss timers, session summary, move-on hint, mesos/h, resets, disconnect ----------
+const BOSS_KEY = 'maple-route-bosses', HISTORY_KEY = 'maple-route-session-history';
+state.bossTimers = (() => { try { const saved = JSON.parse(localStorage.getItem(BOSS_KEY) || '{}'); return saved && typeof saved === 'object' ? saved : {}; } catch { return {}; } })();
+const saveBosses = () => { try { localStorage.setItem(BOSS_KEY, JSON.stringify(state.bossTimers)); } catch { /* this session only */ } };
+const sessionHistory = () => { try { const rows = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); return Array.isArray(rows) ? rows : []; } catch { return []; } };
+// Running boss timers as one short line ("Mano 12:05 · Stumpy due").
+function bossText(prefix = '') {
+  const rows = bossRows(state.bossTimers);
+  return rows.length ? prefix + rows.slice(0, 3).map(row => `${row.name} ${countdown(row.left)}`).join(' · ') : '';
+}
+function bossChipsHtml() {
+  const rows = bossRows(state.bossTimers);
+  return rows.length ? `<div class="boss-chips" id="boss-chips">${rows.slice(0, 4).map(row => `<span class="pill${row.due ? ' due' : ''}">${esc(row.name)} ${esc(countdown(row.left))}</span>`).join(' ')}</div>` : '';
+}
+function renderBossList() {
+  const list = $('#boss-list'); if (!list) return;
+  const rows = new Map(bossRows(state.bossTimers).map(row => [row.name, row]));
+  const html = `<p class="fine">Press <b>Killed</b> when a boss dies; the countdown shows here, on the pop-out and on the Deck, and the voice warns a minute before. Respawn times are not in the game data: set yours (minutes).</p><ul class="boss-rows">${BOSSES.map(name => {
+    const row = rows.get(name), minutes = respawnMinutes(state.bossTimers[name]?.minutes);
+    return `<li><b>${esc(name)}</b> <label class="boss-min"><input type="number" min="1" max="1440" value="${minutes}" data-boss-min="${esc(name)}" aria-label="${esc(name)} respawn minutes"> min</label> ${row ? `<span class="pill${row.due ? ' due' : ''}">${esc(countdown(row.left))}</span> <button type="button" class="link-button" data-boss-clear="${esc(name)}">clear</button>` : ''} <button type="button" class="button light" data-boss-kill="${esc(name)}">Killed</button></li>`;
+  }).join('')}</ul>`;
+  if (list.dataset.html !== html) { const focused = document.activeElement?.dataset?.bossMin; list.innerHTML = html; list.dataset.html = html; if (focused) list.querySelector(`[data-boss-min="${CSS.escape(focused)}"]`)?.focus(); }
+}
+document.addEventListener('click', event => {
+  const kill = event.target.closest('[data-boss-kill]'), clear = event.target.closest('[data-boss-clear]');
+  if (!kill && !clear) return;
+  const name = (kill ?? clear).dataset.bossKill ?? clear.dataset.bossClear;
+  const minutes = respawnMinutes(state.bossTimers[name]?.minutes);
+  state.bossTimers = { ...state.bossTimers, [name]: kill ? { killedAt: Date.now(), minutes } : { minutes } };
+  saveBosses(); renderBossList(); renderLive();
+});
+document.addEventListener('change', event => {
+  const input = event.target.closest?.('[data-boss-min]'); if (!input) return;
+  const name = input.dataset.bossMin;
+  state.bossTimers = { ...state.bossTimers, [name]: { ...(state.bossTimers[name] ?? {}), minutes: respawnMinutes(input.value) } };
+  saveBosses(); renderBossList();
+});
+// Every second: countdowns move, and the voice warns.
+const bossSaid = {};
+setInterval(() => {
+  const rows = bossRows(state.bossTimers);
+  if (!rows.length) return;
+  for (const note of bossAnnouncements(rows, bossSaid)) { bossSaid[note.key] = note.stage; sayPart('bosses', note.words); }
+  const chips = $('#boss-chips'), html = bossChipsHtml();
+  if (chips && chips.outerHTML !== html) chips.outerHTML = html;
+  if ($('#boss-timers')?.open) renderBossList();
+}, 1000);
+renderBossList();
+
+// Mesos per hour next to EXP/h (from chat pickups, when that tool is on).
+function mesoText() {
+  if (!state.tools.mesos || !state.live?.mesos) return '';
+  const rate = mesosPerHour(state.live.mesos);
+  return rate == null ? ' · mesos/h measuring…' : ` · <b>${rate.toLocaleString()}</b> mesos/h`;
+}
+
+// Session summary when Live GPS stops; kept (last 30) to compare days and for the move-on hint.
+function showSessionSummary(live) {
+  if (!state.sessionLog) return;
+  const summary = finishSession(state.sessionLog, Date.now(), { level: state.hud.level ?? null });
+  state.sessionLog = null;
+  if (summary.minutes < 1) return;
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify([summary, ...sessionHistory()].slice(0, 30))); } catch { /* summary still shown */ }
+  const box = $('#session-summary'); if (!box) return;
+  const lines = summaryLines(summary, id => mapById(id)?.name ?? id);
+  const previous = sessionHistory()[1];
+  const compare = previous?.perHour && summary.perHour ? ` Last session: ${previous.perHour.toLocaleString()} EXP/h.` : '';
+  box.innerHTML = `<strong>Session summary</strong><ul>${lines.map(line => `<li>${esc(line)}</li>`).join('')}</ul>${compare ? `<p class="fine">${esc(compare.trim())}</p>` : ''}<button type="button" class="link-button" data-session-close>Close</button>`;
+  box.classList.remove('hidden');
+}
+document.addEventListener('click', event => { if (event.target.closest('[data-session-close]')) $('#session-summary')?.classList.add('hidden'); });
+
+// Time to move on: after 10 minutes on a map, a map from earlier sessions near your level that gave
+// at least half again as much EXP/h. Said once per visit to a map; shown under EXP/h.
+function checkMoveOn(live, now) {
+  if (live.moveOnSaid === state.current || !live.tracker?.last) return;
+  const s = expSummary(live.tracker, now), level = state.hud.level ?? state.level;
+  const better = betterMap({ mapId: state.current, perHour: s.perHour, minutes: s.minutes, level }, sessionHistory());
+  if (s.minutes >= 10) live.moveOnSaid = state.current;
+  state.hud.moveOn = better ? `Better here before: ${mapById(better.mapId)?.name ?? 'another map'}, about ${better.perHour.toLocaleString()} EXP/h at level ${better.level}.` : null;
+  if (better) sayPart('exp', `You got more EXP on ${mapById(better.mapId)?.name ?? 'another map'}: about ${better.perHour.toLocaleString()} an hour.`);
+}
+// Level up: say it, with the best training map for the new level (your own past sessions first, else
+// the map data's ranking).
+function announceLevelUp(level) {
+  if (!Number.isInteger(level)) return;
+  const own = betterMap({ mapId: state.current, perHour: 1, minutes: 10, level }, sessionHistory(), { factor: 1 });
+  const ranked = own ? null : rankGrindMaps(state.data, level, 'xp')[0];
+  const where = own ? mapById(own.mapId)?.name : ranked?.map?.name;
+  state.hud.moveOn = where ? `Level ${level}! Good training now: ${where}.` : `Level ${level}!`;
+  sayPart('exp', where ? `Level ${level}! Good training now: ${where}.` : `Level ${level}!`);
+}
+
+// Daily and weekly quests come back after their reset (src/questresets.js).
+function applyQuestResets() {
+  if (state.questCatalogStatus !== 'loaded') return;
+  const due = questsToReset(state.quests, state.questsFinished, state.questFinishedAt ?? {});
+  if (!due.length) return;
+  state.questsFinished = state.questsFinished.filter(name => !due.includes(name));
+  for (const name of due) { delete state.questDone[name]; delete state.questItemsReady?.[name]; delete state.questFinishedAt[name]; }
+  state.allTripCache = null; persist(); applyObjective(); renderLive();
+  for (const draw of [renderQuestRecs, renderPlanList, renderTicks]) { try { draw(); } catch { /* card not shown */ } }
+  const note = $('#live-note'); if (note) { note.textContent = `New day or week: ${due.join(', ')} can be done again.`; note.classList.remove('hidden'); }
+}
+setInterval(applyQuestResets, 10 * 60_000);
+setTimeout(applyQuestResets, 15_000);
+
+// Disconnect alert: the game has not been seen for 90 seconds while Live GPS reads.
+function checkGameGone(live) {
+  if (!state.tools.goneAlert || live.goneAlerted || !gameGone({ minimapSeenAt: live.minimapSeenAt, barsSeenAt: live.barsSeenAt, startedAt: live.startedAt })) return;
+  live.goneAlerted = true; state.gameGone = true;
+  sayPart('warnings', 'I have not seen the game for a minute and a half. Did MapleStory disconnect?');
+  try { if (window.Notification?.permission === 'granted') new Notification('Maple Route', { body: 'MapleStory has not been seen for 90 seconds. Disconnected?' }); } catch { /* no notifications */ }
+  renderLive();
+}
+function gameGoneHtml() {
+  return state.gameGone ? '<div class="game-gone" id="game-gone" role="alert"><b>Can’t see the game for 90 seconds.</b> Did MapleStory disconnect?</div>' : '';
+}
 
 // ---------- Sync between devices (src/progresssync.js, supabase/progress-sync.sql) ----------
 const SYNC_KEY = 'maple-route-sync';
@@ -4978,7 +5130,7 @@ if (window.mapleDeck) {
     const overlay = {
       next: deckDirectionSummary({ headline: $('#live-step .live-headline')?.textContent, hint: $('#live-step .live-hint')?.textContent, current: state.current, destination: state.destination, uncertain: state.live?.mapUncertain }),
       map: $('#mapview')?.innerHTML ?? '',
-      note: (hereTask() ? `Here: ${hereTask()}` : $('#live-step .live-where')?.textContent?.trim() ?? '').slice(0, 120),
+      note: ((state.gameGone ? 'Game not seen for 90 s: disconnected? ' : '') + (hereTask() ? `Here: ${hereTask()}` : $('#live-step .live-where')?.textContent?.trim() ?? '') + bossText(' · ')).slice(0, 160),
       mode: state.tools.popupExpOnly ? 'exp' : 'map',
       exp: state.tools.exp ? popupExp({ summary: state.hud.tracker?.last ? expSummary(state.hud.tracker) : null,
         reading: Boolean(state.live && !state.live.paused), fresh: Date.now() - (state.hud.tracker?.last?.at ?? 0) <= EXP_FRESH_MS, waitMs: expWaitMs() }) : null
