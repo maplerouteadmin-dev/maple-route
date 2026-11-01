@@ -27,6 +27,19 @@ function indexFor(catalog) {
   return index;
 }
 
+// How many quests the open tab holds: the town rows show a count ("Henesys (3)", "Perion (1)"); their
+// sum. Only short header-like lines count (a word or two, then the number in brackets), never progress
+// like "Dark Marble (0/30)". OCR may read a bracket as [ { or l. 0 when no town row was read.
+export function questTabCount(text) {
+  let total = 0;
+  for (const raw of String(text ?? '').split('\n')) {
+    const line = raw.replace(/^[^A-Za-z]+/, '').trim();
+    const match = line.match(/^([A-Za-z][A-Za-z .'-]{2,24}?)\s*[([{]\s*(\d{1,2})\s*[)\]}l|]/);
+    if (match && !/\//.test(line) && line.length <= 34) total += Number(match[2]);
+  }
+  return total;
+}
+
 // The quest shown in `text`, or null when nothing stands out. Returns { quest, score, runnerUp }.
 export function identifyQuestDetail(text, catalog, { min = 9, margin = 1.35 } = {}) {
   if (!text || !catalog?.length) return null;

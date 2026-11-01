@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.27
+
+- Read quests one by one now counts: it adds up the town rows of the open tab ("Perion (1)", "Henesys (3)"), shows "Read 4 of 6" as you click, counts a quest it cannot name only once, and stops by itself when it has seen every quest on the tab, with a summary like "All 6 quests seen: 5 recognised, 1 not recognised". The first picture before you click anything is not counted.
+
 ## 1.1.0-beta.26
 
 - **Read quests one by one** (Live GPS toolbar, Untested): open the quest window (Q) and click through your quests, about a second each. Each time the window shows a different quest, Maple Route reads everything around the quest window and works out which quest it is from its full text (name, description, NPCs, items), which also tells same-named quests apart. Press Done to review the list, untick mistakes, pick the tab (In Progress, Available or Completed) and Add these. Nothing is added without your OK, and Maple Route still never clicks in the game. In a test against all 310 quests with misread letters it named 90% correctly and none wrongly when the quest name was readable.

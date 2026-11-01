@@ -63,7 +63,7 @@ import { OSMS_FILES } from './osms.js';
 import { PARTY_QUEST, partyLevelMessage } from './party.js';
 import { summarizeSession, bestMeasuredSpot } from './session.js';
 import { PROFILE_KEY, snapshotProfile, makeProfileBackup, parseProfileBackup } from './profile.js';
-import { identifyQuestDetail } from './questdetail.js';
+import { identifyQuestDetail, questTabCount } from './questdetail.js';
 import { createSyncStore, newSyncCode, normalizeSyncCode, syncPayload, readSyncPayload, syncFingerprint } from './progresssync.js';
 import { CLASSIC_BANDS, guideForLevel, resolveGuideMaps } from './classic-guide.js';
 import { atlasNeighbors } from './atlas.js';
@@ -4702,9 +4702,13 @@ function renderQuestSession() {
   if (!s) { panel.innerHTML = ''; panel.dataset.html = ''; return; }
   const tabSelect = `<select id="qs-tab" aria-label="Which tab these quests are on">${Object.entries(QS_TABS).map(([key, label]) => `<option value="${key}"${key === (s.tab ?? 'progress') ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
   const rows = s.found.map((f, i) => `<li><label><input type="checkbox" data-qs-pick="${i}"${f.picked === false ? '' : ' checked'}> ${esc(f.name)}${f.detail ? ` <small>${esc(f.detail)}</small>` : ''}</label></li>`).join('');
+  const seen = s.found.length + s.misses;
+  const tally = s.expected
+    ? `All ${s.expected} quest${s.expected === 1 ? '' : 's'} seen: ${s.found.length} recognised${s.misses ? `, ${s.misses} not recognised` : ''}${seen < s.expected ? ` (${s.expected - seen} not clicked)` : ''}.`
+    : `${s.found.length} recognised${s.misses ? `, ${s.misses} not recognised` : ''}.`;
   const html = s.review
-    ? `<strong>Add these quests?</strong> ${UNTESTED}<p class="fine">Untick any that are wrong. They are on your ${tabSelect} tab.</p>${rows ? `<ul class="qr-found">${rows}</ul>` : '<p class="fine">No quests were recognised.</p>'}${s.misses ? `<p class="fine">${s.misses} quest${s.misses === 1 ? ' was' : 's were'} not recognised: add ${s.misses === 1 ? 'it' : 'them'} by name in My quest plan.</p>` : ''}<div class="action-row"><button type="button" class="button" data-qs="add"${rows ? '' : ' disabled'}>Add these</button><button type="button" class="button light" data-qs="cancel">Cancel</button></div>`
-    : `<strong>Reading quests one by one</strong> ${UNTESTED}<p class="fine">In the game, open the quest window (Q) and click each quest in turn, waiting about a second on each. ${esc(s.status ?? '')}</p>${rows ? `<ul class="qr-found">${s.found.map(f => `<li>✓ ${esc(f.name)}${f.detail ? ` <small>${esc(f.detail)}</small>` : ''}</li>`).join('')}</ul>` : ''}${s.misses ? `<p class="fine">Not recognised: ${s.misses}</p>` : ''}<div class="action-row"><button type="button" class="button" data-qs="done">Done</button><button type="button" class="button light" data-qs="cancel">Cancel</button></div>`;
+    ? `<strong>Add these quests?</strong> ${UNTESTED}<p class="fine">${esc(tally)} Untick any that are wrong. They are on your ${tabSelect} tab.</p>${rows ? `<ul class="qr-found">${rows}</ul>` : '<p class="fine">No quests were recognised.</p>'}${s.misses ? `<p class="fine">${s.misses} quest${s.misses === 1 ? ' was' : 's were'} not recognised: add ${s.misses === 1 ? 'it' : 'them'} by name in My quest plan.</p>` : ''}<div class="action-row"><button type="button" class="button" data-qs="add"${rows ? '' : ' disabled'}>Add these</button><button type="button" class="button light" data-qs="cancel">Cancel</button></div>`
+    : `<strong>Reading quests one by one</strong> ${UNTESTED}<p class="fine">In the game, open the quest window (Q) and click each quest in turn, waiting about a second on each. ${esc(s.status ?? '')}${s.expected ? ` <b>Read ${Math.min(seen, s.expected)} of ${s.expected}.</b>` : ''}</p>${rows ? `<ul class="qr-found">${s.found.map(f => `<li>✓ ${esc(f.name)}${f.detail ? ` <small>${esc(f.detail)}</small>` : ''}</li>`).join('')}</ul>` : ''}${s.misses ? `<p class="fine">Not recognised: ${s.misses}</p>` : ''}<div class="action-row"><button type="button" class="button" data-qs="done">Done</button><button type="button" class="button light" data-qs="cancel">Cancel</button></div>`;
   if (panel.dataset.html !== html) { panel.innerHTML = html; panel.dataset.html = html; }
 }
 // One HUD-loop step while reading: find the quest window, wait for it to settle on a new picture,
@@ -4725,11 +4729,24 @@ async function questSessionTick(live, source, width, height) {
   const text = await readRegion(live.hudWorker, source, rect, { scale: 1.5, ink: inkQuestList });
   if (state.questSession !== s) return; // cancelled while reading
   const hit = identifyQuestDetail(text, state.quests);
-  logTest('quest-detail', { tab: win.tab, found: hit?.quest.name ?? null, score: hit ? +hit.score.toFixed(1) : null, text: text.slice(0, 1500) });
-  if (!hit) { s.misses++; s.status = 'Could not tell which quest that is. Click it again, or carry on.'; renderQuestSession(); return; }
-  const quest = hit.quest, key = `${quest.name}|${quest.id ?? ''}`;
-  if (!s.found.some(f => f.key === key)) s.found.push({ key, name: quest.name, id: quest.id ?? null, detail: sameNameCount(quest.name) > 1 ? questDetail(quest, { sameName: sameNameCount(quest.name) }) : quest.giver ? `from ${quest.giver}` : '' });
-  s.status = `Read: ${quest.name}. Click the next quest.`;
+  // How many quests the tab holds, from its town rows ("Perion (1)"): the most seen in any read
+  // (scrolling can hide a town row).
+  s.expected = Math.max(s.expected ?? 0, questTabCount(text));
+  logTest('quest-detail', { tab: win.tab, found: hit?.quest.name ?? null, score: hit ? +hit.score.toFixed(1) : null, expected: s.expected, text: text.slice(0, 1500) });
+  if (!hit) {
+    // The first picture (the window just opened, nothing clicked yet) is not a quest. A quest that
+    // cannot be named counts once, however often it is clicked.
+    if (!s.baseline) { s.baseline = true; s.status = 'Click a quest in the list.'; renderQuestSession(); return; }
+    if (!s.missSigs.some(seen => listChange(sig, seen, 16, 0) <= .02)) { s.missSigs.push(sig); s.misses++; }
+    s.status = 'Could not tell which quest that is. Carry on with the next one.';
+  } else {
+    s.baseline = true;
+    const quest = hit.quest, key = `${quest.name}|${quest.id ?? ''}`;
+    if (!s.found.some(f => f.key === key)) s.found.push({ key, name: quest.name, id: quest.id ?? null, detail: sameNameCount(quest.name) > 1 ? questDetail(quest, { sameName: sameNameCount(quest.name) }) : quest.giver ? `from ${quest.giver}` : '' });
+    s.status = `Read: ${quest.name}. Click the next quest.`;
+  }
+  // Every quest on the tab seen: stop and show the list.
+  if (s.expected && s.found.length + s.misses >= s.expected) s.review = true;
   renderQuestSession();
 }
 // The confirmed quests go where the tab says: In Progress = started, Available = can be started,
@@ -4765,7 +4782,7 @@ document.addEventListener('click', async event => {
     if (!state.live || state.live.paused) { note.textContent = 'Start Live GPS first: the quest window is read from the same shared screen.'; note.classList.remove('hidden'); return; }
     if (state.questCatalogStatus !== 'loaded') await loadQuestCatalog();
     if (state.questCatalogStatus !== 'loaded') { note.textContent = 'The quest list is unavailable right now.'; note.classList.remove('hidden'); return; }
-    state.questSession = { found: [], misses: 0, tab: null, tabChosen: false, status: 'Waiting for the quest window: press Q in the game.', review: false };
+    state.questSession = { found: [], misses: 0, missSigs: [], expected: 0, baseline: false, tab: null, tabChosen: false, status: 'Waiting for the quest window: press Q in the game.', review: false };
     renderQuestSession(); return;
   }
   const s = state.questSession; if (!s) return;

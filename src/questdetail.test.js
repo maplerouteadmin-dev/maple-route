@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { identifyQuestDetail } from './questdetail.js';
+import { identifyQuestDetail, questTabCount } from './questdetail.js';
 
 const catalog = [
   { name: 'Searching for Fossils', arc: "Winston's Fossil Dig-up", giver: 'Winston', text: 'Winston in Perion is studying fossils.\nHe needs Plant Fossils from Axe Stumps near Perion.\nI brought the fossils to Winston.', needs: [{ name: 'Plant Fossil' }] },
@@ -26,4 +26,11 @@ test('only a list (no details open) or noise identifies nothing', () => {
   assert.equal(identifyQuestDetail("Perion (2)\nWinston's Fossil Dig-up\nPia and the Blue Mushr...", catalog), null);
   assert.equal(identifyQuestDetail('HP 120 MP 40', catalog), null);
   assert.equal(identifyQuestDetail('', catalog), null);
+});
+
+test('the tab holds as many quests as its town rows add up to', () => {
+  assert.equal(questTabCount("Henesys (3)\nPia and the Blue Mushroom\nMaple World's Unique Fun: Match\nPerion (1)\nWinston's Fossil Dig-up"), 4);
+  assert.equal(questTabCount('| - Perion (1) ed\nOr Betty\'s Fezearch on PI ['), 1);
+  assert.equal(questTabCount('Kerning City [2)\nEllinia {1}'), 3);
+  assert.equal(questTabCount('Dark Marble (0/30)\nLuke the Security Guy (3/5)\nCollect 30 Leaves'), 0);
 });
