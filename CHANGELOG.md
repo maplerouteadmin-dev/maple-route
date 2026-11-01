@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.22
+
+- Steam Deck: beta.13–21 AppImages hung on start (a file the local server needs was left out of the package). Fixed, with a test that checks every file the server imports is packed; a start-up error on the Deck now exits and restarts instead of hanging on an invisible error box.
+
 ## 1.1.0-beta.21
 
 - No EXP/h at all until you have been on one map for 3 minutes (no countdown); the EXP-only pop-out shows "EXP/h —" meanwhile.

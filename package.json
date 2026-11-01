@@ -1,7 +1,7 @@
 {
   "name": "maple-route-companion",
   "private": true,
-  "version": "1.1.0-beta.21",
+  "version": "1.1.0-beta.22",
   "type": "module",
   "main": "desktop/main.cjs",
   "scripts": {
@@ -43,6 +43,7 @@
       "scripts/serve.mjs",
       "scripts/osmscache.mjs",
       "scripts/autostart.mjs",
+      "scripts/couch.mjs",
       "package.json"
     ],
     "linux": {

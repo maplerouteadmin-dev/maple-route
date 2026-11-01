@@ -34,3 +34,19 @@ test('Electron server binds only loopback and does not expose Windows autostart'
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test('the desktop build packs every file the local server imports', async () => {
+  const { readFileSync } = await import('node:fs');
+  const files = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).build.files;
+  const packed = path => files.includes(path) || files.some(pattern => pattern.endsWith('/**') && path.startsWith(pattern.slice(0, -2)));
+  const seen = new Set(), queue = ['scripts/serve.mjs'];
+  while (queue.length) {
+    const file = queue.shift(); if (seen.has(file)) continue; seen.add(file);
+    assert.ok(packed(file), `${file} is imported by the local server but not in package.json build.files`);
+    const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+    for (const [, spec] of source.matchAll(/(?:from|import\()\s*'(\.{1,2}\/[^']+)'/g)) {
+      const resolved = new URL(spec, new URL(`../${file}`, import.meta.url)).pathname.split('/').slice(-2).join('/');
+      if (/\.(mjs|cjs|js)$/.test(resolved)) queue.push(resolved);
+    }
+  }
+});

@@ -423,6 +423,9 @@ async function start() {
 }
 
 app.whenReady().then(start).catch(error => {
+  // The Deck service has no visible window: an error box there can never be closed and the app
+  // would hang. Log and exit so the service manager restarts it.
+  if (deckMode) { console.error('Maple Route could not start:', error); app.exit(1); return; }
   dialog.showErrorBox('Maple Route could not start', String(error?.message ?? error));
   app.quit();
 });
