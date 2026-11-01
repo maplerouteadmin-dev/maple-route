@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.23
+
+- Phone (Steam Deck and Couch mode): ticking which town scrolls you have now shows on the phone. Checkboxes without a name (town scrolls, voice parts) were changed on the Deck but the phone kept showing them unticked.
+
 ## 1.1.0-beta.22
 
 - Steam Deck: beta.13–21 AppImages hung on start (a file the local server needs was left out of the package). Fixed, with a test that checks every file the server imports is packed; a start-up error on the Deck now exits and restarts instead of hanging on an invisible error box.

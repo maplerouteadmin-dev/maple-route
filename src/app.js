@@ -4683,9 +4683,12 @@ function phoneMirrorHtml() {
   if (copy.querySelector('#couch-panel')) copy.querySelector('#couch-panel').hidden = true;
   if (copy.querySelector('#live-couch')) copy.querySelector('#live-couch').hidden = true;
   for (const id of ['live-start', 'live-pip']) { const button = copy.querySelector(`#${id}`); if (button && !window.mapleDeck) button.disabled = true; }
-  for (const input of copy.querySelectorAll('input,textarea,select')) {
-    const source = input.id ? document.getElementById(input.id) : null;
-    if (!source) continue;
+  // Pair each copied field with the live one by position (a clone keeps document order), so fields
+  // without an id (town scroll and voice checkboxes) show their current state on the phone too.
+  const sources = [...$('#app').querySelectorAll('input,textarea,select')];
+  for (const [index, input] of [...copy.querySelectorAll('input,textarea,select')].entries()) {
+    const source = sources[index];
+    if (!source || source.tagName !== input.tagName) continue;
     if (input.tagName === 'INPUT') {
       if (input.type === 'checkbox' || input.type === 'radio') input.toggleAttribute('checked', source.checked);
       else input.setAttribute('value', source.value);
