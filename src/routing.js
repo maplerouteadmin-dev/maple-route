@@ -22,7 +22,10 @@ export function travelGraph(data, { taxis = true, vip = taxis, sleepy = taxis, n
   if (byData.has(key)) return byData.get(key);
   const known = new Set(data.maps.map(m => m.id));
   const sleepywood = new Set(data.maps.filter(m => m.name === 'Sleepywood').map(m => m.id));
-  const portals = data.portals.filter(p => p.kind !== 'taxi' || p.boat || (p.npc === 'VIP Cab' ? vip : taxis && (sleepy || !(p.npc === 'Regular Cab' && (sleepywood.has(p.to) || sleepywood.has(p.from))))));
+  const portals = data.portals.filter(p => p.kind !== 'taxi' || p.boat || (p.npc === 'VIP Cab' ? vip : taxis && (sleepy || !(p.npc === 'Regular Cab' && (sleepywood.has(p.to) || sleepywood.has(p.from))))))
+    // Scrolls before taxis: a town scroll (3) or the nearest-town scroll (2) beats a cab ride (5+), which
+    // also costs mesos and a walk to the driver.
+    .map(p => p.kind === 'taxi' && !p.boat ? { ...p, cost: p.cost + 2 } : p);
   if (nearest || selectedTowns.length) {
     // Return Scroll - Nearest Town (to the map's own return town) and the town scrolls Classic sells
     // (Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow).

@@ -79,3 +79,14 @@ test('the Sleepywood cab can be left out while other cabs stay', async () => {
   assert.deepEqual(rides(travelGraph(world, { taxis: true, sleepy: false })), ['hen>kc']);
   assert.deepEqual(rides(travelGraph(world, { taxis: false, sleepy: true })), []);
 });
+
+test('a town scroll is used before a taxi to the same town', async () => {
+  const { travelGraph } = await import('./routing.js');
+  const { searchRoute } = await import('./core.js');
+  const world = validateDataset({ schemaVersion: 1, maps: [{ id: 'field', name: 'Field', returnTo: 'kc' }, { id: 'kc', name: 'Kerning City' }, { id: 'hen', name: 'Henesys' }], portals: [
+    { from: 'field', to: 'kc', name: 'walk' },
+    { from: 'kc', to: 'hen', name: 'Regular Cab', kind: 'taxi', npc: 'Regular Cab', cost: 3 }
+  ], targets: [] });
+  const route = searchRoute(travelGraph(world, { taxis: true, towns: ['Henesys'] }), 'field', 'hen');
+  assert.deepEqual(route.map(step => step.kind ?? 'portal'), ['scroll']);
+});

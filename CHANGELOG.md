@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.29
+
+- Routes use your return scrolls before taxis: a cab ride now counts as a bit longer than a scroll (it also costs mesos and a walk to the driver), so when a town scroll or the nearest-town scroll gets you there, the route takes it.
+
 ## 1.1.0-beta.28
 
 - **Boss timers** (Live card → Boss timers): press Killed for Mano, Stumpy, Faust, King Clang, Mushmom, Zombie Mushmom, Jr. Balrog or Crimson Balrog. The countdown shows on the Live card, the pop-out and the Deck pop-up, and the voice warns a minute before and when due (voice part "Boss timers"). Respawn times are not in the game data: each starts at 60 minutes and you set your own.
