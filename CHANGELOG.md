@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.32
+
+- Teleporter mazes (Utah's Pig Farm): the map shows every teleport pad from the game data. Green pads teleport you forward, with a dashed arrow to where each lands; red ✕ pads are traps that send you back to the start (several pads sharing one landing spot). The Live card says how many of each the map has. Map data refreshes once a day, or press Settings → Refresh map data.
+
 ## 1.1.0-beta.31
 
 - Quest searches (My quest plan and the Quest guide) match the quest line name the game shows ("Caretaker's Ledger"), the quest name and its NPCs, list a line's quests in their in-game order, and no longer hide quests already in your plan (they are marked "already in your plan").

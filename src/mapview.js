@@ -41,7 +41,7 @@ export function mapViewModel(data, mapId, { route = null, position = null, goal 
   // On the destination map the target is the NPC you were sent to, when there is one.
   const goalSpot = goal && Number.isFinite(goal.x) ? { ...goal, sx: px(goal.x), sy: py(goal.y), goal: true } : null;
   const target = markers.find(m => m.next) ?? goalSpot;
-  return { map, markers, npcs, mobSpots: map.mobSpots ?? [], player, target, goal: goalSpot, position, width: W, height: H, empty: false };
+  return { map, markers, npcs, mobSpots: map.mobSpots ?? [], teleports: map.teleports ?? [], player, target, goal: goalSpot, position, width: W, height: H, empty: false };
 }
 
 // Labels near the edges grow inward so they are not clipped.
@@ -125,6 +125,7 @@ export function pictureOverlaySvg(model, picture, esc) {
   const target = model.target ? at(model.target) : null, player = model.position ? at(model.position) : null;
   if (player && target) parts.push(pathLine(player.x, player.y, target.x, target.y, unit));
   if (model.mobSpots?.length) parts.push(spawnDots(model.mobSpots, at, r * .32, esc));
+  if (model.teleports?.length) parts.push(teleportLayer(model.teleports, at, r, unit));
   for (const npc of model.npcs) { const p = at(npc); parts.push(`<circle class="mv-npc" data-npc="${esc(npc.name)}" cx="${p.x}" cy="${p.y}" r="${r * .45}"><title>${esc(npc.name)}</title></circle>`); }
   const shortOf = marker => { const label = marker.kind === 'taxi' ? `${marker.npc}` : marker.targets.map(t => t.name).join(' / '); return label.length > 24 ? `${label.slice(0, 23)}…` : label; };
   const placed = placeLabels(model.markers.map(marker => { const p = at(marker); return { x: p.x, y: p.y, r, text: shortOf(marker), anchor: p.x < W * .12 ? 'start' : p.x > W * .88 ? 'end' : 'middle', priority: marker.next ? 1 : 0 }; }), unit);
@@ -139,6 +140,21 @@ export function pictureOverlaySvg(model, picture, esc) {
   if (model.goal) { const g = at(model.goal); parts.push(goalMark(g.x, g.y, r, unit, model.goal.name, esc)); }
   if (player) parts.push(`<g class="mv-player"><circle class="mv-pulse" cx="${player.x}" cy="${player.y}" r="${r * 1.6}"/><circle cx="${player.x}" cy="${player.y}" r="${r}" style="stroke-width:${unit * .15}"/><text x="${player.x}" y="${player.y + r * 3.2}" style="font-size:${unit}px;paint-order:stroke;stroke:#0d221c;stroke-width:${unit * .28}px">You</text></g>`);
   parts.push('</svg>');
+  return parts.join('');
+}
+
+// Teleport pads: green with a dashed arrow to where each lands; red ✕ for traps back to the start.
+function teleportLayer(pads, at, r, unit) {
+  const parts = ['<g class="mv-teleports">'];
+  for (const pad of pads) {
+    const p = at(pad), to = at({ x: pad.toX, y: pad.toY });
+    if (pad.trap) {
+      parts.push(`<g class="mv-trap"><title>Trap: sends you back to the start</title><circle cx="${p.x}" cy="${p.y}" r="${r * .9}" style="stroke-width:${unit * .12}"/><path d="M${p.x - r * .45} ${p.y - r * .45}L${p.x + r * .45} ${p.y + r * .45}M${p.x + r * .45} ${p.y - r * .45}L${p.x - r * .45} ${p.y + r * .45}" style="stroke-width:${unit * .14}"/></g>`);
+    } else {
+      parts.push(`<g class="mv-tele"><title>Teleporter: lands where the arrow ends</title><line x1="${p.x}" y1="${p.y}" x2="${to.x}" y2="${to.y}" style="stroke-width:${unit * .13};stroke-dasharray:${unit * .5} ${unit * .35}"/><circle cx="${p.x}" cy="${p.y}" r="${r * .9}" style="stroke-width:${unit * .12}"/><circle class="mv-land" cx="${to.x}" cy="${to.y}" r="${r * .45}"/></g>`);
+    }
+  }
+  parts.push('</g>');
   return parts.join('');
 }
 
@@ -159,6 +175,7 @@ export function renderOverlaySvg(model, render, esc) {
   const player = model.position, target = model.target;
   if (player && target) parts.push(pathLine(player.x, player.y, target.x, target.y, unit));
   if (model.mobSpots?.length) parts.push(spawnDots(model.mobSpots, p => p, r * .32, esc));
+  if (model.teleports?.length) parts.push(teleportLayer(model.teleports, p => p, r, unit));
   for (const npc of model.npcs) parts.push(`<circle class="mv-npc" data-npc="${esc(npc.name)}" cx="${npc.x}" cy="${npc.y}" r="${r * .45}"><title>${esc(npc.name)}</title></circle>`);
   const shortOf = marker => { const text = marker.kind === 'taxi' ? marker.npc : marker.targets.map(t => t.name).join(' / '); return text.length > 24 ? `${text.slice(0, 23)}…` : text; };
   const placed = placeLabels(model.markers.map(marker => ({ x: marker.x, y: marker.y, r, text: shortOf(marker), anchor: marker.x < W * .12 ? 'start' : marker.x > W * .88 ? 'end' : 'middle', priority: marker.next ? 1 : 0 })), unit);

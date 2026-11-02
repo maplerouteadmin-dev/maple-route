@@ -28,7 +28,9 @@ export function validateDataset(input) {
     const returnTo = typeof raw.returnTo === 'string' && raw.returnTo !== id ? raw.returnTo : null;
     // How many monsters can be alive at once (the game's mob cap), and how many spawn points the map has.
     const capacity = Number.isInteger(raw.capacity) && raw.capacity > 0 && raw.capacity < 1000 ? raw.capacity : null;
-    maps.set(id, { id, name, area: String(raw.area ?? '').slice(0, 120), aliases, bounds: spatial, marks, spots, npcs, mobSpots, picture, returnTo, capacity });
+    // Teleport pads inside the map (src/teleports.js): where each lands, and whether it is a trap.
+    const teleports = Array.isArray(raw.teleports) ? raw.teleports.slice(0, 60).map(pad => { const at = point(pad), to = point({ x: pad?.toX, y: pad?.toY }); return at && to ? { ...at, toX: to.x, toY: to.y, trap: pad.trap === true } : null; }).filter(Boolean) : [];
+    maps.set(id, { id, name, area: String(raw.area ?? '').slice(0, 120), aliases, bounds: spatial, marks, spots, npcs, mobSpots, picture, returnTo, capacity, teleports });
   }
   if (!maps.size) throw new Error('The file has no maps.');
   const portals = [];

@@ -1,3 +1,4 @@
+import { mapTeleports } from './teleports.js';
 import { normalize, validateDataset } from './core.js';
 import { transportEdges } from './transport.js';
 
@@ -45,6 +46,8 @@ export function fromOsms(mapPayload, portalPayload, monsterPayload = null, wikiP
     // Every visible swirl (any destination) is drawn on the minimap; keep their spots for position fixes.
     const marks = exits.filter(exit => portalKind(exit.type) === 'visible' && Number.isFinite(Number(exit.x)) && Number.isFinite(Number(exit.y))).map(exit => ({ x: Number(exit.x), y: Number(exit.y) }));
     if (marks.length) mapsById.get(from).marks = marks;
+    const teleports = mapTeleports(exits);
+    if (teleports.length) mapsById.get(from).teleports = teleports;
     for (const exit of exits) {
       const to = id9(exit.dest_map);
       if (!known.has(to) || from === to) continue;

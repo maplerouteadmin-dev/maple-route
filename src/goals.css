@@ -18,3 +18,8 @@
 .boss-timers summary{cursor:pointer;font-weight:600}.boss-rows{list-style:none;padding:0;margin:6px 0;display:grid;gap:4px}.boss-rows li{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.boss-min input{width:4.2em}
 .session-summary{border:1px solid var(--line,#cdd8cf);border-radius:8px;padding:8px 10px;margin:6px 0}.session-summary ul{margin:4px 0;padding-left:18px}
 .game-gone{background:#ffe1d6;color:#7a2410;border-radius:8px;padding:6px 10px;margin-bottom:6px}
+
+/* Teleport pads (Utah's Pig Farm): green go forward, red traps send you back */
+.mv-tele line{stroke:#5fd38a;fill:none}.mv-tele circle{fill:#5fd38a;stroke:#0d3b22}.mv-tele .mv-land{fill:none;stroke:#5fd38a}
+.mv-trap circle{fill:#e2574c;stroke:#4a0f0b}.mv-trap path{stroke:#fff;fill:none}
+.teleport-hint{margin:2px 0}

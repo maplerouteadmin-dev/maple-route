@@ -43,6 +43,7 @@ import { usesLocalVoice } from './voiceplatform.js';
 import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS, EXP_SETTLE_MS } from './popout.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
 import { pileTarget, JUMP_QUEST_PILES } from './jumpquests.js';
+import { teleportHint } from './teleports.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -2039,8 +2040,11 @@ function hereTask(mapId = state.current) {
 }
 function hereTaskHtml() {
   const here = hereTask(), first = currentTrip()?.trip?.order?.[0];
-  if (!here && !first) return '';
-  return `<div class="here-task">${here ? `<span><b>On this map:</b> ${esc(here)}</span>` : '<span></span>'}${first ? '<button type="button" class="button secondary next-step" data-next-step title="Mark the current step done">Next step ✓</button>' : ''}</div>`;
+  // A teleporter maze (Utah's Pig Farm): which pads go forward and which send you back.
+  const pads = teleportHint(mapById(state.current)?.teleports ?? []);
+  const padsHtml = pads ? `<p class="fine teleport-hint">${esc(pads)}</p>` : '';
+  if (!here && !first) return padsHtml;
+  return padsHtml + `<div class="here-task">${here ? `<span><b>On this map:</b> ${esc(here)}</span>` : '<span></span>'}${first ? '<button type="button" class="button secondary next-step" data-next-step title="Mark the current step done">Next step ✓</button>' : ''}</div>`;
 }
 // Next step: mark the plan's current step done. A hunting stop ticks every need it covers; a buy
 // ticks the item; start / craft / hand-in tick like their own boxes. Undo brings it all back.
