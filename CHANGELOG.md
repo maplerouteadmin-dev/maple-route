@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.34
+
+- Removing a quest from your plan and adding it back always gives it a fresh checklist, also for quests you have already started (it stays started).
+
 ## 1.1.0-beta.33
 
 - Adding a quest you have not started to your plan gives it a fresh checklist: old ticks (an item marked collected by mistake) no longer make the plan skip straight from "start" to "hand in".
