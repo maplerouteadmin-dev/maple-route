@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.33
+
+- Adding a quest you have not started to your plan gives it a fresh checklist: old ticks (an item marked collected by mistake) no longer make the plan skip straight from "start" to "hand in".
+
 ## 1.1.0-beta.32
 
 - Teleporter mazes (Utah's Pig Farm): the map shows every teleport pad from the game data. Green pads teleport you forward, with a dashed arrow to where each lands; red ✕ pads are traps that send you back to the start (several pads sharing one landing spot). The Live card says how many of each the map has. Map data refreshes once a day, or press Settings → Refresh map data.

@@ -3293,7 +3293,12 @@ function planStatus(name) {
 }
 document.addEventListener('click', event => {
   const add = event.target.closest('[data-plan-add]');
-  if (add) { if (add.dataset.planId && sameNameCount(add.dataset.planAdd) > 1) state.questPick = { ...state.questPick, [add.dataset.planAdd]: add.dataset.planId }; if (!state.planQuests.includes(add.dataset.planAdd)) state.planQuests.push(add.dataset.planAdd); state.questsFinished = state.questsFinished.filter(name => name !== add.dataset.planAdd); state.planSkip = state.planSkip.filter(name => name !== add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); renderQuestRecs(); applyObjective(); renderLive(); return; }
+  if (add) { if (add.dataset.planId && sameNameCount(add.dataset.planAdd) > 1) state.questPick = { ...state.questPick, [add.dataset.planAdd]: add.dataset.planId }; if (!state.planQuests.includes(add.dataset.planAdd)) {
+      state.planQuests.push(add.dataset.planAdd);
+      // Added again and not started: a fresh checklist (old ticks would skip steps you still have to do).
+      const name = add.dataset.planAdd;
+      if (!state.activeQuests.includes(name) && !state.acceptedQuests.includes(name)) { delete state.questDone[name]; if (state.questItemsReady) delete state.questItemsReady[name]; }
+    } state.questsFinished = state.questsFinished.filter(name => name !== add.dataset.planAdd); state.planSkip = state.planSkip.filter(name => name !== add.dataset.planAdd); $('#plan-search').value = ''; $('#plan-suggest').innerHTML = ''; state.allTripCache = null; persist(); renderPlanList(); renderQuestRecs(); applyObjective(); renderLive(); return; }
   const remove = event.target.closest('[data-plan-remove]');
   if (remove) {
     const name = remove.dataset.planRemove;
