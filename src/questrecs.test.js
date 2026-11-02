@@ -140,3 +140,17 @@ test('same-named quests are told apart by job or town, giver and goal', async ()
   assert.equal(questDetail(fossils), 'Lv 15 · from Winston · defeat 25 Green Mushroom, Plant Fossil ×12');
 });
 
+
+test('a guessed hand-in is confirmed by the ending or the next quest in the chain', async () => {
+  const { turnInConfirmed } = await import('./questrecs.js');
+  const catalog = [
+    { name: 'Boughs for the Lanterns', giver: 'Daniel the Scholar', turnIn: 'Jaime the Wandering Explorer', doneText: 'I brought the Giant Tree\'s Boughs to Jaime the Wandering Explorer.' },
+    { name: 'The First Mark', giver: 'Jay', turnIn: 'Jay', doneText: 'The Adventurer\'s Journal - Page 2 is mine.' },
+    { name: 'The Second Mark', giver: 'Jay', prerequisites: ['The First Mark'] },
+    { name: 'A Memory of Iron', giver: 'Jaime the Wandering Explorer', turnIn: 'Jaime the Wandering Explorer', doneText: 'I purged the Echopuss from the area.' },
+    { name: 'Next Iron', giver: 'Daniel the Scholar', prerequisites: ['A Memory of Iron'] }
+  ];
+  assert.equal(turnInConfirmed(catalog[0], catalog), true);
+  assert.equal(turnInConfirmed(catalog[1], catalog), true);
+  assert.equal(turnInConfirmed(catalog[3], catalog), false);
+});

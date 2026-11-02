@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0-beta.36
+
+- Quest item sources re-checked for every quest (audit against the game's quest texts, spawn data and the wiki):
+  - A monster is no longer read from inside an item's name ("25 Drake Skulls" is not where Medicine With Weird Vibes comes from) or from the quest's own NPC (Malady and Halloween Candies).
+  - The sentence that names an item counts first ("defeat Jr. Wraith and gather Tablecloth"), and what one quest says about an item helps every quest needing it: Dragon Skin now comes from Copper Drake, Drake and Red Drake everywhere (it pointed at Blue Mushrooms for Pia's Present), Tablecloth from Jr. Wraith (Maya's Second Collection, Icarus and the Balloon).
+  - Pig's Ribbon comes from Ribbon Pig (was Pig); Stump Research's Very Dry Branch from Stump only.
+  - A fix from beta.30 matched "fairy" in NPC names ("Arwen the Fairy") to the Fairy monsters in about a dozen quests; fairies now only count when the quest names a map they live on (The Filing Error).
+  - Items with no known source say so ("from a monster, not known which" when the quest is about fighting, such as the job tests' Dark Marbles; otherwise "no known source, maybe an NPC gives it") instead of claiming an NPC hands them over.
+  - Labels say why: "(named in the quest)", "(going by the item's name)", "(best guess)" only when nothing backs it up.
+- Hand-in NPCs: a guessed hand-in that the quest's ending names, or whose NPC gives the next quest in the chain, is no longer marked "(best guess)" (25 of 28 quests).
+
 ## 1.1.0-beta.35
 
 - The map now marks NPC warps into jump quests as exits: in Ellinia, Shane is highlighted as the next stop with the route line to him (the directions already said "Talk to Shane"). The Deck says "Collect on" for pile pick-ups.

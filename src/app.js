@@ -19,7 +19,7 @@ import { startCapture, ticker } from './live.js';
 import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOverlaySvg, spawnColors } from './mapview.js';
 import { fittedMapSize } from './mapfit.js';
 import { arrivalDetails } from './arrival.js';
-import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMaps, craftStops, matchCount, helperComplete, hops } from './objective.js';
+import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMaps, craftStops, matchCount, helperComplete, hops, setTextSources } from './objective.js';
 import { npcMapId, questNpcDestination } from './npclocations.js';
 import { verifiedQuestTurnIn } from './questorigins.js';
 import { completeQuestNeeds } from './questneeds.js';
@@ -52,7 +52,7 @@ import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOU
 // As a public website, keep OSMS pictures in the player's browser (public/sw.js). On this PC the local
 // server already saves them.
 if (!isLocalHost() && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
-import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn, questDetail } from './questrecs.js';
+import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn, questDetail, turnInConfirmed } from './questrecs.js';
 import { questPlaces, buildSteps, currentStep, stepCoversNeed } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
 import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines, fixCounts } from './hud.js';
@@ -92,6 +92,8 @@ function ensureQuestPlaces() {
   if ((stamp === placesStamp && placesData === state.data) || !state.data?.maps?.length) return;
   placesStamp = stamp; placesData = state.data;
   for (const quest of state.quests) quest.places = questPlaces(quest, state.data.maps);
+  // What each quest's text says about items, shared with every quest that needs the same item.
+  if (state.quests.length) setTextSources(state.quests, state.data);
   // Jump-quest piles (Pink Anthurium ← A pile of flowers) are not in the map data: add them.
   for (const { item } of JUMP_QUEST_PILES) {
     const pile = pileTarget(state.data, item); if (!pile) continue;
@@ -676,6 +678,8 @@ async function loadQuestCatalog() {
       if (verified) { quest.turnIn = verified; quest.turnInGuessed = false; }
       else if (!quest.turnIn) { quest.turnIn = guessTurnIn(quest.doneText, npcNames, quest.giver); quest.turnInGuessed = true; }
     }
+    // Guesses the quest's own ending or the next quest's giver back up are not shown as guesses.
+    for (const quest of state.quests) if (quest.turnInGuessed && turnInConfirmed(quest, state.quests)) quest.turnInGuessed = false;
     applyNotes(state.quests, state.notes); resolveWeekly();
     if (state.selectedQuest?.name) {
       const match = questByName(state.selectedQuest.name);
@@ -2014,6 +2018,8 @@ document.addEventListener('click', event => {
   if (last) state.live.tracker = addExpReading(state.live.tracker, { value: last.value, percent: last.percent, level: last.level ?? null, mapId: state.current }, Date.now()).tracker;
   state.hud.tracker = state.live.tracker; renderLiveExp(); renderLive();
 });
+// How sure a guessed source is: named in the quest's own text, or only a match on the item's name.
+const guessLabel = goal => goal.guessFrom === 'text' ? ' (named in the quest)' : goal.guessFrom === 'name' ? " (going by the item's name)" : ' (best guess)';
 // "from Jr. Necki", or for a breakable object "hit Ellinia Flowers" (they give the item).
 function sourceText(names = []) {
   return names.slice(0, 2).map(name => { const t = state.data.targets.find(x => x.reactor && x.name === name); return t?.pile ? `pick from ${name.replace(/^A /, 'a ')}` : t ? `hit ${name}s` : name; }).join(', ').replace(/^(?!hit |pick )/, 'from ');
@@ -3479,7 +3485,7 @@ function planSources() {
   }
   return state.planSourcesCache.value;
 }
-function givenBy(item) { const g = state.notes.given[normalize(item)]; return g ? `from ${g.npc} (${saidBy(g.mine ? 'you' : g.players)})` : 'from an NPC'; }
+function givenBy(item) { const g = state.notes.given[normalize(item)]; return g ? `from ${g.npc} (${saidBy(g.mine ? 'you' : g.players)})` : 'no known source (maybe an NPC gives it)'; }
 function givenGoalText(goal) { return goal.givenAtStart ? `${goal.givenAtStart.npc} gives this when you accept the quest${goal.givenAtStart.map ? ` in ${goal.givenAtStart.map}` : ''}` : givenBy(goal.name); }
 function dropsSaid(item) { const d = state.notes.drops[normalize(item)]; return d?.length && !state.itemSources[item]?.length ? ` (${saidBy(d[0].mine ? 'you' : d[0].players)})` : ''; }
 // Quests in the plan the game data can't plan: the weekly donation (pick this week's item) and quests
@@ -4036,7 +4042,7 @@ function allChecklistHtml(all, doneHtml = '') {
       const done = progress.done.has(step.number) || Boolean(need && ticked.has(normalize(need.name)));
       if (done) return '';
       const goal = need && all.goals.find(g => normalize(g.name) === normalize(need.name) || normalize(g.craft?.item ?? '') === normalize(need.name));
-      const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.givenAtStart || goal?.given ? givenGoalText(goal) : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `${sourceText(goal.monsters)}${goal.guess ? ' (best guess)' : dropsSaid(need.name)}` : '';
+      const where = goal?.craft ? `craft at ${goal.craft.npc ?? goal.craft.town}` : goal?.unknownDrop ? 'from a monster (not known which: tell us in Fill in a quest)' : goal?.givenAtStart || goal?.given ? givenGoalText(goal) : goal?.monsters?.length && normalize(goal.monsters[0]) !== normalize(need.name) ? `${sourceText(goal.monsters)}${goal.guess ? guessLabel(goal) : dropsSaid(need.name)}` : '';
       const count = need ? `${seen?.have ?? 0}/${need.count}` : '';
       const map = step.npc ? questStepMaps(travel(), step, state.current, 1)[0]?.map : null;
       const route = map && !done ? ` <button type="button" class="link-button" data-route="${esc(map.id)}" data-route-npc="${esc(step.npc)}">Route to ${esc(step.npc)}</button>` : '';
@@ -4067,7 +4073,7 @@ function allStepsHtml(all, { single = false } = {}) {
     const now = i === 0 ? ' <span class="pill">now</span>' : '', mapName = esc(mapById(step.mapId)?.name ?? '?');
     if (step.type === 'hunt') {
       const needs = all.goals.filter(g => step.goals.includes(g.name)).flatMap(g => (g.quests ?? []).map(q => {
-        const where = g.craft ? `for ${g.craft.item}` : g.givenAtStart || g.given ? givenGoalText(g) : g.monsters?.length && normalize(g.monsters[0]) !== normalize(g.name) ? `${sourceText(g.monsters)}${g.guess ? ' (best guess)' : dropsSaid(g.name)}` : '';
+        const where = g.craft ? `for ${g.craft.item}` : g.unknownDrop ? 'from a monster (not known which)' : g.givenAtStart || g.given ? givenGoalText(g) : g.monsters?.length && normalize(g.monsters[0]) !== normalize(g.name) ? `${sourceText(g.monsters)}${g.guess ? guessLabel(g) : dropsSaid(g.name)}` : '';
         return line(q, g.name, where);
       }));
       const picking = step.monsters?.length && step.monsters.every(name => state.data.targets.some(t => t.pile && t.name === name));

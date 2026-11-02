@@ -79,11 +79,16 @@ export function huntGoals(data, progress, itemSources = {}, questText = '', allN
   });
   const missing = goals.filter(g => g.kind === 'collect' && !g.pending && !g.monsters.length);
   if (!missing.length) return goals;
-  const named = questText ? textMonsters(data, questText) : [];
+  // Monster names in the text, not counting ones inside item names ("25 Drake Skulls" is not about
+  // Drakes being the source of something else) or the quest's own NPCs (Malady gives Halloween Candies).
+  const cleanText = text => withoutNames(text, [...allNeeds, ...progress.map(p => p.name)], [quest?.giver, quest?.turnIn]);
+  const named = questText ? textMonsters(data, cleanText(questText)) : [];
   const mobNames = (data.targets ?? []).filter(t => t.kind === 'mob').map(t => t.name);
   const words = name => normalize(name).split(' ').filter(word => word.length >= 3).map(word => word.replace(/(es|s)$/, ''));
   // Monsters whose whole name is in the item's name ("Lorang Claw" → Lorang), named in the text or not.
-  const inName = item => { const text = ` ${words(item).join(' ')} `; return mobNames.filter(mob => words(mob).length && text.includes(` ${words(mob).join(' ')} `)); };
+  // Numbered monsters count by their base name too ("Jr. Boogie Horn" → Jr. Boogie 1, Jr. Boogie 2).
+  const baseWords = mob => words(mob.replace(/\s+\d+$/, ''));
+  const inName = item => { const have = new Set(words(item)); return mobNames.filter(mob => { const own = /\s\d+$/.test(mob) ? baseWords(mob) : words(mob); return own.length && own.every(word => have.has(word)); }); };
   // The monsters that best fit an item: most shared words, then fewest extra words ("Dark Stone Golem
   // Rubble" → Dark Stone Golem, "Pig's Ribbon" → Ribbon Pig, "Omok Piece: Mushroom" → Orange Mushroom).
   const bestFit = item => {
@@ -106,20 +111,74 @@ export function huntGoals(data, progress, itemSources = {}, questText = '', allN
     if (mobByName(data, p.name)) claimed.add(mobByName(data, p.name).name);
   }
   for (const g of missing) {
+    // Strongest first: the sentence of this quest that names the item ("defeat Jr. Wraith and gather
+    // Tablecloth"), then another quest's sentence about the same item ("Dragon Skin can be obtained from
+    // Copper Drake, Drake, and Red Drake"), then any monster this quest's text names.
+    const sentence = sentenceMonsters(data, questText, g.name, cleanText, [...allNeeds, ...progress.map(p => p.name)]);
+    const elsewhere = textSourceIndex.get(normalize(g.name)) ?? [];
+    const named_ = sentence.length ? sentence : elsewhere.filter(name => mobByName(data, name));
     const fit = bestFit(g.name), left = named.filter(mob => !claimed.has(mob));
     // A crafting ingredient is matched by its name only ("Iron Hog's Metal Hoof" → Iron Hog): the
     // quest text is about the finished item, not what it is made from.
-    g.monsters = fit.length ? fit : g.craft ? [] : left.length ? left : named;
+    g.monsters = fit.length ? fit : g.craft ? [] : named_.length ? named_ : left.length ? left : named;
     if (g.monsters.length) {
       g.guess = true;
+      // Monsters the quest's own text names (game files) are stronger than a match on the item's name.
+      g.guessFrom = !fit.length || fit.every(name => named.includes(name) || named_.includes(name)) ? 'text' : 'name';
       // The quest names where to look ("…fairies in Tree Dungeon, Forest Up North VI…"): hunt there.
       const spots = textMaps(data, questText).filter(mapId => g.monsters.some(name => mobByName(data, name)?.locations?.some(l => l.mapId === mapId)));
       if (spots.length) g.maps = spots;
     }
-    // Nothing drops it as far as any source knows: usually handed over by an NPC during the quest.
+    // Nothing drops it as far as any source knows. A quest about fighting ("by defeating monsters"):
+    // some monster drops it, not known which. Otherwise usually handed over by an NPC.
+    else if (!g.craft && /\b(?:defeat|defeating|hunt|hunting|kill|killing|taking down|take down|monsters?)\b/i.test(questText ?? '')) g.unknownDrop = true;
     else if (!g.craft) g.given = true;
   }
   return goals;
+}
+
+// The text without the given names (items, NPCs), so monster names inside them are not read as monsters.
+function withoutNames(text, items = [], npcs = []) {
+  let out = ` ${normalize(text ?? '')} `;
+  for (const name of [...items, ...npcs].filter(Boolean).map(normalize).filter(n => n.length >= 3).sort((a, b) => b.length - a.length)) out = out.replaceAll(` ${name} `, ' · ').replaceAll(` ${name}s `, ' · ');
+  return out;
+}
+// Sentences, not broken at the dot of "Jr. Wraith", "Dr. Kim", "Mr. Thunder".
+const sentencesOf = text => String(text ?? '').split(/(?<=[.!?])(?<!\b(?:Jr|Dr|Mr|Mrs|Ms|St)\.)\s+|\n+/);
+// Monsters a quest's text ties to `item`: in each sentence naming it, the monsters after it up to the
+// next item it lists ("Dragon Skin can be obtained from Copper Drake…, while Fragment of Magic …"), else
+// the ones before it ("defeat Jr. Wraith and gather Tablecloth"). `items` are all the quest's items.
+export function sentenceMonsters(data, text, item, clean = t => t, items = [item]) {
+  const key = normalize(item), others = [...new Set([...items, item].map(normalize))].filter(Boolean);
+  const out = [];
+  for (const sentence of sentencesOf(text)) {
+    const plain = ` ${normalize(sentence)} `;
+    const at = plain.indexOf(` ${key}`);
+    if (at === -1) continue;
+    // Where each listed item starts in the sentence: the item's own part runs to the next one.
+    const marks = others.map(name => plain.indexOf(` ${name}`)).filter(i => i !== -1).sort((a, b) => a - b);
+    const next = marks.find(i => i > at) ?? plain.length, prev = [...marks].reverse().find(i => i < at) ?? 0;
+    const after = textMonsters(data, clean(plain.slice(at, next))), before = textMonsters(data, clean(plain.slice(prev, at)));
+    for (const mob of after.length ? after : before) if (!out.includes(mob)) out.push(mob);
+  }
+  return out;
+}
+// What every quest's text says about items: item → monsters named in the same sentence, from any quest
+// (one quest saying where Dragon Skin comes from helps every quest that needs it). Set once per catalog.
+let textSourceIndex = new Map();
+export function setTextSources(catalog, data) {
+  const index = new Map();
+  for (const quest of catalog ?? []) {
+    const items = (quest.needs ?? []).filter(need => need.type === 'item').map(need => need.name);
+    for (const item of items) {
+      const mobs = sentenceMonsters(data, quest.text, item, text => withoutNames(text, items, [quest.giver, quest.turnIn]), items);
+      if (!mobs.length) continue;
+      const key = normalize(item), seen = index.get(key) ?? [];
+      index.set(key, [...seen, ...mobs.filter(mob => !seen.includes(mob))]);
+    }
+  }
+  textSourceIndex = index;
+  return index;
 }
 
 // Map names that appear in a quest's text, longest first ("Forest Up North VII" before "…VI").
@@ -151,8 +210,14 @@ export function textMonsters(data, text) {
   const bases = new Map();
   for (const mob of mobs) { const base = normalize(mob.name).match(/^(.+?) \d+$/)?.[1]; if (base && !mobs.some(m => normalize(m.name) === base)) bases.set(base, [...(bases.get(base) ?? []), mob.name]); }
   for (const [base, names] of bases) {
+    // Plural only ("the fairies took them"): the singular is usually part of an NPC's name
+    // ("Arwen the Fairy"), not the monster.
+    // And only those spawning on a map the text names ("fairies in Tree Dungeon, Forest Up North VI"):
+    // "the fairies" of Ellinia's NPCs are not monsters to hunt.
     const plural = base.endsWith('y') ? `${base.slice(0, -1)}ies` : `${base}s`;
-    if (new RegExp(` (?:${base}|${plural}) `).test(rest)) found.push(...names.filter(name => !found.includes(name)));
+    if (!new RegExp(` ${plural} `).test(rest)) continue;
+    const places = textMaps(data, text);
+    found.push(...names.filter(name => !found.includes(name) && mobs.find(m => m.name === name)?.locations?.some(l => places.includes(l.mapId))));
   }
   return found;
 }

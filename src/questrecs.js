@@ -178,3 +178,13 @@ export function questDetail(quest, { sameName = 1 } = {}) {
   return parts.filter(Boolean).join(' · ');
 }
 
+
+// A guessed hand-in NPC counts as confirmed when the quest's ending names them ("I brought the Boughs
+// to Jaime the Wandering Explorer") or the next quest in the chain starts with them (you are already
+// standing there). Otherwise it stays a best guess.
+export function turnInConfirmed(quest, catalog = []) {
+  const npc = normalize(quest?.turnIn ?? '');
+  if (!npc) return false;
+  if (` ${normalize(quest.doneText ?? '')} `.includes(` ${npc} `)) return true;
+  return catalog.some(next => (next.prerequisites ?? []).includes(quest.name) && normalize(next.giver ?? '') === npc);
+}

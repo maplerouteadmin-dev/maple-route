@@ -5,7 +5,7 @@
 import { fromOsms } from '../src/osms.js';
 import { validateDataset, normalize } from '../src/core.js';
 import { fromOsmsQuests } from '../src/quests.js';
-import { huntGoals, textMonsters } from '../src/objective.js';
+import { huntGoals, textMonsters, setTextSources } from '../src/objective.js';
 import { fromOsmsCrafting, craftRecipe } from '../src/refine.js';
 import { fromWikiShops } from '../src/shops.js';
 import { writeFileSync } from 'node:fs';
@@ -16,6 +16,7 @@ const [mapsJson, portalsJson, monstersJson, questsJson, craftingJson] = await Pr
 const crafting = fromOsmsCrafting(craftingJson);
 const data = validateDataset(fromOsms(mapsJson, portalsJson, monstersJson));
 const quests = fromOsmsQuests(questsJson);
+setTextSources(quests, data); // what other quests' texts say about the same items, as the app does
 
 // Every wiki drop row, item → monsters.
 const drops = new Map();
@@ -41,13 +42,14 @@ for (const q of quests) {
   // As the app sees it: wiki droppers where listed, nothing loaded yet = [] (so the text guess runs).
   // Crafted items look up their ingredients, as the app does.
   const sources = Object.fromEntries(items.flatMap(n => [[n.name, drops.get(n.name) ?? []], ...ingredientsOf(n.name, 1).map(i => [i, drops.get(i) ?? []])]));
-  const goals = huntGoals(data, items.map(n => ({ name: n.name, have: 0, need: n.count })), sources, q.text, q.needs.map(n => n.name), crafting, shops);
+  const goals = huntGoals(data, items.map(n => ({ name: n.name, have: 0, need: n.count })), sources, q.text, q.needs.map(n => n.name), crafting, shops, q);
   for (const goal of goals) {
     const wiki = drops.get(goal.name) ?? [];
-    const guessOnly = huntGoals(data, [{ name: goal.name, have: 0, need: 1 }], { [goal.name]: [] }, q.text, q.needs.map(n => n.name))[0];
+    const guessOnly = huntGoals(data, [{ name: goal.name, have: 0, need: 1 }], { [goal.name]: [] }, q.text, q.needs.map(n => n.name), null, null, q)[0];
     const guess = guessOnly?.guess ? guessOnly.monsters : [];
     const status = goal.kind === 'buy' ? 'buy' : goal.craft ? (goal.monsters.length ? 'craft' : 'craft-no-ingredient-source')
       : wiki.length ? (guess.length && !guess.some(m => wiki.includes(m)) ? 'wiki-vs-text-disagree' : 'wiki')
+      : goal.unknownDrop ? 'unknown-monster'
       : goal.given ? 'given-by-npc'
       : !goal.monsters.length ? 'no-source'
       : goal.monsters.length > 1 ? 'guess-several' : 'guess';

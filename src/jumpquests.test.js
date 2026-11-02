@@ -27,7 +27,10 @@ test('the Pink Anthurium is picked from the pile of flowers on step 2', () => {
 });
 
 test('"the fairies took them" means the numbered Fairy monsters', () => {
-  assert.deepEqual(textMonsters(world, 'Lyn asked me to recover 25 Torn Ledger Pages the fairies took.').sort(), ['Fairy 2', 'Fairy 3']);
+  // Only with a map where they spawn in the text; "the fairies" alone are usually Ellinia's NPCs.
+  assert.deepEqual(textMonsters(world, 'Lyn asked me to recover 25 Torn Ledger Pages the fairies took. Look for fairies in Ellinia.').sort(), ['Fairy 2', 'Fairy 3']);
+  assert.deepEqual(textMonsters(world, 'The fairies of the town asked me to help.'), []);
+  assert.deepEqual(textMonsters(world, 'Arwen the Fairy wants a glass shoe.'), []);
   assert.deepEqual(textMonsters(world, 'Kill Curse Eyes in the dungeon.'), ['Curse Eye']);
 });
 
