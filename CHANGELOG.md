@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.31
+
+- Quest searches (My quest plan and the Quest guide) match the quest line name the game shows ("Caretaker's Ledger"), the quest name and its NPCs, list a line's quests in their in-game order, and no longer hide quests already in your plan (they are marked "already in your plan").
+
 ## 1.1.0-beta.30
 
 - Jump quests are routed: Shane (Ellinia) takes you into the Forest of Patience and the Mysterious Statue (Sleepywood) into the Deep Forest of Patience; Louis and the Crumbling Statue take you back out. Their quest items are picked from the piles at the top (Pink Anthurium ← A pile of flowers on step 2, Double-Rooted Red Ginseng ← A pile of herbs, Pink/Blue/White Violas ← the Deep Forest piles), so Sabitrama's and John's quests have a route.

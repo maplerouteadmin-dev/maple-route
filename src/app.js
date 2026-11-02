@@ -685,6 +685,17 @@ async function loadQuestCatalog() {
   renderQuestResults(); renderQuestGuide(); renderTripPlanner(); renderDashboard(); renderLive(); renderCharacterJourney();
 }
 
+// Quest search: every typed word in the quest's name, its quest line (what the game's quest window
+// shows, e.g. "Caretaker's Ledger"), its NPC, job or town. Names that start with the text come first.
+function questSearch(text, limit = 12) {
+  const words = normalize(text).split(' ').filter(Boolean);
+  if (!words.length) return [];
+  const query = words.join(' ');
+  return state.quests.filter(q => words.every(w => normalize(`${q.name} ${q.arc ?? ''} ${q.giver ?? ''} ${q.turnIn ?? ''} ${q.job ?? ''} ${q.town ?? ''}`).includes(w)))
+    .sort((a, b) => Number(normalize(b.name).startsWith(query) || normalize(b.arc ?? '').startsWith(query)) - Number(normalize(a.name).startsWith(query) || normalize(a.arc ?? '').startsWith(query))
+      || (a.arc && a.arc === b.arc ? (a.arcOrder ?? 0) - (b.arcOrder ?? 0) : a.name.localeCompare(b.name)))
+    .slice(0, limit);
+}
 function renderQuestResults() {
   const panel = $('#quest-results'); panel.replaceChildren();
   const query = normalize($('#quest-query').value);
@@ -692,12 +703,11 @@ function renderQuestResults() {
   if (state.questCatalogStatus === 'loading') { panel.textContent = 'Loading community quest names…'; return; }
   if (state.questCatalogStatus === 'error') { panel.textContent = `${state.questCatalogError} Try again later.`; return; }
   if (query.length < 2) return;
-  const matches = state.quests.filter(quest => normalize(quest.name).includes(query))
-    .sort((a, b) => Number(normalize(b.name).startsWith(query)) - Number(normalize(a.name).startsWith(query)) || a.name.localeCompare(b.name)).slice(0, 12);
+  const matches = questSearch(query);
   if (!matches.length) { panel.textContent = 'No matching quest in the community catalog. Try a shorter name.'; return; }
   for (const quest of matches) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'quest-option';
-    const name = document.createElement('strong'); name.textContent = quest.name;
+    const name = document.createElement('strong'); name.textContent = quest.arc && normalize(quest.arc) !== normalize(quest.name) ? `${quest.arc} · ${quest.name}` : quest.name;
     const meta = document.createElement('span'); meta.textContent = questDetail(quest, { sameName: sameNameCount(quest.name) }) || quest.start || 'Check wiki for starting point';
     button.append(name, meta); button.addEventListener('click', () => { if (sameNameCount(quest.name) > 1) { state.questPick = { ...state.questPick, [quest.name]: quest.id }; persist(); } selectQuest(quest); }); panel.append(button);
   }
@@ -3265,9 +3275,9 @@ function renderPlanList() {
 }
 $('#plan-search').addEventListener('input', async () => {
   if (state.questCatalogStatus !== 'loaded') await loadQuestCatalog();
-  const words = normalize($('#plan-search').value).split(' ').filter(Boolean);
-  const found = words.length ? state.quests.filter(q => words.every(w => normalize(`${q.name} ${q.arc ?? ''} ${q.giver ?? ''} ${q.job ?? ''} ${q.town ?? ''}`).includes(w)) && !(state.planQuests.includes(q.name) && sameNameCount(q.name) === 1)).slice(0, 10) : [];
-  $('#plan-suggest').innerHTML = found.map(q => `<button type="button" class="start-result" data-plan-add="${esc(q.name)}" data-plan-id="${esc(q.id)}">${esc(q.arc && normalize(q.arc) !== normalize(q.name) ? `${q.arc} · ${q.name}` : q.name)} <small>${esc(questDetail(q, { sameName: sameNameCount(q.name) }))}${planStatus(q.name)}</small></button>`).join('');
+  // Quests already in your plan are listed too (marked), so a search never looks like it found nothing.
+  const found = questSearch($('#plan-search').value, 10);
+  $('#plan-suggest').innerHTML = found.map(q => `<button type="button" class="start-result" data-plan-add="${esc(q.name)}" data-plan-id="${esc(q.id)}">${esc(q.arc && normalize(q.arc) !== normalize(q.name) ? `${q.arc} · ${q.name}` : q.name)} <small>${esc(questDetail(q, { sameName: sameNameCount(q.name) }))}${state.planQuests.includes(q.name) ? ' · <b>already in your plan</b>' : planStatus(q.name)}</small></button>`).join('') || (normalize($('#plan-search').value) ? '<p class="fine">No quest matches that. Try one word from its name, its quest line or its NPC.</p>' : '');
 });
 // Where a quest stands, so a missing one can be found and brought back (adding it undoes these).
 function planStatus(name) {
