@@ -1,3 +1,4 @@
+import { jumpQuestEdges } from './jumpquests.js';
 import { searchRoute, normalize } from './core.js';
 import { TOWN_SCROLLS, ownedTownScrolls } from './scrollinventory.js';
 
@@ -26,6 +27,8 @@ export function travelGraph(data, { taxis = true, vip = taxis, sleepy = taxis, n
     // Scrolls before taxis: a town scroll (3) or the nearest-town scroll (2) beats a cab ride (5+), which
     // also costs mesos and a walk to the driver.
     .map(p => p.kind === 'taxi' && !p.boat ? { ...p, cost: p.cost + 2 } : p);
+  // NPCs that send you into jump quests (Shane → the Forest of Patience…).
+  portals.push(...jumpQuestEdges(data).filter(edge => !portals.some(p => p.from === edge.from && p.to === edge.to)));
   if (nearest || selectedTowns.length) {
     // Return Scroll - Nearest Town (to the map's own return town) and the town scrolls Classic sells
     // (Return Scroll to Henesys, Ellinia, Perion, Kerning City, Lith Harbor, Sleepywood, Forgotten Hollow).

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0-beta.30
+
+- Jump quests are routed: Shane (Ellinia) takes you into the Forest of Patience and the Mysterious Statue (Sleepywood) into the Deep Forest of Patience; Louis and the Crumbling Statue take you back out. Their quest items are picked from the piles at the top (Pink Anthurium ← A pile of flowers on step 2, Double-Rooted Red Ginseng ← A pile of herbs, Pink/Blue/White Violas ← the Deep Forest piles), so Sabitrama's and John's quests have a route.
+- The Filing Error (Caretaker's Ledger): "the fairies took them" now means the Fairy 2 / Fairy 3 monsters, hunted on the maps the quest names (Tree Dungeon, Forest Up North VI/VII, Someone Else's House). Any guessed monster is now hunted on the maps a quest's text names, when it names some.
+- Phone (Steam Deck and Couch mode): typing in a search box no longer gets overwritten by the Deck's slightly older copy of what you typed.
+- Breakable objects (Ellinia Flowers) keep their "hit …" wording after the app restarts.
+
 ## 1.1.0-beta.29
 
 - Routes use your return scrolls before taxis: a cab ride now counts as a bit longer than a scroll (it also costs mesos and a walk to the driver), so when a town scroll or the nearest-town scroll gets you there, the route takes it.

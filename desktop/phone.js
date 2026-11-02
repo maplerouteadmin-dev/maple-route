@@ -117,6 +117,9 @@ function applySnapshot(snapshot) {
   const focused = document.activeElement;
   const focusPath = app.contains(focused) ? pathFor(focused) : null;
   const selection = focusPath && 'selectionStart' in focused ? [focused.selectionStart, focused.selectionEnd] : null;
+  // The box you are typing in keeps what you typed: the Deck's copy lags a keystroke or two behind,
+  // and writing it back would undo your last letters.
+  const typed = focusPath && focused.matches?.('input:not([type]),input[type="text"],input[type="search"],input[type="number"],textarea') ? focused.value : null;
   currentHtml = snapshot.html;
   app.innerHTML = currentHtml;
   // The game disconnected (the Deck lost it for 90 s): buzz once so you notice from the couch.
@@ -133,6 +136,7 @@ function applySnapshot(snapshot) {
     let replacement = app;
     for (const index of focusPath) replacement = replacement?.children[index];
     if (replacement) {
+      if (typed !== null && 'value' in replacement) replacement.value = typed;
       replacement.focus({ preventScroll: true });
       if (selection) try { replacement.setSelectionRange(...selection); } catch {}
     }

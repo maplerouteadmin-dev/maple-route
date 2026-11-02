@@ -42,6 +42,7 @@ import { spoken, taskWords } from './speech.js';
 import { usesLocalVoice } from './voiceplatform.js';
 import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS, EXP_SETTLE_MS } from './popout.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
+import { pileTarget, JUMP_QUEST_PILES } from './jumpquests.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -83,12 +84,22 @@ const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const state = { data: validateDataset(starterData), dataFetchedAt: 0, current: null, destination: null, routeStyle: 'fewest', targetId: null, crop: null, worker: null, busy: false, route: null, goals: [], level: 15, journeyLevelConfirmed: null, job: 'Any', focus: 'quests', guideMode: 'xp', guideBandMin: null, atlasCenter: null, atlasHistory: [], items: [], itemCatalogStatus: 'idle', selectedItem: null, itemDrops: [], itemDropStatus: 'idle', itemShops: [], itemShopStatus: 'idle', gearOwned: {}, partyDone: [], sessions: [], quests: [], questCatalogStatus: 'idle', selectedQuest: null, questSteps: [], questStepStatus: 'idle', questDone: {}, activeQuests: [], acceptedQuests: [], questsFinished: [], questsHidden: [], questsAvailable: [], planQuests: [], citizenship: null, planSkip: [], tripTicks: [], questPick: {}, questNpcMaps: {}, questDetails: {}, questItemsReady: {} };
 // Where talk-only quests happen (questPlaces): worked out once per catalog / map data.
-let placesStamp = '';
+if (import.meta.env?.DEV) window.__mapleState = state; // dev build only: inspect state from the console
+let placesStamp = '', placesData = null;
 function ensureQuestPlaces() {
   const stamp = `${state.quests.length}:${state.data?.maps?.length ?? 0}`;
-  if (stamp === placesStamp || !state.data?.maps?.length) return;
-  placesStamp = stamp;
+  if ((stamp === placesStamp && placesData === state.data) || !state.data?.maps?.length) return;
+  placesStamp = stamp; placesData = state.data;
   for (const quest of state.quests) quest.places = questPlaces(quest, state.data.maps);
+  // Jump-quest piles (Pink Anthurium ← A pile of flowers) are not in the map data: add them.
+  for (const { item } of JUMP_QUEST_PILES) {
+    const pile = pileTarget(state.data, item); if (!pile) continue;
+    // Saved map data keeps the target but drops its pile/reactor marks: put them back.
+    const existing = state.data.targets.find(t => t.id === pile.id);
+    if (existing) Object.assign(existing, pile); else state.data.targets.push(pile);
+    state.itemSources[item] = [pile.name];
+  }
+  state.planSourcesCache = null; state.allTripCache = null; state.tripCache = null;
 }
 function questByName(name) {
   ensureQuestPlaces();
@@ -1994,7 +2005,7 @@ document.addEventListener('click', event => {
 });
 // "from Jr. Necki", or for a breakable object "hit Ellinia Flowers" (they give the item).
 function sourceText(names = []) {
-  return names.slice(0, 2).map(name => state.data.targets.find(t => t.reactor && t.name === name) ? `hit ${name}s` : name).join(', ').replace(/^(?!hit )/, 'from ');
+  return names.slice(0, 2).map(name => { const t = state.data.targets.find(x => x.reactor && x.name === name); return t?.pile ? `pick from ${name.replace(/^A /, 'a ')}` : t ? `hit ${name}s` : name; }).join(', ').replace(/^(?!hit |pick )/, 'from ');
 }
 // The plan being followed (all quests together, or the guided quest) and what it wants on a map.
 function currentTrip() {
@@ -3809,13 +3820,22 @@ async function syncQuestHelper(parsed) {
 // ---------- Quest objective (Guide me) ----------
 function loadItemSources(names) {
   for (const name of names) {
+    // Picked from a pile at the top of a jump quest (Pink Anthurium ← A pile of flowers). Checked every
+    // time: freshly loaded map data does not have the pile yet.
+    const pile = pileTarget(state.data, name);
+    if (pile) {
+      const existing = state.data.targets.find(t => t.id === pile.id), known = Boolean(existing?.pile);
+      if (existing) Object.assign(existing, pile); else state.data.targets.push(pile);
+      if (!known || state.itemSources[name]?.[0] !== pile.name) { state.itemSources[name] = [pile.name]; state.planSourcesCache = null; state.allTripCache = null; state.tripCache = null; }
+      continue;
+    }
     if (name in state.itemSources || state.itemSources[`loading:${name}`]) continue;
     state.itemSources[`loading:${name}`] = true;
     fetchWikiDrops(name).then(async monsters => {
       // No monster drops it: maybe a breakable object does (Plant Sample ← Ellinia Flower).
       if (!monsters.length) {
         const targets = reactorTargets(state.data, await fetchReactorSources(name).catch(() => []));
-        for (const target of targets) if (!state.data.targets.some(t => t.id === target.id)) state.data.targets.push(target);
+        for (const target of targets) { const existing = state.data.targets.find(t => t.id === target.id); if (existing) Object.assign(existing, target); else state.data.targets.push(target); }
         monsters = targets.map(t => t.name);
       }
       if (!monsters.length) monsters = verifiedQuestDrop(name);
@@ -4028,7 +4048,8 @@ function allStepsHtml(all, { single = false } = {}) {
         const where = g.craft ? `for ${g.craft.item}` : g.givenAtStart || g.given ? givenGoalText(g) : g.monsters?.length && normalize(g.monsters[0]) !== normalize(g.name) ? `${sourceText(g.monsters)}${g.guess ? ' (best guess)' : dropsSaid(g.name)}` : '';
         return line(q, g.name, where);
       }));
-      return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Hunt on ${mapName}</strong>${now} <small>(${esc(step.quests.join(', '))})</small><ul class="need-list">${needs.join('')}</ul></li>`;
+      const picking = step.monsters?.length && step.monsters.every(name => state.data.targets.some(t => t.pile && t.name === name));
+      return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. ${picking ? 'Collect on' : 'Hunt on'} ${mapName}</strong>${now} <small>(${esc(step.quests.join(', '))})</small><ul class="need-list">${needs.join('')}</ul></li>`;
     }
     if (step.type === 'buy') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Buy at ${mapName}</strong>${now}<ul class="need-list">${(step.quests.length ? step.quests : ['']).map(q => `<li><label><input type="checkbox" data-need-tick="${esc(q)}" data-need="${esc(step.item)}"> ${esc(step.item)} ×${step.count} <small>${esc(needCount(q, step.item))} · from ${esc(step.npc)}${step.price ? `, ${step.price.toLocaleString()} mesos each` : ''}</small></label></li>`).join('')}${!state.citizenship ? (() => { const halls = (state.shops?.[step.item.toLowerCase()] ?? []).filter(x => x.grade); return halls.length ? `<li class="buy-note"><small>Citizen? ${esc(halls.map(x => `${x.npc} (${x.map}) sells it to ${x.town} residents of grade ${x.grade}`).join('; '))}. <a href="#settings" data-reveal-citizen>Set my citizenship</a> and the plan can use the nearer shop.</small></li>` : ''; })() : ''}</ul></li>`;
     if (step.type === 'start') return `<li class="${i === 0 ? 'next' : ''}"><strong>${i + 1}. Start at ${mapName}</strong>${now}<ul class="need-list"><li><label><input type="checkbox" data-trip-step="${i}"> ${esc(step.quests.join(', '))} <small>from ${esc(step.npc ?? 'the quest NPC')} (assumed started if listed In Progress)</small></label></li></ul></li>`;

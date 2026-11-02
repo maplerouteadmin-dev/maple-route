@@ -110,11 +110,29 @@ export function huntGoals(data, progress, itemSources = {}, questText = '', allN
     // A crafting ingredient is matched by its name only ("Iron Hog's Metal Hoof" → Iron Hog): the
     // quest text is about the finished item, not what it is made from.
     g.monsters = fit.length ? fit : g.craft ? [] : left.length ? left : named;
-    if (g.monsters.length) g.guess = true;
+    if (g.monsters.length) {
+      g.guess = true;
+      // The quest names where to look ("…fairies in Tree Dungeon, Forest Up North VI…"): hunt there.
+      const spots = textMaps(data, questText).filter(mapId => g.monsters.some(name => mobByName(data, name)?.locations?.some(l => l.mapId === mapId)));
+      if (spots.length) g.maps = spots;
+    }
     // Nothing drops it as far as any source knows: usually handed over by an NPC during the quest.
     else if (!g.craft) g.given = true;
   }
   return goals;
+}
+
+// Map names that appear in a quest's text, longest first ("Forest Up North VII" before "…VI").
+export function textMaps(data, text) {
+  let rest = ` ${normalize(text ?? '')} `;
+  if (!rest.trim()) return [];
+  const found = [];
+  for (const map of [...(data.maps ?? [])].sort((a, b) => b.name.length - a.name.length)) {
+    const key = ` ${normalize(map.name)} `;
+    if (key.length < 8 || !rest.includes(key)) continue;
+    found.push(map.id); rest = rest.replaceAll(key, ' · ');
+  }
+  return found;
 }
 
 // Monster names that appear in a quest's text, longest first so "Orange Mushroom" is not also read
@@ -128,6 +146,13 @@ export function textMonsters(data, text) {
     const key = normalize(mob.name); if (!key) continue;
     const pattern = new RegExp(` ${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s? `);
     if (pattern.test(rest)) { found.push(mob.name); rest = rest.replace(new RegExp(pattern.source, 'g'), ' · '); }
+  }
+  // Numbered versions ("Fairy 2", "Fairy 3") when the text only says the kind ("the fairies took them").
+  const bases = new Map();
+  for (const mob of mobs) { const base = normalize(mob.name).match(/^(.+?) \d+$/)?.[1]; if (base && !mobs.some(m => normalize(m.name) === base)) bases.set(base, [...(bases.get(base) ?? []), mob.name]); }
+  for (const [base, names] of bases) {
+    const plural = base.endsWith('y') ? `${base.slice(0, -1)}ies` : `${base}s`;
+    if (new RegExp(` (?:${base}|${plural}) `).test(rest)) found.push(...names.filter(name => !found.includes(name)));
   }
   return found;
 }
@@ -230,13 +255,15 @@ export function aliveAtOnce(data, mapId, count) {
 const spawnCache = new WeakMap();
 const enteredCache = new WeakMap();
 export function goalSpawns(data, goal) {
-  const key = `${goal.monsters?.join('|')}#${minSpawns(goal)}`;
+  const key = `${goal.monsters?.join('|')}#${minSpawns(goal)}#${goal.maps?.join(',') ?? ''}`;
   let byData = spawnCache.get(data); if (!byData) spawnCache.set(data, byData = new Map());
   if (byData.has(key)) return byData.get(key);
   // Maps no portal leads into (Pig Town: an unused map full of Ribbon Pigs) cannot be hunted on.
   let entered = enteredCache.get(data); if (!entered) enteredCache.set(data, entered = new Set((data.portals ?? []).map(p => p.to)));
   const all = new Map();
   for (const name of goal.monsters ?? []) { const target = mobByName(data, name); for (const l of target?.locations ?? []) if (!entered.size || entered.has(l.mapId)) all.set(l.mapId, (all.get(l.mapId) ?? 0) + (target.reactor ? (l.count ?? 1) : aliveAtOnce(data, l.mapId, l.count ?? 1))); }
+  // Only the maps the quest named, when it named some.
+  if (goal.maps?.length) for (const mapId of [...all.keys()]) if (!goal.maps.includes(mapId)) all.delete(mapId);
   const min = minSpawns(goal), most = Math.max(0, ...all.values());
   const usable = new Map([...all].filter(([, count]) => count >= Math.min(min, most)));
   byData.set(key, usable);
