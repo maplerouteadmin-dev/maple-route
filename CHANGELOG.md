@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.35
+
+- The map now marks NPC warps into jump quests as exits: in Ellinia, Shane is highlighted as the next stop with the route line to him (the directions already said "Talk to Shane"). The Deck says "Collect on" for pile pick-ups.
+
 ## 1.1.0-beta.34
 
 - Removing a quest from your plan and adding it back always gives it a fresh checklist, also for quests you have already started (it stays started).

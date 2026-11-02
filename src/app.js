@@ -2331,7 +2331,8 @@ function renderMapView() {
   if (!map) { target.innerHTML = '<div class="empty">Pick your current map or start Live GPS to see it here.</div>'; $('#mapview-note').textContent = ''; return; }
   const goal = goalSpot();
   state.mapViewId = map.id;
-  const model = mapViewModel(state.data, map.id, { route: state.route, position: livePosition(), goal: goal?.mapId === map.id ? goal : null });
+  // The travel graph, not just the map data: NPC warps into jump quests (Shane) are exits to draw too.
+  const model = mapViewModel(travel(), map.id, { route: state.route, position: livePosition(), goal: goal?.mapId === map.id ? goal : null });
   const picture = loadPicture(map), render = loadRender(map);
   const art = picture?.status === 'ready' && picture.calibration ? { ...picture, calibration: artCalibration(picture.calibration) } : null;
   if (state.mapStyle !== 'render' && art) {
@@ -5190,7 +5191,7 @@ if (window.mapleDeck) {
       next: overlay.next,
       quest: $('#live-plan .live-steps li')?.textContent?.trim() ?? '',
       here: hereTask(),
-      step: (() => { const step = currentTrip()?.trip?.order?.[0]; return step ? `${{ hunt: 'Hunt on', buy: 'Buy at', start: 'Start at', craft: 'Craft at', handin: 'Hand in at' }[step.type] ?? 'Go to'} ${mapById(step.mapId)?.name ?? '?'}` : ''; })(),
+      step: (() => { const step = currentTrip()?.trip?.order?.[0]; const picking = step?.type === 'hunt' && step.monsters?.length && step.monsters.every(name => state.data.targets.some(t => t.pile && t.name === name)); return step ? `${{ hunt: picking ? 'Collect on' : 'Hunt on', buy: 'Buy at', start: 'Start at', craft: 'Craft at', handin: 'Hand in at' }[step.type] ?? 'Go to'} ${mapById(step.mapId)?.name ?? '?'}` : ''; })(),
       canUndo: Boolean(state.lastTick && Date.now() - state.lastTick.at < 120_000)
     });
   }, 800);
