@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.41
+
+- [Event] The Second Mark: Page 3 is at the mushroom house door in Someone Else's House (event guides; the game data has a portal only this quest uses there, on the bottom floor in the middle where Mushmom spawns). The GPS now walks you to the door itself, marks it on the map and says "Press ↑ to take Page 3" when you get there. The old "or hunt Iron Hogs" fallback is gone.
+
 ## 1.1.0-beta.40
 
 - Job instructors route again: the game data only places them on the hidden test map they send you into (Warrior's Rocky Mountain, Magician's Tree Dungeon, Ant Tunnel For Bowman, Thief's Construction Site), which nothing leads to, so the GPS said "No walking route". They now also stand on that map's return map, where you find them: West Rocky Mountain IV, The Forest North of Ellinia, The Road to the Dungeon and Construction Site North of Kerning City.

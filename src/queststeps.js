@@ -54,7 +54,9 @@ export const QUEST_FLOW = {
 };
 export const QUEST_ERRANDS = {
   '[Event] The First Mark': [{ map: 'The Pig Beach', title: 'Find Page 2 at The Pig Beach', notes: 'Hidden portal in the flowers at 3-Way Road-Split. The page is in a crack in the rocks, low on the left by the tall cliff.' }],
-  '[Event] The Second Mark': [{ map: "Someone Else's House", title: "Get Page 3 in Someone Else's House", notes: 'Past Pig Park II. Try Up at the mushroom house door; if nothing happens, hunt the Iron Hogs until the page drops.' }],
+  // The game data has a portal only this quest uses (q600006pt) on the bottom floor, beside Mushmom's
+  // spawn: the mushroom house door the guides name.
+  '[Event] The Second Mark': [{ map: "Someone Else's House", title: "Get Page 3 at the mushroom house door in Someone Else's House", notes: "Hidden portal on the top floor of Pig Park II, right side. In the house, drop to the bottom floor; the door is in the middle, where Mushmom (Lv 40) spawns, among Iron Hogs (Lv 28). Press Up at the door.", spot: { x: 927, y: 1070, name: 'the mushroom house door', action: 'Press ↑ to take Page 3.' } }],
   '[Event] The Third Mark': [{ map: "Marr's Forest", title: "Find Page 4 in Marr's Forest", notes: 'An old tree high up in the forest keeps it (some players found it at the bottom right).' }],
   '[Event] The Fourth Mark': [{ npc: 'Mong from Kong', title: 'Pay Mong from Kong 10 mesos for Page 5', notes: 'Kerning City, just right of the pharmacy: the "nameless thief".' }],
   '[Event] The Fifth Mark': [{ map: 'The Land of Wild Boar II', title: 'Collect the 4 scraps (Page 6) in The Land of Wild Boar II', notes: 'Hidden portal at the very top right of East Domain of Perion. Look on the small stepping stones and the platform in the middle.' }],
@@ -126,7 +128,7 @@ export function buildSteps(quest, wikiSteps = []) {
   // Errands guides name (Trick or Treat!'s children, the Mark of the Beta pages): they replace the
   // places and clues guessed from the text.
   const errands = QUEST_ERRANDS[quest.name];
-  if (errands) for (const errand of errands) steps.push({ title: errand.title, npc: errand.npc ?? null, map: errand.map ?? null, visit: true, notes: errand.notes ?? null });
+  if (errands) for (const errand of errands) steps.push({ title: errand.title, npc: errand.npc ?? null, map: errand.map ?? null, visit: true, notes: errand.notes ?? null, spot: errand.spot ?? null });
   else {
     // Where a talk-only quest actually happens (quest.places, from questPlaces), with its clue.
     // A clue only matters further along a trail (the opening quest just quotes the log).

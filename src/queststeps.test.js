@@ -112,3 +112,10 @@ test("the Mark of the Beta trail: start from the journal page, the guides' spot,
   const fourth = buildSteps({ name: '[Event] The Fourth Mark', giver: 'Jay', needs: [], text: '' });
   assert.equal(fourth[1].npc, 'Mong from Kong');
 });
+
+test('The Second Mark points at the mushroom house door, an exact spot on the map', () => {
+  const steps = buildSteps({ name: '[Event] The Second Mark', giver: 'Jay', needs: [], text: '' });
+  assert.equal(steps[1].map, "Someone Else's House");
+  assert.deepEqual([steps[1].spot.x, steps[1].spot.y], [927, 1070]);
+  assert.match(steps[1].spot.action, /Press/);
+});

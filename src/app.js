@@ -1900,8 +1900,8 @@ function liveModel() {
     const goal = goalSpot(), position = livePosition();
     if (goal && goal.mapId === state.current) {
       const hint = position ? guidance(position, goal) : null;
-      if (!hint?.near) return { map: mapById(state.current)?.name, title: `Go to ${goal.name}${state.startingQuest ? ` to start ${state.startingQuest}` : ''}`, body: position ? null : `${goal.name} is marked on the map below.`, hint, kind: 'npc', npc: goal.name, note: !hint ? state.positionNote : null };
-      return { arrived: true, details: arrivalModel(), npcHere: goal.name, starting: state.startingQuest };
+      if (!hint?.near) return { map: mapById(state.current)?.name, title: `Go to ${goal.name}${state.startingQuest ? ` to start ${state.startingQuest}` : ''}`, body: position ? null : `${goal.name[0].toUpperCase()}${goal.name.slice(1)} is marked on the map below.`, hint, kind: 'npc', npc: goal.name, note: !hint ? state.positionNote : null };
+      return { arrived: true, details: arrivalModel(), npcHere: goal.name, nearWords: goal.near, starting: state.startingQuest };
     }
     return { arrived: true, details: arrivalModel() };
   }
@@ -1944,6 +1944,9 @@ const POSITION_NOTES = {
 // "Find a mob or NPC", or the hand-in NPC while guiding a quest. Placed from OSMS NPC positions.
 function goalSpot() {
   const map = mapById(state.destination);
+  // A spot on the map a quest step names (Page 3 at the mushroom house door), not an NPC.
+  const first = state.guide.quest ? (state.tripAll ? allQuestsTrip() : allQuestsTrip(state.guide.quest)).trip?.order?.[0] : null;
+  if (map && first?.type === 'visit' && first.spot && first.mapId === map.id) return { name: first.spot.name, x: first.spot.x, y: first.spot.y, mapId: map.id, near: `You are at ${first.spot.name}. ${first.spot.action}` };
   if (!map?.npcs?.length) return null;
   const objective = state.guide.quest ? currentObjective() : null;
   const target = state.data.targets.find(t => t.id === state.targetId && t.kind === 'npc');
@@ -1979,7 +1982,7 @@ function nearText(kind, npc = null) {
 }
 
 function liveHtml(model) {
-  if (model.arrived && model.details) return `${model.npcHere ? `<div class="live-hint near"><span class="live-arrow" aria-hidden="true">●</span><span>${esc(nearText('npc', model.npcHere))}</span></div>` : ''}${model.starting ? `<div class="objective offer">Accept <strong>${esc(model.starting)}</strong>. Once it shows in your Quest Helper, the GPS moves on to the next step by itself, or <button type="button" class="link-button" data-guide="${esc(model.starting)}">guide me now</button>.<br>No quest offered? <button type="button" class="link-button" data-start-none="done">I already did it</button> · <button type="button" class="link-button" data-start-none="hide">not in my game, hide it</button></div>` : ''}${arrivalHtml(model.details)}`;
+  if (model.arrived && model.details) return `${model.npcHere ? `<div class="live-hint near"><span class="live-arrow" aria-hidden="true">●</span><span>${esc(model.nearWords ?? nearText('npc', model.npcHere))}</span></div>` : ''}${model.starting ? `<div class="objective offer">Accept <strong>${esc(model.starting)}</strong>. Once it shows in your Quest Helper, the GPS moves on to the next step by itself, or <button type="button" class="link-button" data-guide="${esc(model.starting)}">guide me now</button>.<br>No quest offered? <button type="button" class="link-button" data-start-none="done">I already did it</button> · <button type="button" class="link-button" data-start-none="hide">not in my game, hide it</button></div>` : ''}${arrivalHtml(model.details)}`;
   const hint = model.hint, arrow = !hint ? '' : hint.near ? '●' : hint.side === 'left' ? '←' : hint.side === 'right' ? '→' : hint.vertical === 'up' ? '↑' : '↓';
   return `<div class="live-where">${model.map ? `${model.stale ? 'Last known: ' : 'On '}<strong>${esc(model.map)}</strong>${model.remaining ? ` · ${model.remaining} map${model.remaining === 1 ? '' : 's'} to go` : ''}${model.stale ? ' · <button type="button" class="link-button" data-share-now>share screen to update</button>' : ''}` : '&nbsp;'}</div>
     <div class="live-headline${model.arrived ? ' arrived' : ''}">${esc(model.title)}</div>
@@ -2135,7 +2138,7 @@ function renderLive() {
     if (nextButton) nextButton.hidden = !currentTrip()?.trip?.order?.length;
     const destMap = mapById(state.destination), destGoal = destMap ? goalSpot() : null;
     const destLine = destMap ? `<small class="pip-dest">To ${destGoal ? `${esc(destGoal.name)} · ` : ''}${esc(destMap.name)} <button type="button" class="link-button pip-cancel" data-pip="cancel">cancel</button></small><br>` : '<small class="pip-dest">No destination</small><br>';
-    if (next) next.innerHTML = destLine + (model.arrived ? `<b>${model.npcHere ? esc(nearText('npc', model.npcHere)) : 'You are here.'}</b>` : `${model.hint ? `<b>${esc(model.hint.near ? nearText(model.kind, model.npc) : model.hint.text)}</b> · ` : ''}${esc(model.title ?? '')}${model.note ? `<br><small class="mv-lost">${esc(model.note)}</small>` : ''}${wholeScreen && !livePosition() ? '<br><small class="mv-lost">Whole screen shared: over the mini map this window blocks the reader. Share the MapleStory window instead.</small>' : ''}`);
+    if (next) next.innerHTML = destLine + (model.arrived ? `<b>${model.npcHere ? esc(model.nearWords ?? nearText('npc', model.npcHere)) : 'You are here.'}</b>` : `${model.hint ? `<b>${esc(model.hint.near ? nearText(model.kind, model.npc) : model.hint.text)}</b> · ` : ''}${esc(model.title ?? '')}${model.note ? `<br><small class="mv-lost">${esc(model.note)}</small>` : ''}${wholeScreen && !livePosition() ? '<br><small class="mv-lost">Whole screen shared: over the mini map this window blocks the reader. Share the MapleStory window instead.</small>' : ''}`);
   }
   renderMapView();
   if (state.pipWin && !state.pipUserSized && state.current && state.pipFitFor !== pipFitKey()) fitPip();
@@ -2595,7 +2598,8 @@ function updatePosition(found, mapId) {
     live.nearSpoken = `npc:${goal.name}`;
     // At the NPC: say what to do with them (start, buy, hand in) when that voice part is on.
     const task = voiceOn('tasks') ? taskHere(mapId) : '';
-    if (voiceOn('npc') || task) say(`You are at ${goal.name}.${task ? ` ${task}` : ' Double-click them to talk.'}`);
+    if (goal.near) say(goal.near);
+    else if (voiceOn('npc') || task) say(`You are at ${goal.name}.${task ? ` ${task}` : ' Double-click them to talk.'}`);
   }
   if (!live || !state.voice || !next || !state.position || next.from !== mapId) return;
   const hint = guidance(state.position, { x: Number(next.x), y: Number(next.y) }), key = `${next.from}>${next.to}`;
@@ -4023,7 +4027,7 @@ function allQuestsTrip(onlyQuest = null) {
     // Places to go (an event trail's map) and errands to an NPC (Trick or Treat!'s children).
     for (const step of questSteps.filter(step => step.visit && !stepsDone.has(step.number))) {
       const mapId = step.mapId ?? (step.npc ? npcMapOf(step.npc, name) : step.map ? state.data.maps.find(m => m.name === step.map)?.id ?? null : null);
-      if (mapId) visits.push({ mapId, quests: [name], step: step.number, place: step.map ?? null, notes: step.npc ? [step.title, step.notes].filter(Boolean).join(' · ') : step.notes, npc: step.npc ?? null });
+      if (mapId) visits.push({ mapId, quests: [name], step: step.number, place: step.map ?? null, notes: step.npc ? [step.title, step.notes].filter(Boolean).join(' · ') : step.notes, npc: step.npc ?? null, spot: step.spot ?? null });
     }
     const progress = needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: 0, need: n.count ?? seen?.need, done: ticked.has(normalize(n.name)) }; });
     goals = huntGoals(state.data, progress, planSources(), quest.text, needs.map(n => n.name), state.crafting, myShops(), quest);

@@ -420,7 +420,7 @@ export function planMultiTrip(data, goals, currentMapId = null, handIns = [], { 
   // Places a talk-only quest happens at (an event trail's map): after the quest is picked up.
   for (const visit of visits.filter(v => v.mapId)) {
     const startAt = order.findIndex(o => o.type === 'start' && o.quests.some(q => visit.quests.includes(q))) + 1;
-    cheapest({ mapId: visit.mapId, type: 'visit', quests: visit.quests, step: visit.step ?? null, place: visit.place ?? null, notes: visit.notes ?? null, npc: visit.npc ?? null }, startAt, order.length);
+    cheapest({ mapId: visit.mapId, type: 'visit', quests: visit.quests, step: visit.step ?? null, place: visit.place ?? null, notes: visit.notes ?? null, npc: visit.npc ?? null, spot: visit.spot ?? null }, startAt, order.length);
   }
   // Each hand-in where it adds the fewest maps, after the last stop its quest needs.
   const crafting = new Set(goals.filter(g => g.craft).flatMap(g => g.quests ?? []));
