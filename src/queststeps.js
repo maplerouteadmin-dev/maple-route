@@ -41,6 +41,25 @@ export function questPlaces(quest, maps = []) {
   }
   return found.sort((a, b) => a.at - b.at).map(({ at, ...place }) => place);
 }
+// Errands a talk-only quest's text spells out: sentences that start with Deliver/Bring/Give/Visit/Find,
+// a list after "to the …" split into one errand each. Only for quests with nothing to hunt. Pure.
+export function questTasks(quest) {
+  if (quest?.needs?.length) return [];
+  const middle = String(quest?.text ?? '').split(/\n+/).filter(Boolean).slice(1, -1).join(' ');
+  const out = [];
+  for (const sentence of middle.split(/(?<=[.!?])\s+/)) {
+    const match = sentence.trim().match(/^(Deliver|Bring|Give|Take|Visit|Find|Hand)\b(.*?)[.!]?$/);
+    if (!match) continue;
+    const [, verb, rest] = match;
+    // Skip what the hand-in step already says ("Take the journal to Daniel" when Daniel takes it in).
+    if (quest.turnIn && ` ${normalize(rest)} `.includes(` ${normalize(quest.turnIn)} `)) continue;
+    const list = rest.match(/^(.*?\bto )(the .+)$/);
+    const parts = list ? list[2].split(/,\s*(?:and\s+)?|\s+and\s+(?=the\b)/).map(part => part.trim()).filter(Boolean) : [];
+    if (parts.length > 1) for (const part of parts) out.push(`${verb}${list[1]}${part}`);
+    else out.push(`${verb}${rest}`.replace(/\s*\bin Unknown Map\(\d+\)/g, ''));
+  }
+  return out.slice(0, 6);
+}
 // The quest's clue, when its text quotes one ("Where the sea meets a shore guarded by little snouts.").
 export function questClue(quest) {
   const middle = String(quest?.text ?? '').split(/\n+/).filter(Boolean).slice(1, -1).join(' ');
@@ -82,6 +101,9 @@ export function buildSteps(quest, wikiSteps = []) {
   const clue = quest.needs?.length || !quest.prerequisites?.length ? null : questClue(quest);
   for (const place of quest.places ?? []) steps.push({ title: `Go to ${place.name}`, map: place.name, mapId: place.id, visit: true, notes: place.sentence || (clue ? `Clue: "${clue}"` : null) });
   if (!quest.places?.length && clue) steps.push({ title: `Follow the clue: "${clue}"`, notes: 'The game data does not say where; check the quest window in game.' });
+  // A talk-only quest whose text gives the errands ("Deliver a pouch to the child in the dark tunnel, the
+  // child on the open field and the child up on the high ground"): one tickable step each.
+  if (!quest.places?.length && !clue) for (const task of questTasks(quest)) steps.push({ title: task, notes: 'The game data does not say where; check the quest window in game.' });
   const turnIn = quest.turnIn || quest.giver;
   if (turnIn) steps.push({ title: `Hand it in to ${turnIn}${quest.turnInGuessed && quest.turnIn ? ' (best guess)' : ''}`, npc: turnIn, handIn: true });
   return steps.map((step, i) => ({ npc: null, monster: null, map: null, ...step, number: i + 1 }));

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.37
+
+- Talk-only quests whose text spells out errands get them as steps: [Event] Trick or Treat! now lists "Deliver a pouch to the child in the dark tunnel / on the open field / up on the high ground" between starting and handing in to Malady. The children are not in the game data, so these steps have no route; tick them as you go.
+
 ## 1.1.0-beta.36
 
 - Quest item sources re-checked for every quest (audit against the game's quest texts, spawn data and the wiki):

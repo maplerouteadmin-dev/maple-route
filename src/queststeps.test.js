@@ -90,3 +90,12 @@ test('a town named in the ending is not a place to go (the quest NPCs are alread
   const quest = { giver: 'Bruce', needs: [], text: 'a\nb\nI told Bruce in Henesys, then went on to Kerning City and the Henesys Town Hall.' };
   assert.deepEqual(questPlaces(quest, maps), []);
 });
+
+test('a talk-only quest lists the errands its text spells out (Trick or Treat!)', async () => {
+  const { questTasks } = await import('./queststeps.js');
+  const quest = { name: '[Event] Trick or Treat!', giver: 'Malady', needs: [], prerequisites: ['[Event] Halloween Candies'],
+    text: "Malady says there's still one more thing left to do for Halloween...\nMalady has split her Halloween Candy into three pouches for the children spending Halloween alone. Deliver a pouch to the child in the dark tunnel, the child on the open field and the child up on the high ground. Only characters at Level 10 or higher can complete this quest.\nAll three children received their Halloween Candy." };
+  assert.deepEqual(questTasks(quest), ['Deliver a pouch to the child in the dark tunnel', 'Deliver a pouch to the child on the open field', 'Deliver a pouch to the child up on the high ground']);
+  assert.deepEqual(buildSteps(quest).map(step => step.title), ['Talk to Malady to start', 'Deliver a pouch to the child in the dark tunnel', 'Deliver a pouch to the child on the open field', 'Deliver a pouch to the child up on the high ground', 'Hand it in to Malady']);
+  assert.deepEqual(questTasks({ needs: [{ type: 'mob', name: 'Snail', count: 5 }], text: 'a\nDeliver it to the boss.\nc' }), []);
+});
