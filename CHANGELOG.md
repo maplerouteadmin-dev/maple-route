@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0-beta.43
+
+- Same-named job quests use your job's wiki page: the wiki lists them as "Finding the Instructor (Thief)" and so on, and the app looked up the plain name, so it fell back to the Warrior's version. The Thief's Finding the Instructor asked for Dances with Balrog's Letter from Jr. Balrog in The Cursed Sanctuary. It now only takes the Dark Lord's Letter (given at the start) to the Thief Job Instructor.
+- With no version picked, the version whose earlier parts you have finished wins (the Thief line after The Thief's Next Journey), even when your job is not set.
+
 ## 1.1.0-beta.42
 
 - Quest lines follow on: the in-game quest window shows a whole line as one quest ("The Thief's Next Journey"), but it is several parts. When you hand in a part you were doing, the next one joins your plan and the guide moves to it. The guide also lists the parts still to come.

@@ -110,7 +110,10 @@ function questByName(name) {
   ensureQuestPlaces();
   const matches = state.quests.filter(quest => quest.name === name);
   const picked = state.questPick?.[name];
-  return (picked && matches.find(quest => quest.id === picked)) ?? matches.find(quest => state.job !== 'Any' && quest.job === state.job) ?? matches.find(quest => !quest.job && !quest.town) ?? matches[0] ?? null;
+  // Without a pick: the version whose earlier parts you finished (The Thief's Next Journey → the Thief's
+  // Finding the Instructor), then your job's.
+  const followsOn = matches.length > 1 ? matches.filter(quest => quest.prerequisites?.length && quest.prerequisites.every(pre => state.questsFinished.includes(pre))) : [];
+  return (picked && matches.find(quest => quest.id === picked)) ?? (followsOn.length === 1 ? followsOn[0] : null) ?? matches.find(quest => state.job !== 'Any' && quest.job === state.job) ?? matches.find(quest => !quest.job && !quest.town) ?? matches[0] ?? null;
 }
 // How many catalog quests share a name (job tests, Henesys/Kerning citizenship quests).
 const sameNameCount = name => state.quests.filter(quest => quest.name === name).length;
@@ -728,11 +731,17 @@ function renderQuestResults() {
 }
 
 async function ensureQuestDetails(name) {
-  if (state.questDetails[name]) return;
-  state.questDetails[name] = { status: 'loading', steps: [], items: [] };
+  // Same-named quests (every job has a Finding the Instructor): the wiki lists each as "Finding the
+  // Instructor (Thief)", so look up your version's title, and again when another version is picked.
+  const quest = questByName(name), forId = quest?.id ?? null;
+  if (state.questDetails[name] && (sameNameCount(name) < 2 || state.questDetails[name].forId === forId)) return;
+  const wikiName = sameNameCount(name) > 1 && quest?.job ? `${name} (${quest.job})` : name;
+  state.questDetails[name] = { status: 'loading', steps: [], items: [], forId };
   renderTripPlanner(); renderDashboard();
-  const [steps, items] = await Promise.allSettled([fetchQuestSteps(name), fetchQuestItems(name)]);
+  const [steps, items] = await Promise.allSettled([fetchQuestSteps(wikiName), fetchQuestItems(wikiName)]);
+  if (state.questDetails[name]?.forId !== forId) return;
   state.questDetails[name] = {
+    forId,
     status: steps.status === 'fulfilled' ? 'loaded' : 'error',
     steps: steps.status === 'fulfilled' ? steps.value : [],
     items: items.status === 'fulfilled' && items.value.length ? items.value : questByName(name)?.requiredItems ?? [],
