@@ -66,7 +66,7 @@ test('an item already marked ready is not offered again as the next quest step',
 
 test('a talk-only event trail goes to the map its ending text names, with the clue', () => {
   const maps = [{ id: 'pig', name: 'The Pig Beach', returnTo: 'lith' }, { id: 'hen', name: 'Henesys', town: true }, { id: 'atp', name: 'Ant Tunnel Park', returnTo: 'sleepy' }, { id: 'at1', name: 'Ant Tunnel I', returnTo: 'sleepy' }, { id: 'house', name: "Someone Else's House", returnTo: 'hen' }];
-  const first = { name: '[Event] The First Mark', giver: 'Jay', needs: [], text: 'The first page of the Adventurer\'s Journal is still legible.\nThe first page of the Adventurer\'s Journal reads: "Where the sea meets a shore guarded by little snouts." Only characters at Level 10 or higher can complete this quest.\nWedged in a crack in the rocks at The Pig Beach was the next sheet of the log. The Adventurer\'s Journal - Page 2 is mine.' };
+  const first = { name: 'A Trail Quest', giver: 'Jay', needs: [], text: 'The first page of the Adventurer\'s Journal is still legible.\nThe first page of the Adventurer\'s Journal reads: "Where the sea meets a shore guarded by little snouts." Only characters at Level 10 or higher can complete this quest.\nWedged in a crack in the rocks at The Pig Beach was the next sheet of the log. The Adventurer\'s Journal - Page 2 is mine.' };
   assert.deepEqual(questPlaces(first, maps), [{ id: 'pig', name: 'The Pig Beach', sentence: 'Wedged in a crack in the rocks at The Pig Beach was the next sheet of the log.' }]);
   assert.equal(questClue(first), 'Where the sea meets a shore guarded by little snouts.');
   const steps = buildSteps({ ...first, places: questPlaces(first, maps) });
@@ -102,4 +102,13 @@ test('a talk-only quest lists the errands its text spells out (Trick or Treat!)'
   assert.ok(steps.slice(1, 4).every(step => step.visit));
   assert.equal(steps.at(-1).title, 'Hand it in to Malady');
   assert.deepEqual(questTasks({ needs: [{ type: 'mob', name: 'Snail', count: 5 }], text: 'a\nDeliver it to the boss.\nc' }), []);
+});
+
+test("the Mark of the Beta trail: start from the journal page, the guides' spot, no trip back to Jay", () => {
+  const steps = buildSteps({ name: '[Event] The First Mark', giver: 'Jay', turnIn: 'Jay', needs: [], prerequisites: ['[Event] The Marks We Leave Behind'], text: 'a\nb\nc' });
+  assert.deepEqual(steps.map(step => step.title), ["Double-click the newest Adventurer's Journal page to read the clue and start", 'Find Page 2 at The Pig Beach']);
+  assert.equal(steps[1].map, 'The Pig Beach'); assert.equal(steps[1].visit, true); assert.equal(steps[1].finishes, true);
+  assert.equal(steps[0].npc, null);
+  const fourth = buildSteps({ name: '[Event] The Fourth Mark', giver: 'Jay', needs: [], text: '' });
+  assert.equal(fourth[1].npc, 'Mong from Kong');
 });

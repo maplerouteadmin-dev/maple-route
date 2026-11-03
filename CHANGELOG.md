@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.39
+
+- The Mark of the Beta trail ([Event] The First Mark … The Final Mark) follows the event guides: each part starts by double-clicking the newest Adventurer's Journal page (not at Jay) and finishes when you get the next page, with no trip back to Jay. Each has its spot: The Pig Beach (hidden portal in the flowers at 3-Way Road-Split, crack in the rocks low on the left), Someone Else's House (door, or hunt Iron Hogs), Marr's Forest (old tree up high), Mong from Kong in Kerning City (pay 10 mesos), The Land of Wild Boar II (hidden portal top right of East Domain of Perion, 4 scraps on the small platforms) and Ant Tunnel Park (top right by the portal to The Grave of Mushmom, press Up). Ticking the step finishes the quest.
+
 ## 1.1.0-beta.38
 
 - [Event] Trick or Treat! is fully routed: give a candy pouch to Ronnie (the dark tunnel: The Tree Tunnel At the Forest Up North), Anne (the open field: The Hill East of Henesys) and Estelle (the high ground: The Field South of Ellinia), in whatever order adds the fewest maps, then hand in to Malady. The children come from community guides (henesys.gg and others) and match the NPCs on those maps in the game data.

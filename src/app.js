@@ -53,7 +53,7 @@ import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOU
 // server already saves them.
 if (!isLocalHost() && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn, questDetail, turnInConfirmed } from './questrecs.js';
-import { questPlaces, buildSteps, currentStep, stepCoversNeed } from './queststeps.js';
+import { questPlaces, buildSteps, currentStep, stepCoversNeed, QUEST_FLOW } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
 import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines, fixCounts } from './hud.js';
 import { parseTradeChat, addTrades, summarizePrices, itemNamer, formatMesos } from './prices.js';
@@ -2078,6 +2078,7 @@ function completeNextStep() {
     const ticks = [];
     for (const quest of step.quests ?? []) { const done = new Set(state.questDone[quest] ?? []); if (!done.has(step.step)) { done.add(step.step); state.questDone[quest] = [...done]; ticks.push([quest, step.step]); } }
     state.lastTick = { multi: ticks, label: `Go to ${mapById(step.mapId)?.name ?? 'the map'}`, at: Date.now() };
+    for (const quest of step.quests ?? []) finishIfDone(quest);
     state.allTripCache = null; persist(); applyObjective(); renderLive(); renderTicks();
     return;
   }
@@ -3296,6 +3297,14 @@ $('#plan-search').addEventListener('input', async () => {
   const found = questSearch($('#plan-search').value, 10);
   $('#plan-suggest').innerHTML = found.map(q => `<button type="button" class="start-result" data-plan-add="${esc(q.name)}" data-plan-id="${esc(q.id)}">${esc(q.arc && normalize(q.arc) !== normalize(q.name) ? `${q.arc} · ${q.name}` : q.name)} <small>${esc(questDetail(q, { sameName: sameNameCount(q.name) }))}${state.planQuests.includes(q.name) ? ' · <b>already in your plan</b>' : planStatus(q.name)}</small></button>`).join('') || (normalize($('#plan-search').value) ? '<p class="fine">No quest matches that. Try one word from its name, its quest line or its NPC.</p>' : '');
 });
+// A quest that finishes where you are (a Mark of the Beta page found): its last step ticked = finished.
+function finishIfDone(name) {
+  if (!QUEST_FLOW[name]?.selfComplete) return;
+  const quest = questByName(name); if (!quest) return;
+  const steps = buildSteps(quest, state.questDetails[name]?.steps ?? []);
+  const last = steps.find(step => step.finishes);
+  if (last && (state.questDone[name] ?? []).includes(last.number)) markFinished([name]);
+}
 // Where a quest stands, so a missing one can be found and brought back (adding it undoes these).
 function planStatus(name) {
   if (state.questsFinished.includes(name)) return ' · <b>marked finished</b>: add it to plan it again';
@@ -4003,14 +4012,15 @@ function allQuestsTrip(onlyQuest = null) {
     let goals;
     const ticked = new Set([...(state.questDone[name] ?? []).filter(x => typeof x === 'string' && x.startsWith('need:')).map(x => normalize(x.slice(5))), ...(state.questItemsReady[name] ?? []).map(normalize)]);
     const notStarted = !started(name);
-    if (notStarted && quest.giver) starts.push({ mapId: npcMapOf(quest.giver, name, npcMapOf(quest.turnIn, name)), quests: [name], npc: quest.giver });
+    const flow = QUEST_FLOW[name];
+    if (notStarted && quest.giver && !flow?.startByItem) starts.push({ mapId: npcMapOf(quest.giver, name, npcMapOf(quest.turnIn, name)), quests: [name], npc: quest.giver });
     // A talk-only quest's own place (an event trail's map) is a stop until its step is ticked.
     const questSteps = buildSteps({ ...quest, needs }, state.questDetails[name]?.steps ?? []);
     const stepsDone = currentStep(questSteps, state.questDone[name] ?? [], { accepted: !notStarted, giver: quest.giver }).done;
     // Places to go (an event trail's map) and errands to an NPC (Trick or Treat!'s children).
     for (const step of questSteps.filter(step => step.visit && !stepsDone.has(step.number))) {
-      const mapId = step.mapId ?? (step.npc ? npcMapOf(step.npc, name) : null);
-      if (mapId) visits.push({ mapId, quests: [name], step: step.number, place: step.map ?? null, notes: step.npc ? step.title : step.notes, npc: step.npc ?? null });
+      const mapId = step.mapId ?? (step.npc ? npcMapOf(step.npc, name) : step.map ? state.data.maps.find(m => m.name === step.map)?.id ?? null : null);
+      if (mapId) visits.push({ mapId, quests: [name], step: step.number, place: step.map ?? null, notes: step.npc ? [step.title, step.notes].filter(Boolean).join(' · ') : step.notes, npc: step.npc ?? null });
     }
     const progress = needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: 0, need: n.count ?? seen?.need, done: ticked.has(normalize(n.name)) }; });
     goals = huntGoals(state.data, progress, planSources(), quest.text, needs.map(n => n.name), state.crafting, myShops(), quest);
@@ -4023,7 +4033,7 @@ function allQuestsTrip(onlyQuest = null) {
     }
     const npc = quest.turnIn || quest.giver, mapId = npcMapOf(npc, name);
     // Hand-ins: quests with hunting left, finished ones, talk-and-deliver ones and ones to pick up.
-    if (mapId && !(quest.variants?.length && !quest.week?.by)) { ends.set(mapId, [...(ends.get(mapId) ?? []), npc]); endQuests.set(mapId, [...(endQuests.get(mapId) ?? []), name]); }
+    if (mapId && !flow?.selfComplete && !(quest.variants?.length && !quest.week?.by)) { ends.set(mapId, [...(ends.get(mapId) ?? []), npc]); endQuests.set(mapId, [...(endQuests.get(mapId) ?? []), name]); }
   }
   const goals = [...byName.values()];
   const key = JSON.stringify([onlyQuest, names, goals.map(g => [g.name, g.monsters, g.need]), [...ends.keys()], starts.map(st => st.quests[0]), visits.map(v => [v.quests[0], v.step]), state.current, state.level, state.useTaxis, state.useVip, state.useSleepyTaxi, state.useNearestScroll, state.useTownScrolls, state.townScrollsOwned]);
@@ -4651,6 +4661,7 @@ function liveCardClick(event) { if (event.target.closest('[data-share-now]')) { 
     const done = new Set(state.questDone[quest] ?? []);
     if (allStepTick.checked) done.add(number); else done.delete(number);
     state.questDone[quest] = [...done]; state.allTripCache = null;
+    finishIfDone(quest);
     persist(); applyObjective(); renderTripPlanner(); renderLive(); renderTicks(); return;
   }
   const needTick = event.target.closest('[data-need-tick]');

@@ -44,7 +44,21 @@ export function questPlaces(quest, maps = []) {
 // Errands the game data does not name but community guides do, checked against the map data's NPC
 // list: Trick or Treat!'s three children (henesys.gg, mscw-guidebook.com, ms-classic.com; Ronnie,
 // Anne and Estelle each stand on the map the quest's riddle describes). Any order.
+// How some event quests run (MapleStory Classic event guides: henesys.gg, ms-classic.com, meowdb.com):
+// the Mark of the Beta trail starts each part from a journal page you double-click and finishes when
+// you find the next page, without going back to Jay.
+const MARK = { startByItem: "the newest Adventurer's Journal page", selfComplete: true };
+export const QUEST_FLOW = {
+  '[Event] The First Mark': MARK, '[Event] The Second Mark': MARK, '[Event] The Third Mark': MARK,
+  '[Event] The Fourth Mark': MARK, '[Event] The Fifth Mark': MARK, '[Event] The Final Mark': MARK
+};
 export const QUEST_ERRANDS = {
+  '[Event] The First Mark': [{ map: 'The Pig Beach', title: 'Find Page 2 at The Pig Beach', notes: 'Hidden portal in the flowers at 3-Way Road-Split. The page is in a crack in the rocks, low on the left by the tall cliff.' }],
+  '[Event] The Second Mark': [{ map: "Someone Else's House", title: "Get Page 3 in Someone Else's House", notes: 'Past Pig Park II. Try Up at the mushroom house door; if nothing happens, hunt the Iron Hogs until the page drops.' }],
+  '[Event] The Third Mark': [{ map: "Marr's Forest", title: "Find Page 4 in Marr's Forest", notes: 'An old tree high up in the forest keeps it (some players found it at the bottom right).' }],
+  '[Event] The Fourth Mark': [{ npc: 'Mong from Kong', title: 'Pay Mong from Kong 10 mesos for Page 5', notes: 'Kerning City, just right of the pharmacy: the "nameless thief".' }],
+  '[Event] The Fifth Mark': [{ map: 'The Land of Wild Boar II', title: 'Collect the 4 scraps (Page 6) in The Land of Wild Boar II', notes: 'Hidden portal at the very top right of East Domain of Perion. Look on the small stepping stones and the platform in the middle.' }],
+  '[Event] The Final Mark': [{ map: 'Ant Tunnel Park', title: 'Find the Mark of the Beta in Ant Tunnel Park', notes: 'Top right, next to the portal to The Grave of Mushmom: press Up there.' }],
   '[Event] Trick or Treat!': [
     { npc: 'Ronnie', title: 'Give a candy pouch to Ronnie (the dark tunnel: The Tree Tunnel At the Forest Up North)' },
     { npc: 'Anne', title: 'Give a candy pouch to Anne (the open field: The Hill East of Henesys)' },
@@ -101,24 +115,32 @@ export function buildSteps(quest, wikiSteps = []) {
   }
   if (!quest) return [];
   const steps = [];
-  if (quest.giver) {
+  const flow = QUEST_FLOW[quest.name];
+  if (flow?.startByItem) steps.push({ title: `Double-click ${flow.startByItem} to read the clue and start`, accept: true });
+  else if (quest.giver) {
     const received = quest.startItems?.map(item => item.name).filter(Boolean).join(' and ');
     steps.push({ title: `Talk to ${quest.giver} to start${received ? ` (receive ${received})` : ''}`, npc: quest.giver, accept: true });
   }
   if (quest.startAction) steps.push({ title: quest.startAction });
   for (const need of quest.needs ?? []) steps.push(needStep(need, null, quest));
-  // Where a talk-only quest actually happens (quest.places, from questPlaces), with its clue.
-  // A clue only matters further along a trail (the opening quest just quotes the log).
-  const clue = quest.needs?.length || !quest.prerequisites?.length ? null : questClue(quest);
-  for (const place of quest.places ?? []) steps.push({ title: `Go to ${place.name}`, map: place.name, mapId: place.id, visit: true, notes: place.sentence || (clue ? `Clue: "${clue}"` : null) });
-  if (!quest.places?.length && clue) steps.push({ title: `Follow the clue: "${clue}"`, notes: 'The game data does not say where; check the quest window in game.' });
-  // A talk-only quest whose text gives the errands ("Deliver a pouch to the child in the dark tunnel, the
-  // child on the open field and the child up on the high ground"): one tickable step each.
+  // Errands guides name (Trick or Treat!'s children, the Mark of the Beta pages): they replace the
+  // places and clues guessed from the text.
   const errands = QUEST_ERRANDS[quest.name];
-  if (errands) for (const errand of errands) steps.push({ title: errand.title, npc: errand.npc, visit: true });
-  else if (!quest.places?.length && !clue) for (const task of questTasks(quest)) steps.push({ title: task, notes: 'The game data does not say where; check the quest window in game.' });
-  const turnIn = quest.turnIn || quest.giver;
+  if (errands) for (const errand of errands) steps.push({ title: errand.title, npc: errand.npc ?? null, map: errand.map ?? null, visit: true, notes: errand.notes ?? null });
+  else {
+    // Where a talk-only quest actually happens (quest.places, from questPlaces), with its clue.
+    // A clue only matters further along a trail (the opening quest just quotes the log).
+    const clue = quest.needs?.length || !quest.prerequisites?.length ? null : questClue(quest);
+    for (const place of quest.places ?? []) steps.push({ title: `Go to ${place.name}`, map: place.name, mapId: place.id, visit: true, notes: place.sentence || (clue ? `Clue: "${clue}"` : null) });
+    if (!quest.places?.length && clue) steps.push({ title: `Follow the clue: "${clue}"`, notes: 'The game data does not say where; check the quest window in game.' });
+    // A talk-only quest whose text gives the errands ("Deliver a pouch to the child in the dark tunnel,
+    // the child on the open field and the child up on the high ground"): one tickable step each.
+    if (!quest.places?.length && !clue) for (const task of questTasks(quest)) steps.push({ title: task, notes: 'The game data does not say where; check the quest window in game.' });
+  }
+  // Some quests finish where you are (a journal page found): no trip back to an NPC.
+  const turnIn = flow?.selfComplete ? null : quest.turnIn || quest.giver;
   if (turnIn) steps.push({ title: `Hand it in to ${turnIn}${quest.turnInGuessed && quest.turnIn ? ' (best guess)' : ''}`, npc: turnIn, handIn: true });
+  else if (flow?.selfComplete && steps.length) steps[steps.length - 1].finishes = true;
   return steps.map((step, i) => ({ npc: null, monster: null, map: null, ...step, number: i + 1 }));
 }
 
