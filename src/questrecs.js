@@ -114,6 +114,19 @@ export function questChain(catalog, name) {
   return { before, after: [...new Set(after)] };
 }
 
+// The parts of a quest line after `name`, in order ("The Thief's Next Journey" → Finding the
+// Instructor → Test of Qualification → Proof of Qualification): same line, each needing the one before
+// (so another job's version of the line is never mixed in). `arc` picks among same-named quests.
+export function lineAfter(catalog, name, arc = catalog.find(q => normalize(q.name) === normalize(name))?.arc) {
+  const out = [];
+  for (let at = name; arc;) {
+    const next = catalog.find(q => q.arc === arc && (q.prerequisites ?? []).some(pre => normalize(pre) === normalize(at)) && !out.includes(q.name) && normalize(q.name) !== normalize(name));
+    if (!next) break;
+    out.push(next.name); at = next.name;
+  }
+  return out;
+}
+
 // The in-game quest window lists quest lines by their line title ("Winston's Fossil Dig-up") and
 // single quests by name. These are the names to look for on screen.
 export function gameQuestNames(catalog) {

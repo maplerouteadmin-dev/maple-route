@@ -21,6 +21,15 @@ export const JUMP_QUEST_PILES = [
   { item: 'Blue Viola', pile: 'A pile of blue flowers', map: 'The Deep Forest of Patience <Step 4>' },
   { item: 'White Viola', pile: 'A pile of white flowers', map: 'The Deep Forest of Patience <Step 7>' }
 ];
+// Second job advancement tests: the Job Instructor sends you into a hidden map while you have the
+// test quest; every monster there drops Dark Marbles (30 needed), and he stands inside to bring you
+// back. The game data only has the maps (the monsters share ordinary names); no drop table lists it.
+export const JOB_TESTS = [
+  { job: 'Warrior', npc: 'Warrior Job Instructor', map: "Warrior's Rocky Mountain", item: 'Dark Marble' },
+  { job: 'Magician', npc: 'Magician Job Instructor', map: "Magician's Tree Dungeon", item: 'Dark Marble' },
+  { job: 'Bowman', npc: 'Bowman Job Instructor', map: 'Ant Tunnel For Bowman', item: 'Dark Marble' },
+  { job: 'Thief', npc: 'Thief Job Instructor', map: "Thief's Construction Site", item: 'Dark Marble' }
+];
 
 const mapNamed = (data, name) => (data.maps ?? []).find(map => normalize(map.name) === normalize(name));
 
@@ -43,7 +52,22 @@ export function jumpQuestEdges(data) {
       if (spot) edges.push({ from: map.id, to: to.id, name: exit.npc, kind: 'special', npc: exit.npc, cost: 2, arrive: '', note: exit.note, x: spot.x ?? null, y: spot.y ?? null });
     }
   }
+  for (const test of JOB_TESTS) {
+    const inside = mapNamed(data, test.map), outside = inside && (data.maps ?? []).find(map => map.id === inside.returnTo);
+    if (!inside || !outside) continue;
+    const at = (outside.npcs ?? []).find(npc => npc.name === test.npc), back = (inside.npcs ?? []).find(npc => npc.name === test.npc);
+    edges.push({ from: outside.id, to: inside.id, name: test.npc, kind: 'special', npc: test.npc, cost: 2, arrive: '', note: `The ${test.npc} sends you into the test while you have the test quest.`, x: at?.x ?? null, y: at?.y ?? null });
+    edges.push({ from: inside.id, to: outside.id, name: test.npc, kind: 'special', npc: test.npc, cost: 2, arrive: '', note: `Talk to the ${test.npc} to leave the test.`, x: back?.x ?? null, y: back?.y ?? null });
+  }
   return edges;
+}
+// The monsters of a job's test map, as one target that drops the test item (never counted against the
+// map's own monsters). `job` is the quest's job; null when the item is not a job-test item.
+export function jobTestTarget(data, itemName, job) {
+  const test = JOB_TESTS.find(entry => entry.job === job && normalize(entry.item) === normalize(itemName));
+  const map = test && mapNamed(data, test.map);
+  if (!map) return null;
+  return { id: `test:${normalize(test.job)}:${map.id}`, name: `the monsters in ${map.name}`, kind: 'mob', group: true, level: null, gives: test.item, locations: [{ mapId: map.id, count: map.capacity ?? 10 }] };
 }
 // The pile that gives an item, as a target to go to (worded "pick from …", never counted as a monster).
 export function pileTarget(data, itemName) {

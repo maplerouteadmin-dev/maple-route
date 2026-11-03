@@ -42,7 +42,7 @@ import { spoken, taskWords } from './speech.js';
 import { usesLocalVoice } from './voiceplatform.js';
 import { popoutMetrics, popupExp, expSpeech, EXP_SPEECH_EVERY_MS, EXP_SETTLE_MS } from './popout.js';
 import { fetchReactorSources, reactorTargets } from './reactors.js';
-import { pileTarget, JUMP_QUEST_PILES } from './jumpquests.js';
+import { pileTarget, JUMP_QUEST_PILES, jobTestTarget } from './jumpquests.js';
 import { teleportHint } from './teleports.js';
 import { checkNote, mergeNotes, weekVersion, applyNotes, notedSources, variantItems, weekKey, saidBy } from './questnotes.js';
 /* global __APP_VERSION__ */
@@ -52,7 +52,7 @@ import { startCounting, countEvent, countingOptedOut, setCountingOptOut, GOATCOU
 // As a public website, keep OSMS pictures in the player's browser (public/sw.js). On this PC the local
 // server already saves them.
 if (!isLocalHost() && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
-import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn, questDetail, turnInConfirmed } from './questrecs.js';
+import { recommendQuests, questsInText, questChain, gameQuestNames, questsForGameNames, guessTurnIn, questDetail, turnInConfirmed, lineAfter } from './questrecs.js';
 import { questPlaces, buildSteps, currentStep, stepCoversNeed, QUEST_FLOW } from './queststeps.js';
 import { locateInPicture, findPictureScale, registerPictures, trimSeeThrough, maskCovered } from './picmatch.js';
 import { findStatusBars, statusTextRect, levelRect, parseStatusText, parseLevel, findQuestHelper, parseQuestHelper, matchQuestTitle, findChatInput, chatLogRect, collapsedChatRect, inkByContrast, inkDark, OCR_SETTINGS, findQuestWindow, inkQuestList, listChange, nameRect, parseName, mergeWrappedLines, fixCounts } from './hud.js';
@@ -992,6 +992,22 @@ function renderTripPlanner() {
 function markFinished(names) {
   const add = [names].flat().filter(name => name && !state.questsFinished.includes(name));
   if (!add.length) return;
+  // A quest line goes on: the next part of a line you were doing joins the plan (and the guide),
+  // since the in-game quest window shows the whole line as one quest.
+  const following = []; let guideMoved = false;
+  for (const name of add) {
+    const arc = questByName(name)?.arc;
+    const next = lineAfter(state.quests, name, arc).find(part => !state.questsFinished.includes(part) && !add.includes(part));
+    const doing = state.guide.quest === name || [state.planQuests, state.activeQuests, state.acceptedQuests].some(list => list.includes(name));
+    if (!next || !doing) continue;
+    // Same-named parts (every job has a Test of Qualification): keep this line's version.
+    const part = state.quests.find(q => q.name === next && q.arc === arc);
+    if (part?.id) state.questPick = { ...state.questPick, [next]: part.id };
+    if (!state.planQuests.includes(next) && !state.activeQuests.includes(next)) following.push(next);
+    if (state.guide.quest === name) { state.guide = { ...state.guide, quest: next, stage: null, spoken: null }; guideMoved = true; }
+  }
+  if (following.length) state.planQuests = [...state.planQuests, ...following];
+  if (guideMoved) saveLive();
   state.questsFinished = [...state.questsFinished, ...add].slice(-2000);
   state.questFinishedAt = { ...(state.questFinishedAt ?? {}), ...Object.fromEntries(add.map(name => [name, Date.now()])) };
   if (state.sessionLog) state.sessionLog = logQuest(state.sessionLog, add);
@@ -4030,7 +4046,11 @@ function allQuestsTrip(onlyQuest = null) {
       if (mapId) visits.push({ mapId, quests: [name], step: step.number, place: step.map ?? null, notes: step.npc ? [step.title, step.notes].filter(Boolean).join(' · ') : step.notes, npc: step.npc ?? null, spot: step.spot ?? null });
     }
     const progress = needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: 0, need: n.count ?? seen?.need, done: ticked.has(normalize(n.name)) }; });
-    goals = huntGoals(state.data, progress, planSources(), quest.text, needs.map(n => n.name), state.crafting, myShops(), quest);
+    // A job test's Dark Marbles drop in that job's test map (the monsters there share ordinary names).
+    const tests = needs.map(n => jobTestTarget(state.data, n.name, quest.job)).filter(Boolean);
+    for (const test of tests) { const existing = state.data.targets.find(t => t.id === test.id); if (existing) Object.assign(existing, test); else state.data.targets.push(test); }
+    const sources = tests.length ? { ...planSources(), ...Object.fromEntries(tests.map(test => [test.gives, [test.name]])) } : planSources();
+    goals = huntGoals(state.data, progress, sources, quest.text, needs.map(n => n.name), state.crafting, myShops(), quest);
     loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));
     for (const goal of goals) {
       const key = normalize(goal.name), seen = byName.get(key);
@@ -4296,7 +4316,7 @@ function objectiveHtml() {
   if (!objective) return '';
 
   // A quest in a line shows as the game names it: "Winston's Fossil Dig-up · Searching for Fossils".
-  const arc = state.quests.find(q => q.name === objective.quest)?.arc, title = arc && normalize(arc) !== normalize(objective.quest) ? `${esc(arc)} <small>· ${esc(objective.quest)}</small>` : esc(objective.quest);
+  const arc = questByName(objective.quest)?.arc, title = arc && normalize(arc) !== normalize(objective.quest) ? `${esc(arc)} <small>· ${esc(objective.quest)}</small>` : esc(objective.quest);
   const head = `<div class="objective-head"><span class="objective-tag">Quest</span> ${title} <button type="button" class="link-button" data-guide="">stop guiding</button></div>`;
   const g = guideSteps();
   if (state.tripAll && g) {
@@ -4306,7 +4326,10 @@ function objectiveHtml() {
   }
   if (g) {
     const single = allQuestsTrip(g.name);
-    if (single.trip?.order.length) return `<div class="objective">${head}<p class="fine">Guiding this quest only. Tick each need when it is complete; the GPS will move to the next stop.</p>${allStepsHtml(single, { single: true })}</div>`;
+    // The rest of its quest line: each part joins once the one before is handed in.
+    const rest = lineAfter(state.quests, g.name, questByName(g.name)?.arc).filter(name => !state.questsFinished.includes(name));
+    const line = rest.length ? `<p class="fine">Then in this quest line: ${rest.map(esc).join(' → ')}. Each part follows on by itself once the one before is handed in.</p>` : '';
+    if (single.trip?.order.length) return `<div class="objective">${head}<p class="fine">Guiding this quest only. Tick each need when it is complete; the GPS will move to the next stop.</p>${allStepsHtml(single, { single: true })}${line}</div>`;
   }
   if (g?.steps.length) {
     const counts = objective.stage === 'hunt' && !objective.countsUnknown && (g.step?.monster || g.step?.item) ? `<ul class="objective-goals">${[...objective.done, ...objective.goals].map(goal => `<li class="${goal.done ? 'done' : ''}"><span>${esc(goal.name)}</span><span class="objective-count">${goal.have} / ${goal.need}</span><span class="objective-bar"><span style="width:${Math.min(100, Math.round(goal.have / goal.need * 100))}%"></span></span></li>`).join('')}</ul>` : '';

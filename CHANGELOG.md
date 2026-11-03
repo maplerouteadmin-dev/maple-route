@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0-beta.42
+
+- Quest lines follow on: the in-game quest window shows a whole line as one quest ("The Thief's Next Journey"), but it is several parts. When you hand in a part you were doing, the next one joins your plan and the guide moves to it. The guide also lists the parts still to come.
+- Second job tests are routed: each Job Instructor sends you into his hidden test map (Warrior's Rocky Mountain, Magician's Tree Dungeon, Ant Tunnel For Bowman, Thief's Construction Site) and brings you back. Test of Qualification now hunts its 30 Dark Marbles from the monsters in your job's test map. No drop table listed them, so the plan only had the hand-in.
+- The guide header names your job's quest line, not the Warrior one, for same-named parts.
+
 ## 1.1.0-beta.41
 
 - [Event] The Second Mark: Page 3 is at the mushroom house door in Someone Else's House (event guides; the game data has a portal only this quest uses there, on the bottom floor in the middle where Mushmom spawns). The GPS now walks you to the door itself, marks it on the map and says "Press ↑ to take Page 3" when you get there. The old "or hunt Iron Hogs" fallback is gone.

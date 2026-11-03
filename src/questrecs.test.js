@@ -154,3 +154,18 @@ test('a guessed hand-in is confirmed by the ending or the next quest in the chai
   assert.equal(turnInConfirmed(catalog[1], catalog), true);
   assert.equal(turnInConfirmed(catalog[3], catalog), false);
 });
+
+test('a quest line goes on part by part, never into another job\'s version', async () => {
+  const { lineAfter } = await import('./questrecs.js');
+  const line = "The Thief's Next Journey";
+  const catalog = [
+    { name: line, arc: line },
+    { name: 'Finding the Instructor', arc: line, prerequisites: [line] },
+    { name: 'Test of Qualification', arc: line, prerequisites: ['Finding the Instructor'] },
+    { name: 'Proof of Qualification', arc: line, prerequisites: ['Test of Qualification'] },
+    { name: 'Other job part', arc: "The Warrior's Next Journey", prerequisites: [line] }
+  ];
+  assert.deepEqual(lineAfter(catalog, line), ['Finding the Instructor', 'Test of Qualification', 'Proof of Qualification']);
+  assert.deepEqual(lineAfter(catalog, 'Test of Qualification'), ['Proof of Qualification']);
+  assert.deepEqual(lineAfter(catalog, 'Proof of Qualification'), []);
+});

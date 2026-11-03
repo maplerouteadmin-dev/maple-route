@@ -311,7 +311,7 @@ export function aliveAtOnce(data, mapId, count) {
   let totals = totalPoints.get(data);
   if (!totals) {
     totalPoints.set(data, totals = new Map());
-    for (const t of data.targets ?? []) if (t.kind === 'mob' && !t.reactor) for (const l of t.locations ?? []) totals.set(l.mapId, (totals.get(l.mapId) ?? 0) + (l.count ?? 1));
+    for (const t of data.targets ?? []) if (t.kind === 'mob' && !t.reactor && !t.group) for (const l of t.locations ?? []) totals.set(l.mapId, (totals.get(l.mapId) ?? 0) + (l.count ?? 1));
   }
   const all = totals.get(mapId) ?? count;
   return all > map.capacity ? Math.round(count * map.capacity / all * 10) / 10 : count;

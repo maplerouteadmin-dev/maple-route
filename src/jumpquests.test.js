@@ -45,3 +45,16 @@ test('a guessed monster is hunted on the maps the quest names', async () => {
   assert.deepEqual(goal.maps, ['up6']);
   assert.deepEqual([...goalSpawns(data, goal).keys()], ['up6']);
 });
+
+test('a job test: the instructor warps you in and out, and only your job\'s test map drops Dark Marbles', async () => {
+  const { jumpQuestEdges: edges, jobTestTarget } = await import('./jumpquests.js');
+  const data = { maps: [
+    { id: 'cs', name: 'Construction Site North of Kerning City', npcs: [{ name: 'Thief Job Instructor', x: 2377, y: 446 }] },
+    { id: 'test', name: "Thief's Construction Site", returnTo: 'cs', capacity: 10, npcs: [{ name: 'Thief Job Instructor', x: 764, y: 410 }] }
+  ] };
+  const warps = edges(data).filter(edge => edge.npc === 'Thief Job Instructor');
+  assert.deepEqual(warps.map(edge => [edge.from, edge.to]), [['cs', 'test'], ['test', 'cs']]);
+  assert.equal(jobTestTarget(data, 'Dark Marble', 'Thief').locations[0].mapId, 'test');
+  assert.equal(jobTestTarget(data, 'Dark Marble', 'Warrior'), null);
+  assert.equal(jobTestTarget(data, 'Leaf', 'Thief'), null);
+});
