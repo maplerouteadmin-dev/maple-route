@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0-beta.38
+
+- [Event] Trick or Treat! is fully routed: give a candy pouch to Ronnie (the dark tunnel: The Tree Tunnel At the Forest Up North), Anne (the open field: The Hill East of Henesys) and Estelle (the high ground: The Field South of Ellinia), in whatever order adds the fewest maps, then hand in to Malady. The children come from community guides (henesys.gg and others) and match the NPCs on those maps in the game data.
+- Wiki NPC names with a tag ("Malady (Halloween)") now match the plain NPC, so their quests get a hand-in stop again.
+
 ## 1.1.0-beta.37
 
 - Talk-only quests whose text spells out errands get them as steps: [Event] Trick or Treat! now lists "Deliver a pouch to the child in the dark tunnel / on the open field / up on the high ground" between starting and handing in to Malady. The children are not in the game data, so these steps have no route; tick them as you go.

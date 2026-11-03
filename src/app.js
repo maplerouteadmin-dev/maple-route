@@ -678,6 +678,12 @@ async function loadQuestCatalog() {
       if (verified) { quest.turnIn = verified; quest.turnInGuessed = false; }
       else if (!quest.turnIn) { quest.turnIn = guessTurnIn(quest.doneText, npcNames, quest.giver); quest.turnInGuessed = true; }
     }
+    // Wiki NPC names with a tag ("Malady (Halloween)") are the plain NPC when only that one exists.
+    const npcSet = new Set(npcNames.map(normalize));
+    for (const quest of state.quests) for (const key of ['giver', 'turnIn']) {
+      const plain = String(quest[key] ?? '').replace(/\s*\([^)]*\)\s*$/, '');
+      if (plain && plain !== quest[key] && !npcSet.has(normalize(quest[key])) && npcSet.has(normalize(plain))) quest[key] = plain;
+    }
     // Guesses the quest's own ending or the next quest's giver back up are not shown as guesses.
     for (const quest of state.quests) if (quest.turnInGuessed && turnInConfirmed(quest, state.quests)) quest.turnInGuessed = false;
     applyNotes(state.quests, state.notes); resolveWeekly();
@@ -3923,7 +3929,7 @@ function stepTarget(step, guide) {
   if (all?.trip?.order.length) {
     const first = all.trip.order[0];
     if (first.type === 'handin') return { mapId: first.mapId, npc: [...new Set(all.ends.get(first.mapId) ?? [])][0] ?? null };
-    if (first.type === 'start' || first.type === 'buy') return { mapId: first.mapId, npc: first.npc ?? null };
+    if (first.type === 'start' || first.type === 'buy' || (first.type === 'visit' && first.npc)) return { mapId: first.mapId, npc: first.npc ?? null };
     // Hunting: stay on a map of this step if you are already on one.
     const here = first.type === 'hunt' && all.trip.order.find(s => s.type === 'hunt' && s.mapId === state.current);
     return { mapId: (here || first).mapId, npc: null };
@@ -4001,7 +4007,11 @@ function allQuestsTrip(onlyQuest = null) {
     // A talk-only quest's own place (an event trail's map) is a stop until its step is ticked.
     const questSteps = buildSteps({ ...quest, needs }, state.questDetails[name]?.steps ?? []);
     const stepsDone = currentStep(questSteps, state.questDone[name] ?? [], { accepted: !notStarted, giver: quest.giver }).done;
-    for (const step of questSteps.filter(step => step.visit && step.mapId && !stepsDone.has(step.number))) visits.push({ mapId: step.mapId, quests: [name], step: step.number, place: step.map, notes: step.notes });
+    // Places to go (an event trail's map) and errands to an NPC (Trick or Treat!'s children).
+    for (const step of questSteps.filter(step => step.visit && !stepsDone.has(step.number))) {
+      const mapId = step.mapId ?? (step.npc ? npcMapOf(step.npc, name) : null);
+      if (mapId) visits.push({ mapId, quests: [name], step: step.number, place: step.map ?? null, notes: step.npc ? step.title : step.notes, npc: step.npc ?? null });
+    }
     const progress = needs.map(n => { const seen = matchCount(helper?.progress, n.name); return { name: n.name, have: 0, need: n.count ?? seen?.need, done: ticked.has(normalize(n.name)) }; });
     goals = huntGoals(state.data, progress, planSources(), quest.text, needs.map(n => n.name), state.crafting, myShops(), quest);
     loadItemSources(goals.filter(g => g.pending).map(g => g.lookup ?? g.name));

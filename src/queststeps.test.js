@@ -96,6 +96,10 @@ test('a talk-only quest lists the errands its text spells out (Trick or Treat!)'
   const quest = { name: '[Event] Trick or Treat!', giver: 'Malady', needs: [], prerequisites: ['[Event] Halloween Candies'],
     text: "Malady says there's still one more thing left to do for Halloween...\nMalady has split her Halloween Candy into three pouches for the children spending Halloween alone. Deliver a pouch to the child in the dark tunnel, the child on the open field and the child up on the high ground. Only characters at Level 10 or higher can complete this quest.\nAll three children received their Halloween Candy." };
   assert.deepEqual(questTasks(quest), ['Deliver a pouch to the child in the dark tunnel', 'Deliver a pouch to the child on the open field', 'Deliver a pouch to the child up on the high ground']);
-  assert.deepEqual(buildSteps(quest).map(step => step.title), ['Talk to Malady to start', 'Deliver a pouch to the child in the dark tunnel', 'Deliver a pouch to the child on the open field', 'Deliver a pouch to the child up on the high ground', 'Hand it in to Malady']);
+  // The guides name the children: real NPC steps with a route.
+  const steps = buildSteps(quest);
+  assert.deepEqual(steps.slice(1, 4).map(step => step.npc), ['Ronnie', 'Anne', 'Estelle']);
+  assert.ok(steps.slice(1, 4).every(step => step.visit));
+  assert.equal(steps.at(-1).title, 'Hand it in to Malady');
   assert.deepEqual(questTasks({ needs: [{ type: 'mob', name: 'Snail', count: 5 }], text: 'a\nDeliver it to the boss.\nc' }), []);
 });

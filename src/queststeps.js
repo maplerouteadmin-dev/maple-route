@@ -41,6 +41,17 @@ export function questPlaces(quest, maps = []) {
   }
   return found.sort((a, b) => a.at - b.at).map(({ at, ...place }) => place);
 }
+// Errands the game data does not name but community guides do, checked against the map data's NPC
+// list: Trick or Treat!'s three children (henesys.gg, mscw-guidebook.com, ms-classic.com; Ronnie,
+// Anne and Estelle each stand on the map the quest's riddle describes). Any order.
+export const QUEST_ERRANDS = {
+  '[Event] Trick or Treat!': [
+    { npc: 'Ronnie', title: 'Give a candy pouch to Ronnie (the dark tunnel: The Tree Tunnel At the Forest Up North)' },
+    { npc: 'Anne', title: 'Give a candy pouch to Anne (the open field: The Hill East of Henesys)' },
+    { npc: 'Estelle', title: 'Give a candy pouch to Estelle (the high ground: The Field South of Ellinia)' }
+  ]
+};
+
 // Errands a talk-only quest's text spells out: sentences that start with Deliver/Bring/Give/Visit/Find,
 // a list after "to the …" split into one errand each. Only for quests with nothing to hunt. Pure.
 export function questTasks(quest) {
@@ -103,7 +114,9 @@ export function buildSteps(quest, wikiSteps = []) {
   if (!quest.places?.length && clue) steps.push({ title: `Follow the clue: "${clue}"`, notes: 'The game data does not say where; check the quest window in game.' });
   // A talk-only quest whose text gives the errands ("Deliver a pouch to the child in the dark tunnel, the
   // child on the open field and the child up on the high ground"): one tickable step each.
-  if (!quest.places?.length && !clue) for (const task of questTasks(quest)) steps.push({ title: task, notes: 'The game data does not say where; check the quest window in game.' });
+  const errands = QUEST_ERRANDS[quest.name];
+  if (errands) for (const errand of errands) steps.push({ title: errand.title, npc: errand.npc, visit: true });
+  else if (!quest.places?.length && !clue) for (const task of questTasks(quest)) steps.push({ title: task, notes: 'The game data does not say where; check the quest window in game.' });
   const turnIn = quest.turnIn || quest.giver;
   if (turnIn) steps.push({ title: `Hand it in to ${turnIn}${quest.turnInGuessed && quest.turnIn ? ' (best guess)' : ''}`, npc: turnIn, handIn: true });
   return steps.map((step, i) => ({ npc: null, monster: null, map: null, ...step, number: i + 1 }));
