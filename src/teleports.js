@@ -14,8 +14,9 @@ export function mapTeleports(exits = []) {
 }
 // What to tell the player on a map with pads.
 export function teleportHint(teleports = []) {
-  if (!teleports.length) return '';
+  // Only a maze (pads that send you back) needs explaining; a town's teleporters are ordinary.
   const traps = teleports.filter(pad => pad.trap).length, forward = teleports.length - traps;
+  if (!traps) return '';
   return traps
     ? `This map has ${forward} teleporter${forward === 1 ? '' : 's'} (green, the arrow shows where each lands) and ${traps} trap${traps === 1 ? '' : 's'} (red) that send you back to the start.`
     : `This map has ${forward} teleporter${forward === 1 ? '' : 's'}: the arrow on the map shows where each lands.`;

@@ -42,3 +42,14 @@ test('unreachable NPC locations never become GPS destinations', () => {
   assert.equal(npcMapId(data, 'Nella', 'party', { mapName: 'Kerning City' }), null);
   assert.equal(npcMapId(data, 'Missing NPC', 'kerning'), null);
 });
+
+test('a job instructor the data only puts on the hidden test map also stands on its return map', async () => {
+  const { placeHiddenNpcs, npcMapId } = await import('./npclocations.js');
+  const { validateDataset } = await import('./core.js');
+  const data = validateDataset({ schemaVersion: 1, maps: [{ id: 'perion', name: 'Perion' }, { id: 'rocky4', name: 'West Rocky Mountain IV' }, { id: 'test', name: "Warrior's Rocky Mountain", returnTo: 'rocky4' }],
+    portals: [{ from: 'perion', to: 'rocky4', name: 'w' }, { from: 'rocky4', to: 'perion', name: 'e' }],
+    targets: [{ id: 'wji', kind: 'npc', name: 'Warrior Job Instructor', locations: [{ mapId: 'test' }] }] });
+  assert.equal(npcMapId(data, 'Warrior Job Instructor', 'perion'), null);
+  assert.deepEqual(placeHiddenNpcs(data), ['Warrior Job Instructor']);
+  assert.equal(npcMapId(data, 'Warrior Job Instructor', 'perion'), 'rocky4');
+});

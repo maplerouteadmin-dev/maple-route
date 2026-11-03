@@ -20,7 +20,7 @@ import { mapViewModel, mapViewSvg, calibratePicture, pictureOverlaySvg, renderOv
 import { fittedMapSize } from './mapfit.js';
 import { arrivalDetails } from './arrival.js';
 import { questObjective, huntGoals, planHuntTrip, planMultiTrip, rankObjectiveMaps, craftStops, matchCount, helperComplete, hops, setTextSources } from './objective.js';
-import { npcMapId, questNpcDestination } from './npclocations.js';
+import { npcMapId, questNpcDestination, placeHiddenNpcs } from './npclocations.js';
 import { verifiedQuestTurnIn } from './questorigins.js';
 import { completeQuestNeeds } from './questneeds.js';
 import { outstandingQuests, removePlannedQuest } from './questplanlist.js';
@@ -94,6 +94,8 @@ function ensureQuestPlaces() {
   for (const quest of state.quests) quest.places = questPlaces(quest, state.data.maps);
   // What each quest's text says about items, shared with every quest that needs the same item.
   if (state.quests.length) setTextSources(state.quests, state.data);
+  // NPCs the data only puts on a hidden test map (job instructors) also stand where you find them.
+  placeHiddenNpcs(state.data);
   // Jump-quest piles (Pink Anthurium ← A pile of flowers) are not in the map data: add them.
   for (const { item } of JUMP_QUEST_PILES) {
     const pile = pileTarget(state.data, item); if (!pile) continue;
@@ -430,6 +432,7 @@ function persist() {
 }
 
 function populateMaps() {
+  ensureQuestPlaces(); // fresh map data: hidden NPC spots, jump-quest piles, quest places
   if (state.current && !mapById(state.current)) state.current = null;
   if (state.destination && !mapById(state.destination)) state.destination = null;
   const sorted = [...state.data.maps].sort((a, b) => a.name.localeCompare(b.name));

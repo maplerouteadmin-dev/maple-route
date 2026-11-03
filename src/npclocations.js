@@ -37,3 +37,22 @@ export function questNpcDestination(data, npc, currentMapId, { steps = [], chose
   if (chosen && npcLocations(data, npc, currentMapId).some(place => place.mapId === chosen && (!currentMapId || place.hops !== null))) return chosen;
   return npcMapId(data, npc, currentMapId, { mapName: questNpcMapHint(steps, npc), nearMapId });
 }
+
+// NPCs the game data only places on a map nothing leads into (a job-test map like Warrior's Rocky
+// Mountain, which the instructor sends you into) also stand on that map's return map, where players
+// actually find them (West Rocky Mountain IV). Adds those spots; returns the NPC names it placed.
+export function placeHiddenNpcs(data) {
+  const entered = new Set((data.portals ?? []).map(p => p.to));
+  const maps = new Map((data.maps ?? []).map(m => [m.id, m]));
+  const placed = [];
+  for (const target of data.targets ?? []) {
+    if (target.kind !== 'npc') continue;
+    const reachable = (target.locations ?? []).some(l => entered.has(l.mapId));
+    if (reachable) continue;
+    for (const location of [...(target.locations ?? [])]) {
+      const back = maps.get(location.mapId)?.returnTo;
+      if (back && entered.has(back) && !target.locations.some(l => l.mapId === back)) { target.locations.push({ mapId: back, count: 1 }); placed.push(target.name); }
+    }
+  }
+  return placed;
+}

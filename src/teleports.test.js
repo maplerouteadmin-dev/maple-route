@@ -23,3 +23,7 @@ test('teleport pads survive saving the map data', () => {
   const data = validateDataset({ schemaVersion: 1, maps: [{ id: 'farm', name: "Utah's Pig Farm", teleports: mapTeleports(farm) }], portals: [], targets: [] });
   assert.equal(data.maps[0].teleports.length, 4);
 });
+
+test('ordinary teleporters (a town) need no hint', () => {
+  assert.equal(teleportHint([{ x: 1, y: 1, toX: 2, toY: 2, trap: false }]), '');
+});
